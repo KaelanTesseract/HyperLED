@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HyperLED</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    
+    <div class="container">
+        <header id="mainHeader">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <img src="logo.png" alt="Logo" style="height: 32px;">
+                <h1 style="margin: 0;">HyperLED</h1>
+                <span id="mainVersionDisplay" style="font-size: 14px; color: var(--text-muted); opacity: 0.8; font-weight: 600;"></span>
+            </div>
+            <div class="header-actions">
+                <button id="btnSettings" class="icon-btn">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                </button>
+                <button id="btnPower" class="power-btn">
+                    <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                        <line x1="12" y1="2" x2="12" y2="12"></line>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Update Notification Banner -->
+        <div id="updateBanner" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 12px; padding: 12px 15px; margin-bottom: 20px; cursor: pointer; transition: all 0.2s ease;" onclick="document.getElementById('btnSettings').click(); setTimeout(()=>document.querySelector('.tab-btn[data-tab=\'tab-system\']').click(), 100);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="#ef4444" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <div>
+                    <strong style="color: white; font-size: 15px; display: block;" id="updateBannerTitle">Update verfügbar!</strong>
+                    <span style="color: rgba(255,255,255,0.7); font-size: 13px;" id="updateBannerText">Klicke hier für weitere Details.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Controls (Hidden in AP Mode) -->
+        <main id="mainControls">
+            <div class="card glass" id="segmentCard">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
+                    <h2 style="margin: 0;">Segmente</h2>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <label for="syncSegments" style="font-size: 12px; margin-right: 5px; color: var(--text-muted); cursor: pointer;">Sync</label>
+                        <input type="checkbox" id="syncSegments" style="transform: scale(1.2); margin-right: 10px; cursor: pointer;">
+                        <button id="btnSegSettings" class="power-btn" style="width:32px; height:32px; padding: 6px; background: rgba(255,255,255,0.1); border-radius: 8px;">
+                            <svg viewBox="0 0 24 24" width="100%" height="100%" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                            </svg>
+                        </button>
+                        <button id="btnSegPower" class="power-btn" style="width:32px; height:32px; padding: 6px; background: rgba(255,255,255,0.1); border-radius: 8px;">
+                            <svg viewBox="0 0 24 24" width="100%" height="100%" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                                <line x1="12" y1="2" x2="12" y2="12"></line>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="segmentSelector" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Segments populated here -->
+                </div>
+            </div>
+
+            <div class="card glass">
+                <h2>Farbe & Helligkeit</h2>
+                <div class="color-picker-wrapper" style="display: flex; flex-direction: column; align-items: center;">
+                    <div id="colorWheel"></div>
+                    
+                    <div class="quick-colors">
+                        <div class="color-swatch" style="background: #ff0000;" data-color="#ff0000"></div>
+                        <div class="color-swatch" style="background: #ff7f00;" data-color="#ff7f00"></div>
+                        <div class="color-swatch" style="background: #ffff00;" data-color="#ffff00"></div>
+                        <div class="color-swatch" style="background: #00ff00;" data-color="#00ff00"></div>
+                        <div class="color-swatch" style="background: #00ffff;" data-color="#00ffff"></div>
+                        <div class="color-swatch" style="background: #0000ff;" data-color="#0000ff"></div>
+                        <div class="color-swatch" style="background: #8b00ff;" data-color="#8b00ff"></div>
+                        <div class="color-swatch" style="background: #ff00ff;" data-color="#ff00ff"></div>
+                        <div class="color-swatch" style="background: #ffffff;" data-color="#ffffff"></div>
+                        <div class="color-swatch" style="background: #ffb6c1;" data-color="#ffb6c1"></div>
+                    </div>
+                </div>
+                <div class="slider-wrapper">
+                    <label for="briSlider">Helligkeit</label>
+                    <input type="range" id="briSlider" min="0" max="255" value="255">
+                </div>
+                <div class="slider-wrapper" style="margin-top: 15px;" id="whiteSliderWrapper">
+                    <label for="whiteSlider">Weiß-Kanal (falls unterstützt)</label>
+                    <input type="range" id="whiteSlider" min="0" max="255" value="0">
+                </div>
+                <div class="slider-wrapper" style="margin-top: 15px;">
+                    <label for="speedSlider">Geschwindigkeit</label>
+                    <input type="range" id="speedSlider" min="0" max="255" value="128">
+                </div>
+            </div>
+
+            <div class="card glass">
+                <h2>Effekte</h2>
+                <div class="effects-grid" id="effectsGrid">
+                    <!-- Buttons are generated by app.js -->
+                </div>
+            </div>
+        </main>
+
+        <!-- AP Mode Setup Screen -->
+        <main id="apSetupScreen" style="display: none;">
+            <div class="card glass">
+                <h2>Willkommen beim HyperLED</h2>
+                <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 14px;">Bitte verbinde das Gerät mit deinem WLAN, um die Steuerung freizuschalten.</p>
+                <div id="apWifiContainer"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content glass">
+            <div class="modal-header">
+                <h2>Einstellungen</h2>
+                <span class="close-btn" id="closeSettings">&times;</span>
+            </div>
+            
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="tab-led">LED</button>
+                <button class="tab-btn" data-tab="tab-segments">Segmente</button>
+                <button class="tab-btn" data-tab="tab-slaves">Slaves</button>
+                <button class="tab-btn" data-tab="modalWifiContainer">WLAN / MQTT</button>
+                <button class="tab-btn" data-tab="tab-system">System</button>
+            </div>
+            
+            <!-- LED Hardware Tab -->
+            <div class="tab-content active" id="tab-led">
+                <div class="form-group" style="margin-top: 10px;">
+                    <label for="ledCount">Anzahl LEDs</label>
+                    <input type="number" id="ledCount" min="1" max="1000" value="30">
+                </div>
+                <div class="form-group">
+                    <label for="ledType">LED Typ</label>
+                    <select id="ledType">
+                            <optgroup label="Digitale LEDs (1-Wire)">
+                                <option value="22">WS281x</option>
+                                <option value="30">SK6812/WS2814 RGBW</option>
+                                <option value="31">TM1814</option>
+                                <option value="24">400kHz</option>
+                                <option value="26">TM1829</option>
+                                <option value="27">UCS8903</option>
+                                <option value="28">APA106/PL9823</option>
+                                <option value="29">TM1914</option>
+                                <option value="32">FW1906 GRBCW</option>
+                                <option value="33">UCS8904 RGBW</option>
+                                <option value="34">WS2805 RGBCW</option>
+                                <option value="35">SM16825 RGBCW</option>
+                                <option value="36">WS2811 White</option>
+                                <option value="37">WS281x WWA</option>
+                            </optgroup>
+                            <optgroup label="Digitale LEDs (SPI / 2-Wire)">
+                                <option value="50">WS2801</option>
+                                <option value="51">APA102</option>
+                                <option value="52">LPD8806</option>
+                                <option value="53">LPD6803</option>
+                                <option value="54">PP9813</option>
+                            </optgroup>
+                            <optgroup label="Analoge / Einfache LEDs (PWM)">
+                                <option value="40">On/Off</option>
+                                <option value="41">PWM White</option>
+                                <option value="42">PWM CCT</option>
+                                <option value="43">PWM RGB</option>
+                                <option value="44">PWM RGBW</option>
+                                <option value="45">PWM RGB+CCT</option>
+                            </optgroup>
+                    </select>
+                </div>
+
+                <div id="pinContainer">
+                    <div class="form-group pin-group" id="groupPin0">
+                        <label for="ledPin0" id="labelPin0">Data / PWM Pin</label>
+                        <select id="ledPin0" class="led-pin">
+                            <option value="0">GPIO 0</option>
+                            <option value="1">GPIO 1</option>
+                            <option value="2">GPIO 2</option>
+                            <option value="3">GPIO 3</option>
+                            <option value="4" selected>GPIO 4</option>
+                            <option value="5">GPIO 5</option>
+                            <option value="6">GPIO 6</option>
+                            <option value="7">GPIO 7</option>
+                            <option value="8">GPIO 8</option>
+                            <option value="9">GPIO 9</option>
+                        </select>
+                    </div>
+                    <div class="form-group pin-group" id="groupPin1" style="display: none;">
+                        <label for="ledPin1" id="labelPin1">Clock Pin</label>
+                        <select id="ledPin1" class="led-pin">
+                            <option value="0">GPIO 0</option>
+                            <option value="1">GPIO 1</option>
+                            <option value="2">GPIO 2</option>
+                            <option value="3">GPIO 3</option>
+                            <option value="4">GPIO 4</option>
+                            <option value="5" selected>GPIO 5</option>
+                            <option value="6">GPIO 6</option>
+                            <option value="7">GPIO 7</option>
+                            <option value="8">GPIO 8</option>
+                            <option value="9">GPIO 9</option>
+                        </select>
+                    </div>
+                    <div class="form-group pin-group" id="groupPin2" style="display: none;">
+                        <label for="ledPin2" id="labelPin2">Pin 3</label>
+                        <input type="number" id="ledPin2" class="led-pin" min="0" max="40" value="255">
+                    </div>
+                    <div class="form-group pin-group" id="groupPin3" style="display: none;">
+                        <label for="ledPin3" id="labelPin3">Pin 4</label>
+                        <input type="number" id="ledPin3" class="led-pin" min="0" max="40" value="255">
+                    </div>
+                    <div class="form-group pin-group" id="groupPin4" style="display: none;">
+                        <label for="ledPin4" id="labelPin4">Pin 5</label>
+                        <input type="number" id="ledPin4" class="led-pin" min="0" max="40" value="255">
+                    </div>
+                </div>
+                
+                <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <div style="text-align: center; margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 5px; color: var(--primary);">Hardware Eingänge</h4>
+                        <p style="font-size: 13px; color: var(--text-muted);">Konfiguriere hier physische Taster oder Schalter.</p>
+                    </div>
+                    
+                    <div class="card glass" style="margin-bottom: 15px; padding: 15px; background: rgba(0,0,0,0.2); box-shadow: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="margin: 0; font-size: 14px; color: var(--text-main);">Eingang 1 (Pin 12)</h4>
+                            <input type="checkbox" id="btn1Active" style="width: auto; transform: scale(1.3);">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="btn1Type">Typ</label>
+                            <select id="btn1Type">
+                                <option value="push">Taster (Halten zum Dimmen)</option>
+                                <option value="switch">Schalter (An / Aus)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="card glass" style="margin-bottom: 15px; padding: 15px; background: rgba(0,0,0,0.2); box-shadow: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="margin: 0; font-size: 14px; color: var(--text-main);">Eingang 2 (Pin 13)</h4>
+                            <input type="checkbox" id="btn2Active" style="width: auto; transform: scale(1.3);">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="btn2Type">Typ</label>
+                            <select id="btn2Type">
+                                <option value="push">Taster (Halten zum Dimmen)</option>
+                                <option value="switch">Schalter (An / Aus)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <div style="text-align: center; margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 5px; color: var(--primary);">Stromversorgung (ABL)</h4>
+                        <p style="font-size: 13px; color: var(--text-muted);" id="ablRecommendedText">Total LEDs: 30<br>Empfohlenes Netzteil für maximales Weiß: <strong style="color: #fff;">~1.7 A</strong></p>
+                    </div>
+                    
+                    <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px;">
+                        <label for="ablEnable" style="margin: 0; font-size: 14px;">Automatischer Helligkeitsbegrenzer</label>
+                        <input type="checkbox" id="ablEnable" style="width: auto; transform: scale(1.3);">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="ablMaxMa">Maximaler Netzteil-Strom (mA)</label>
+                        <input type="number" id="ablMaxMa" min="250" max="65000" value="850">
+                        <small style="color: var(--text-muted); display: block; margin-top: 5px;">Verhindert das Überlasten des Netzteils (z.B. 2000 für 2A).</small>
+                    </div>
+                </div>
+
+                <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <div style="text-align: center; margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 5px; color: var(--primary);">2D Matrix Setup</h4>
+                    </div>
+                    
+                    <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px;">
+                        <label for="matrixEnable" style="margin: 0; font-size: 14px;">Als Matrix konfigurieren</label>
+                        <input type="checkbox" id="matrixEnable" style="width: auto; transform: scale(1.3);">
+                    </div>
+                    
+                    <div id="matrixConfigGroup" style="display: none;">
+                        <div class="form-group" style="display: flex; gap: 10px;">
+                            <div style="flex: 1;">
+                                <label for="matrixWidth">Breite</label>
+                                <input type="number" id="matrixWidth" min="1" max="128" value="16">
+                            </div>
+                            <div style="flex: 1;">
+                                <label for="matrixHeight">Höhe</label>
+                                <input type="number" id="matrixHeight" min="1" max="128" value="16">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="matrixLayout">Panel Layout</label>
+                            <select id="matrixLayout">
+                                <option value="0">Serpentine (Zick-Zack)</option>
+                                <option value="1">Zeilenweise (Linear)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <div style="text-align: center; margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 5px; color: var(--primary);">Pixel Art Converter</h4>
+                        <p style="font-size: 13px; color: var(--text-muted);">Wähle ein Bild aus. Es wird automatisch an deine Matrix-Größe angepasst und auf die LEDs projiziert.</p>
+                    </div>
+                    <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+                    <button id="btnUploadImage" class="btn btn-secondary" style="width: 100%; margin-bottom: 15px;">Bild auswählen</button>
+                    
+                    <canvas id="pixelCanvas" style="max-width: 100%; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; image-rendering: pixelated; display: none; margin: 0 auto 15px auto;"></canvas>
+                    <button id="btnStreamMatrix" class="btn btn-primary" style="width: 100%; display:none; margin-bottom: 15px;">Auf Matrix streamen</button>
+                </div>
+
+                <button id="btnSaveConfig" class="btn-primary">LED-Konfiguration speichern</button>
+            </div>
+            
+            <!-- Slaves Tab -->
+            <div class="tab-content" id="tab-slaves">
+                <div style="margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 10px; color: var(--primary);">Erkannte Slaves</h3>
+                    <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 15px;">Hier werden automatisch erkannte HyperLED-Slaves (via UART) aufgelistet. Du kannst sie benennen und konfigurieren.</p>
+                    
+                    <button id="btnRefreshSlaves" class="btn-secondary" style="width: 100%; margin-bottom: 15px;">Netzwerk scannen</button>
+                    
+                    <div id="slavesList" style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- Dynamically populated -->
+                        <div style="text-align: center; padding: 20px; color: var(--text-muted);">
+                            Keine Slaves gefunden. Überprüfe die UART-Verbindung.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- WLAN Network Tab -->
+            <div class="tab-content" id="modalWifiContainer">
+                <div id="wlanStatusContainer" style="margin-bottom: 20px; padding: 15px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; display: none;">
+                    <h3 style="color: #10b981; margin-bottom: 5px;">Verbunden mit <span id="wlanCurrentSsid"></span></h3>
+                    <p style="font-size: 14px; color: var(--text-muted);">IP-Adresse: <span id="wlanCurrentIp"></span></p>
+                </div>
+                <button class="btn btn-primary" id="btnScanNetworks" style="margin-bottom: 20px;">Netzwerke Scannen</button>
+                
+                <div class="form-group" style="display: none; margin-top: 10px;" id="wifiList">
+                    <select id="wifiSelect"><option>Wähle...</option></select>
+                </div>
+                <div class="form-group" style="margin-top: 10px;">
+                    <label for="wifiSsid">SSID</label>
+                    <input type="text" id="wifiSsid">
+                </div>
+                <div class="form-group">
+                    <label for="wifiPass">Passwort</label>
+                    <input type="password" id="wifiPass">
+                </div>
+                <button id="btnSaveWifi" class="btn-primary">WLAN Speichern</button>
+
+                <!-- MQTT Settings moved here -->
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <h3 style="margin-bottom: 15px; color: var(--primary);">MQTT Konfiguration</h3>
+                    <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 15px;">
+                        <label for="mqttEnable" style="margin: 0;">MQTT Aktivieren</label>
+                        <input type="checkbox" id="mqttEnable" style="width: auto; transform: scale(1.5);">
+                    </div>
+                    <div class="form-group">
+                        <label for="mqttServer">MQTT Server (IP/Hostname)</label>
+                        <input type="text" id="mqttServer" placeholder="z.B. 192.168.1.100">
+                    </div>
+                    <div class="form-group">
+                        <label for="mqttPort">Port</label>
+                        <input type="number" id="mqttPort" value="1883" min="1" max="65535">
+                    </div>
+                    <div class="form-group">
+                        <label for="mqttUser">Benutzername (Optional)</label>
+                        <input type="text" id="mqttUser">
+                    </div>
+                    <div class="form-group">
+                        <label for="mqttPass">Passwort (Optional)</label>
+                        <input type="password" id="mqttPass">
+                    </div>
+                    <div class="form-group">
+                        <label for="mqttTopic">Base Topic</label>
+                        <input type="text" id="mqttTopic" value="hyperled/device">
+                    </div>
+                    <div style="margin-top: 20px;">
+                        <button class="btn btn-primary" id="btnSaveMqtt" style="width: 100%;">MQTT Speichern & Neustart</button>
+                    </div>
+                </div>
+            </div>
+
+
+            
+            <!-- Segments Tab -->
+            <div class="tab-content" id="tab-segments">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;">LED Segmente</h3>
+                    <button class="btn btn-primary" id="btnAddSegment" style="padding: 6px 12px; font-size: 13px;">+ Hinzufügen</button>
+                </div>
+                
+                <div id="segmentsListContainer" style="display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto; overflow-x: hidden; padding-right: 5px;">
+                    <!-- Segment inputs dynamically added here -->
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <button class="btn btn-primary" id="btnSaveSegments" style="width: 100%;">Segmente Speichern & Anwenden</button>
+                </div>
+            </div>
+
+
+            
+            <!-- System Tab -->
+            <div class="tab-content" id="tab-system">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 5px;">HyperLED</h3>
+                    <p style="color: var(--text-muted); font-size: 14px;">Version: <strong id="sysVersion">Lade...</strong></p>
+                </div>
+                
+                <div class="card" style="background: rgba(0,0,0,0.2); padding: 15px; margin-bottom: 15px; box-shadow: none;">
+                    <h3>Online Update</h3>
+                    <button id="btnCheckUpdate" class="btn-primary" disabled>Wird geprüft...</button>
+                    <div id="onlineProgressContainer" style="display: none; width: 100%; background: rgba(255,255,255,0.1); border-radius: 4px; height: 10px; margin-top: 15px; margin-bottom: 5px; overflow: hidden;">
+                        <div id="onlineProgressBar" style="width: 0%; background: #10b981; height: 100%; border-radius: 4px; transition: width 0.2s;"></div>
+                    </div>
+                    <div id="updateStatus" style="font-size: 13px; text-align: center; margin-top: 10px; color: var(--primary);"></div>
+                </div>
+
+                <div class="card" style="background: rgba(0,0,0,0.2); padding: 15px; margin-bottom: 15px; box-shadow: none;">
+                    <h3>Lokales Update</h3>
+                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 10px;">Flashen von firmware.bin / littlefs.bin.</p>
+                    <div class="file-upload-wrapper" style="margin-bottom: 15px;">
+                        <span class="btn-upload" id="fileUploadLabel">Datei auswählen</span>
+                        <input type="file" id="updateFile" accept=".bin" multiple>
+                    </div>
+                    <div id="otaProgressContainer" style="display: none; width: 100%; background: rgba(255,255,255,0.1); border-radius: 4px; height: 10px; margin-top: 15px; margin-bottom: 15px; overflow: hidden;">
+                        <div id="otaProgressBar" style="width: 0%; background: #10b981; height: 100%; border-radius: 4px; transition: width 0.2s;"></div>
+                    </div>
+                    <button class="btn btn-primary" id="btnUpdateLocal">Firmware hochladen</button>
+                    <button id="btnFactoryReset" class="btn-danger">Auf Werkseinstellungen zurücksetzen</button>
+                </div>
+
+                <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <div style="text-align: center; margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 5px; color: var(--primary);">Slave System</h4>
+                        <p style="font-size: 13px; color: var(--text-muted);">Aktualisiert die Firmware aller verbundenen Slaves via WLAN-On-Demand.</p>
+                    </div>
+                    <div class="form-group" style="display: flex; gap: 10px;">
+                        <button id="btnUpdateSlaves" class="btn-secondary" style="width: 100%;">Slaves jetzt aktualisieren</button>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <script src="iro.min.js"></script>
+    <script src="app.js?v=3"></script>
+</body>
+</html>
