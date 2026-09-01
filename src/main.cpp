@@ -1,15 +1,15 @@
 /*
  * HyperLED - Open Source LED Controller
- * 
+ *
  * Copyright (c) 2026 Dennis Guse
- * 
- * Licensed under the EUPL, Version 1.2 or – as soon they will be approved by 
+ *
+ * Licensed under the EUPL, Version 1.2 or â€“ as soon they will be approved by
  * the European Commission - subsequent versions of the EUPL (the "Licence");
  * You may not use this work except in compliance with the Licence.
  * You may obtain a copy of the Licence at:
- * 
+ *
  * https://joinup.ec.europa.eu/software/page/eupl
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the Licence is distributed on an "AS IS" basis,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -25,6 +25,9 @@
 #include "UpdateManager.h"
 #include "SlaveManager.h"
 #include "ButtonManager.h"
+#include "PresetManager.h"
+#include "ScheduleManager.h"
+#include "WeatherManager.h"
 
 void setup() {
     Serial.begin(115200);
@@ -32,12 +35,15 @@ void setup() {
     Serial.println("HyperLED Starting...");
 
     LEDManager.begin();
+    ScheduleManager.begin(); // must load the timezone before WiFiManager connects and syncs NTP
     WiFiManager.begin();
     WebServerManager.begin();
     MqttManager.begin();
     UpdateManager.begin();
     SlaveManager.begin();
     ButtonManager.begin();
+    PresetManager.begin();
+    WeatherManager.begin();
 }
 
 void loop() {
@@ -48,12 +54,17 @@ void loop() {
     LEDManager.loop();
     UpdateManager.loop();
     SlaveManager.loop();
-    
+    PresetManager.loop();
+    ScheduleManager.loop();
+    WeatherManager.loop();
+
+#if DEBUG_SERIAL
     static unsigned long lastMemPrint = 0;
     if (millis() - lastMemPrint > 5000) {
         lastMemPrint = millis();
         Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
     }
-    
+#endif
+
     delay(1);
 }

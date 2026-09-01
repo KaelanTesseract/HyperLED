@@ -3,7 +3,7 @@
  * 
  * Copyright (c) 2026 Dennis Guse
  * 
- * Licensed under the EUPL, Version 1.2 or – as soon they will be approved by 
+ * Licensed under the EUPL, Version 1.2 or â€“ as soon they will be approved by 
  * the European Commission - subsequent versions of the EUPL (the "Licence");
  * You may not use this work except in compliance with the Licence.
  * You may obtain a copy of the Licence at:
@@ -18,6 +18,8 @@
  */
 #include "WiFiManager.h"
 #include <ESPmDNS.h>
+#include <NetBIOS.h>
+#include "ScheduleManager.h"
 
 WiFiManagerClass WiFiManager;
 
@@ -58,6 +60,11 @@ void WiFiManagerClass::connectSTA() {
         } else {
             MDNS.addService("http", "tcp", 80);
         }
+        // NBNS lets Windows resolve http://hyperled/ natively (no Bonjour needed),
+        // complementing mDNS (hyperled.local), which Windows browsers often can't resolve.
+        NBNS.begin("hyperled");
+
+        ScheduleManager.applyTimezone();
     } else {
         Serial.println("Failed to connect. Starting AP...");
         startAP();
@@ -77,7 +84,8 @@ void WiFiManagerClass::startAP() {
     } else {
         MDNS.addService("http", "tcp", 80);
     }
-    
+    NBNS.begin("hyperled");
+
     // Start DNS Server for captive portal
     _dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
     _dnsServer.start(53, "*", WiFi.softAPIP());

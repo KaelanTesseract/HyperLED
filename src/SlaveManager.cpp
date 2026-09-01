@@ -3,7 +3,7 @@
  * 
  * Copyright (c) 2026 Dennis Guse
  * 
- * Licensed under the EUPL, Version 1.2 or – as soon they will be approved by 
+ * Licensed under the EUPL, Version 1.2 or â€“ as soon they will be approved by 
  * the European Commission - subsequent versions of the EUPL (the "Licence");
  * You may not use this work except in compliance with the Licence.
  * You may obtain a copy of the Licence at:
@@ -17,6 +17,7 @@
  * limitations under the Licence.
  */
 #include "SlaveManager.h"
+#include "Config.h"
 #include <ArduinoJson.h>
 #include <algorithm>
 
@@ -28,8 +29,7 @@ void SlaveManagerClass::staticHandlePacket(const HyperBusPacket& packet) {
 
 void SlaveManagerClass::begin() {
     _uartBus = new HyperBusClass(Serial1);
-    // Use GPIO 20 for RX, GPIO 21 for TX for the Master's Downlink to the first slave
-    _uartBus->begin(115200, 20, 21);
+    _uartBus->begin(115200, HYPERBUS_UART_RX, HYPERBUS_UART_TX);
     _uartBus->setCallback(staticHandlePacket);
     
     _espBus = new EspNowBusClass();
@@ -56,8 +56,8 @@ void SlaveManagerClass::loop() {
     
     if (hasUartSlave && millis() - lastValidUartPkt > 5000) {
         Serial.println("Master UART Hardware Lockup suspected! Restarting peripheral...");
-        _uartBus->begin(115200, 20, 21);
-        pinMode(20, INPUT_PULLUP);
+        _uartBus->begin(115200, HYPERBUS_UART_RX, HYPERBUS_UART_TX);
+        pinMode(HYPERBUS_UART_RX, INPUT_PULLUP);
         lastValidUartPkt = millis();
     }
     
@@ -65,17 +65,17 @@ void SlaveManagerClass::loop() {
     if (now - _lastPingTime > 250) {
         _lastPingTime = now;
         _uartBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_PING, nullptr, 0);
-        
+
         // Broadcast PING for discovery
         _espBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_PING, nullptr, 0);
-        
+
         // Unicast PING for keep-alive (since Broadcasts drop in Power Save mode)
         for (const auto& s : _discoveredSlaves) {
             if (s.isWireless) {
                 _espBus->sendPacket(s.currentId, HYPERBUS_MASTER_ID, CMD_PING, nullptr, 0);
             }
         }
-        
+
         // Cleanup old slaves every few seconds
         static unsigned long lastCleanup = 0;
         if (now - lastCleanup > 15000) {
@@ -87,6 +87,18 @@ void SlaveManagerClass::loop() {
                     ++it;
                 }
             }
+        }
+    }
+}
+
+// A corrupted/garbled PONG (e.g. from a protocol-version mismatch or a noisy wire) can contain raw
+// control bytes. ArduinoJson does not escape those, which produces invalid JSON on /api/slaves and
+// breaks the whole Slaves page in the browser - so replace anything non-printable before it's stored.
+static void sanitizeForJson(String& s) {
+    for (size_t i = 0; i < s.length(); i++) {
+        uint8_t c = (uint8_t)s[i];
+        if (c < 0x20 || c == 0x7F) {
+            s.setCharAt(i, '?');
         }
     }
 }
@@ -103,14 +115,16 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                 char verBuf[16] = {0};
                 memcpy(verBuf, &packet.payload[3], min((int)verLen, 15));
                 sVersion = String(verBuf);
+                sanitizeForJson(sVersion);
             }
-            
+
             String sName = "Unknown";
             if (packet.length > 3 + verLen) {
                 char nameBuf[64] = {0};
                 int nameLen = min((int)(packet.length - 3 - verLen), 63);
                 memcpy(nameBuf, &packet.payload[3 + verLen], nameLen);
                 sName = String(nameBuf);
+                sanitizeForJson(sName);
             }
             
             bool found = false;
@@ -161,8 +175,8 @@ BusInterface* getBusForSlave(uint8_t slaveId, std::vector<DiscoveredSlave>& disc
     return uartBus;
 }
 
-void SlaveManagerClass::configureSlave(uint8_t currentId, uint8_t newId, uint8_t pin, uint8_t pin2, uint16_t count, uint8_t type, const String& name) {
-    uint16_t len = 6 + name.length();
+void SlaveManagerClass::configureSlave(uint8_t currentId, uint8_t newId, uint8_t pin, uint8_t pin2, uint16_t count, uint8_t type, const String& name, uint16_t matrixWidth, uint16_t matrixHeight, uint8_t hub75ShiftDriver) {
+    uint16_t len = 11 + name.length();
     uint8_t* payload = (uint8_t*)malloc(len);
     payload[0] = newId;
     payload[1] = pin;
@@ -170,8 +184,13 @@ void SlaveManagerClass::configureSlave(uint8_t currentId, uint8_t newId, uint8_t
     payload[3] = type;
     payload[4] = count & 0xFF;
     payload[5] = (count >> 8) & 0xFF;
-    memcpy(&payload[6], name.c_str(), name.length());
-    
+    payload[6] = matrixWidth & 0xFF;
+    payload[7] = (matrixWidth >> 8) & 0xFF;
+    payload[8] = matrixHeight & 0xFF;
+    payload[9] = (matrixHeight >> 8) & 0xFF;
+    payload[10] = hub75ShiftDriver;
+    memcpy(&payload[11], name.c_str(), name.length());
+
     BusInterface* targetBus = getBusForSlave(currentId, _discoveredSlaves, _uartBus, _espBus);
     targetBus->sendPacket(currentId, HYPERBUS_MASTER_ID, CMD_SET_CONFIG, payload, len);
     free(payload);

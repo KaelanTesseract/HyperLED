@@ -8,7 +8,7 @@ Der Master sendet bei jeder Frame-Berechnung die rohen Farbdaten aller LEDs als 
 
 ### Verkabelung (UART)
 Für die Kommunikation müssen Master und Slaves mit einer Datenleitung (+ gemeinsamem Ground) verbunden werden:
-- **Master TX** (Standard: GPIO 21) verbindet sich mit **Slave RX** (Standard: GPIO 20).
+- **Master TX** (Standard: GPIO 17) verbindet sich mit **Slave RX** (Standard: GPIO 16).
 - Alle verbundenen Platinen müssen zwingend den gleichen **Ground (GND)** teilen!
 
 ## Einrichtung

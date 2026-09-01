@@ -3,7 +3,7 @@
  * 
  * Copyright (c) 2026 Dennis Guse
  * 
- * Licensed under the EUPL, Version 1.2 or – as soon they will be approved by 
+ * Licensed under the EUPL, Version 1.2 or â€“ as soon they will be approved by 
  * the European Commission - subsequent versions of the EUPL (the "Licence");
  * You may not use this work except in compliance with the Licence.
  * You may obtain a copy of the Licence at:
@@ -33,7 +33,6 @@ public:
     void loop();
     
 private:
-    bool _triggerInternetUpdate = false;
     bool _triggerRestart = false;
     void setupRoutes();
     void setupCaptivePortal();

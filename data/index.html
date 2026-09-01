@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>HyperLED</title>
+    <link rel="icon" type="image/png" href="logo.png">
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="orb orb-1"></div>
@@ -53,9 +53,9 @@
         <main id="mainControls">
             <div class="card glass" id="segmentCard">
                 <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
-                    <h2 style="margin: 0;">Segmente</h2>
+                    <h2 style="margin: 0;" data-i18n="tab_segments">Segmente</h2>
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <label for="syncSegments" style="font-size: 12px; margin-right: 5px; color: var(--text-muted); cursor: pointer;">Sync</label>
+                        <label for="syncSegments" style="font-size: 12px; margin-right: 5px; color: var(--text-muted); cursor: pointer;" data-i18n="sync_label">Sync</label>
                         <input type="checkbox" id="syncSegments" style="transform: scale(1.2); margin-right: 10px; cursor: pointer;">
                         <button id="btnSegSettings" class="power-btn" style="width:32px; height:32px; padding: 6px; background: rgba(255,255,255,0.1); border-radius: 8px;">
                             <svg viewBox="0 0 24 24" width="100%" height="100%" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -77,7 +77,7 @@
             </div>
 
             <div class="card glass">
-                <h2>Farbe & Helligkeit</h2>
+                <h2 data-i18n="dash_color_brightness">Farbe & Helligkeit</h2>
                 <div class="color-picker-wrapper" style="display: flex; flex-direction: column; align-items: center;">
                     <div id="colorWheel"></div>
                     
@@ -93,23 +93,48 @@
                         <div class="color-swatch" style="background: #ffffff;" data-color="#ffffff"></div>
                         <div class="color-swatch" style="background: #ffb6c1;" data-color="#ffb6c1"></div>
                     </div>
+                    <div style="width: 100%; margin-top: 10px;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); cursor: pointer;">
+                            <input type="checkbox" id="color2Enabled" style="transform: scale(1.2);">
+                            <span data-i18n="dash_color2_enable">Farbe 2 aktivieren</span>
+                        </label>
+                        <div id="color2WheelWrapper" style="display: none; justify-content: center; margin-top: 10px;">
+                            <div id="color2Wheel"></div>
+                        </div>
+                    </div>
                 </div>
                 <div class="slider-wrapper">
-                    <label for="briSlider">Helligkeit</label>
+                    <label for="briSlider" data-i18n="dash_brightness">Helligkeit</label>
                     <input type="range" id="briSlider" min="0" max="255" value="255">
                 </div>
-                <div class="slider-wrapper" style="margin-top: 15px;" id="whiteSliderWrapper">
-                    <label for="whiteSlider">Weiß-Kanal (falls unterstützt)</label>
+                                <div class="slider-wrapper" style="margin-top: 15px;" id="whiteSliderWrapper">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                        <label for="whiteSlider" id="whiteSliderLabel" data-i18n="dash_white_channel">Weiß-Kanal</label>
+                    </div>
                     <input type="range" id="whiteSlider" min="0" max="255" value="0">
                 </div>
                 <div class="slider-wrapper" style="margin-top: 15px;">
-                    <label for="speedSlider">Geschwindigkeit</label>
+                    <label for="speedSlider" data-i18n="dash_speed">Geschwindigkeit</label>
                     <input type="range" id="speedSlider" min="0" max="255" value="128">
+                </div>
+                <div class="slider-wrapper" style="margin-top: 15px;">
+                    <label for="intensitySlider" data-i18n="dash_intensity">Intensität</label>
+                    <input type="range" id="intensitySlider" min="0" max="255" value="128">
+                </div>
+                <div class="slider-wrapper" style="margin-top: 15px;">
+                    <label for="paletteSelect" data-i18n="dash_palette">Palette</label>
+                    <select id="paletteSelect" style="padding: 8px; width: 100%; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;">
+                        <!-- Options generated by app.js -->
+                    </select>
+                </div>
+                <div id="textEffectControls" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); text-align: center;">
+                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 10px;" data-i18n="dash_text_hint">Uhrzeit, Datum, Text und Bild bearbeitest und positionierst du im Tab "Matrix".</p>
+                    <button type="button" class="btn btn-secondary" id="btnOpenTextWidgets" style="width: 100%;" data-i18n="dash_text_open">Elemente bearbeiten</button>
                 </div>
             </div>
 
             <div class="card glass">
-                <h2>Effekte</h2>
+                <h2 data-i18n="dash_effects">Effekte</h2>
                 <div class="effects-grid" id="effectsGrid">
                     <!-- Buttons are generated by app.js -->
                 </div>
@@ -129,29 +154,42 @@
     <!-- Settings Modal -->
     <div id="settingsModal" class="modal">
         <div class="modal-content glass">
-            <div class="modal-header">
-                <h2>Einstellungen</h2>
-                <span class="close-btn" id="closeSettings">&times;</span>
-            </div>
+            <header style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 20px;">
+                <h2 style="margin: 0; font-size: 16px; letter-spacing: 1px; color: var(--text-muted);" data-i18n="title_settings">EINSTELLUNGEN</h2>
+                <button id="closeSettings" style="background: none; border: none; color: white; cursor: pointer; padding: 5px;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </header>
             
-            <div class="tabs">
-                <button class="tab-btn active" data-tab="tab-led">LED</button>
-                <button class="tab-btn" data-tab="tab-segments">Segmente</button>
-                <button class="tab-btn" data-tab="tab-slaves">Slaves</button>
-                <button class="tab-btn" data-tab="modalWifiContainer">WLAN / MQTT</button>
-                <button class="tab-btn" data-tab="tab-system">System</button>
+            <div class="tabs-wrapper">
+                <button type="button" class="tabs-scroll-btn tabs-scroll-btn-left" id="tabsScrollLeft" aria-label="Scroll left">‹</button>
+                <div class="tabs" id="settingsTabs">
+                    <button class="tab-btn active" data-tab="tab-led" data-i18n="tab_led">LED</button>
+                    <button class="tab-btn" data-tab="tab-matrix" data-i18n="tab_matrix">Matrix</button>
+                    <button class="tab-btn" data-tab="tab-segments" data-i18n="tab_segments">Segmente</button>
+                    <button class="tab-btn" data-tab="tab-presets" data-i18n="tab_presets">Presets</button>
+                    <button class="tab-btn" data-tab="tab-schedules" data-i18n="tab_schedules">Zeitpläne</button>
+                    <button class="tab-btn" data-tab="tab-slaves" data-i18n="tab_slaves">Slaves</button>
+                    <button class="tab-btn" data-tab="modalWifiContainer" data-i18n="tab_wlan">WLAN / MQTT</button>
+                    <button class="tab-btn" data-tab="tab-system" data-i18n="tab_system">System</button>
+                </div>
+                <button type="button" class="tabs-scroll-btn tabs-scroll-btn-right" id="tabsScrollRight" aria-label="Scroll right">›</button>
             </div>
-            
+
             <!-- LED Hardware Tab -->
             <div class="tab-content active" id="tab-led">
                 <div class="form-group" style="margin-top: 10px;">
-                    <label for="ledCount">Anzahl LEDs</label>
+                    <label for="ledCount" data-i18n="led_count">Anzahl LEDs</label>
                     <input type="number" id="ledCount" min="1" max="1000" value="30">
                 </div>
+                
                 <div class="form-group">
-                    <label for="ledType">LED Typ</label>
+                    <label for="ledType" data-i18n="led_type">LED Typ</label>
                     <select id="ledType">
-                            <optgroup label="Digitale LEDs (1-Wire)">
+                            <optgroup label="Digitale LEDs (1-Wire)" data-i18n="led_digital">
                                 <option value="22">WS281x</option>
                                 <option value="30">SK6812/WS2814 RGBW</option>
                                 <option value="31">TM1814</option>
@@ -162,19 +200,19 @@
                                 <option value="29">TM1914</option>
                                 <option value="32">FW1906 GRBCW</option>
                                 <option value="33">UCS8904 RGBW</option>
-                                <option value="34">WS2805 RGBCW</option>
                                 <option value="35">SM16825 RGBCW</option>
                                 <option value="36">WS2811 White</option>
                                 <option value="37">WS281x WWA</option>
+                                <option value="34">WS2805 RGBCW</option>
                             </optgroup>
-                            <optgroup label="Digitale LEDs (SPI / 2-Wire)">
+                            <optgroup label="Digitale LEDs (SPI / 2-Wire)" data-i18n="led_digital_spi">
                                 <option value="50">WS2801</option>
                                 <option value="51">APA102</option>
                                 <option value="52">LPD8806</option>
                                 <option value="53">LPD6803</option>
                                 <option value="54">PP9813</option>
                             </optgroup>
-                            <optgroup label="Analoge / Einfache LEDs (PWM)">
+                            <optgroup label="Analoge / Einfache LEDs (PWM)" data-i18n="led_pwm">
                                 <option value="40">On/Off</option>
                                 <option value="41">PWM White</option>
                                 <option value="42">PWM CCT</option>
@@ -182,12 +220,46 @@
                                 <option value="44">PWM RGBW</option>
                                 <option value="45">PWM RGB+CCT</option>
                             </optgroup>
+                            <optgroup label="Scan-Matrix-Panels" data-i18n="led_scan_matrix">
+                                <option value="60">HUB75</option>
+                            </optgroup>
                     </select>
                 </div>
 
+                <div class="form-group" id="hub75Group" style="display: none;">
+                    <label for="hub75ShiftDriver" data-i18n="hub75_shift_driver">Treiber-Chip (bei Geisterbildern/Flackern anpassen)</label>
+                    <select id="hub75ShiftDriver">
+                        <option value="0" data-i18n="hub75_sd_generic">Generic (Standard, meiste Panels)</option>
+                        <option value="1">FM6126A</option>
+                        <option value="2">ICN2038S</option>
+                        <option value="3">FM6124</option>
+                        <option value="4">MBI5124</option>
+                        <option value="5">DP3246</option>
+                    </select>
+                    <p style="font-size: 12px; color: var(--text-muted); margin: 10px 0;" data-i18n="hub75_size_hint">Panel-Größe wird über "2D Matrix Setup" unten als Breite/Höhe eingestellt (z.B. 64x64).</p>
+                    <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-top: 10px;">
+                        <h5 style="margin: 0 0 8px 0; color: var(--primary); font-size: 13px;" data-i18n="hub75_pinout_title">Pinbelegung (fest, nicht änderbar)</h5>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 12px; font-family: monospace;" id="hub75PinoutTable">
+                            <!-- Filled by app.js from the fixed HUB75_PIN_* pins -->
+                        </div>
+                    </div>
+                </div>
+<div class="form-group" id="groupingGroup">
+                    <label for="ledsPerIC">LEDs pro IC (Gruppierung)</label>
+                    <select id="ledsPerIC">
+                        <option value="1">1 (Standard, einzeln steuerbar)</option>
+                        <option value="3">3 (z.B. 12V Strips)</option>
+                        <option value="6">6 (z.B. 24V Strips)</option>
+                        <option value="7">7 (z.B. 24V 84LEDs/m)</option>
+                    </select>
+                    <small style="color: #888; font-size: 0.8em; margin-top: 4px; display: block;">Wichtig bei 12V/24V Strips (z.B. WS2805).</small>
+                </div>
+                
+                <p id="backupPinHint" style="display: none; font-size: 0.85em; color: #9ca3af; margin-top: -10px; margin-bottom: 15px; line-height: 1.4;" data-i18n="backup_pin_hint"></p>
+
                 <div id="pinContainer">
                     <div class="form-group pin-group" id="groupPin0">
-                        <label for="ledPin0" id="labelPin0">Data / PWM Pin</label>
+                        <label for="ledPin0" id="labelPin0" data-i18n="lbl_data_pin">Data / PWM Pin</label>
                         <select id="ledPin0" class="led-pin">
                             <option value="0">GPIO 0</option>
                             <option value="1">GPIO 1</option>
@@ -202,7 +274,7 @@
                         </select>
                     </div>
                     <div class="form-group pin-group" id="groupPin1" style="display: none;">
-                        <label for="ledPin1" id="labelPin1">Clock Pin</label>
+                        <label for="ledPin1" id="labelPin1" data-i18n="lbl_clk_pin">Clock Pin</label>
                         <select id="ledPin1" class="led-pin">
                             <option value="0">GPIO 0</option>
                             <option value="1">GPIO 1</option>
@@ -217,129 +289,196 @@
                         </select>
                     </div>
                     <div class="form-group pin-group" id="groupPin2" style="display: none;">
-                        <label for="ledPin2" id="labelPin2">Pin 3</label>
+                        <label for="ledPin2" id="labelPin2"><span data-i18n="lbl_pin">Pin</span> 3</label>
                         <input type="number" id="ledPin2" class="led-pin" min="0" max="40" value="255">
                     </div>
                     <div class="form-group pin-group" id="groupPin3" style="display: none;">
-                        <label for="ledPin3" id="labelPin3">Pin 4</label>
+                        <label for="ledPin3" id="labelPin3"><span data-i18n="lbl_pin">Pin</span> 4</label>
                         <input type="number" id="ledPin3" class="led-pin" min="0" max="40" value="255">
                     </div>
                     <div class="form-group pin-group" id="groupPin4" style="display: none;">
-                        <label for="ledPin4" id="labelPin4">Pin 5</label>
+                        <label for="ledPin4" id="labelPin4"><span data-i18n="lbl_pin">Pin</span> 5</label>
                         <input type="number" id="ledPin4" class="led-pin" min="0" max="40" value="255">
                     </div>
                 </div>
                 
-                <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
-                    <div style="text-align: center; margin-bottom: 15px;">
-                        <h4 style="margin-bottom: 5px; color: var(--primary);">Hardware Eingänge</h4>
-                        <p style="font-size: 13px; color: var(--text-muted);">Konfiguriere hier physische Taster oder Schalter.</p>
+                <details class="settings-section">
+                    <summary>
+                        <div>
+                            <h4 class="settings-section-title" data-i18n="hw_inputs_title">Hardware Eingänge</h4>
+                            <p class="settings-section-desc" data-i18n="hw_inputs_desc">Konfiguriere hier physische Taster oder Schalter.</p>
+                        </div>
+                        <span class="chevron">▸</span>
+                    </summary>
+                    <div class="settings-section-body">
+                        <div class="card glass" style="margin-bottom: 15px; padding: 15px; background: rgba(0,0,0,0.2); box-shadow: none;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <h4 style="margin: 0; font-size: 14px; color: var(--text-main);" data-i18n="hw_input_1">Eingang 1 (Pin 39)</h4>
+                                <input type="checkbox" id="btn1Active" style="width: auto; transform: scale(1.3);">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="btn1Type" data-i18n="hw_type">Typ</label>
+                                <select id="btn1Type">
+                                    <option value="push" data-i18n="hw_type_push">Taster (Halten zum Dimmen)</option>
+                                    <option value="switch" data-i18n="hw_type_switch">Schalter (An / Aus)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="card glass" style="margin-bottom: 0; padding: 15px; background: rgba(0,0,0,0.2); box-shadow: none;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <h4 style="margin: 0; font-size: 14px; color: var(--text-main);" data-i18n="hw_input_2">Eingang 2 (Pin 40)</h4>
+                                <input type="checkbox" id="btn2Active" style="width: auto; transform: scale(1.3);">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="btn2Type" data-i18n="hw_type">Typ</label>
+                                <select id="btn2Type">
+                                    <option value="push" data-i18n="hw_type_push">Taster (Halten zum Dimmen)</option>
+                                    <option value="switch" data-i18n="hw_type_switch">Schalter (An / Aus)</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
-                    
-                    <div class="card glass" style="margin-bottom: 15px; padding: 15px; background: rgba(0,0,0,0.2); box-shadow: none;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <h4 style="margin: 0; font-size: 14px; color: var(--text-main);">Eingang 1 (Pin 12)</h4>
-                            <input type="checkbox" id="btn1Active" style="width: auto; transform: scale(1.3);">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="btn1Type">Typ</label>
-                            <select id="btn1Type">
-                                <option value="push">Taster (Halten zum Dimmen)</option>
-                                <option value="switch">Schalter (An / Aus)</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div class="card glass" style="margin-bottom: 15px; padding: 15px; background: rgba(0,0,0,0.2); box-shadow: none;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <h4 style="margin: 0; font-size: 14px; color: var(--text-main);">Eingang 2 (Pin 13)</h4>
-                            <input type="checkbox" id="btn2Active" style="width: auto; transform: scale(1.3);">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="btn2Type">Typ</label>
-                            <select id="btn2Type">
-                                <option value="push">Taster (Halten zum Dimmen)</option>
-                                <option value="switch">Schalter (An / Aus)</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
+                </details>
 
                 <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
                     <div style="text-align: center; margin-bottom: 15px;">
-                        <h4 style="margin-bottom: 5px; color: var(--primary);">Stromversorgung (ABL)</h4>
+                        <h4 style="margin-bottom: 5px; color: var(--primary);" data-i18n="abl_title">Stromversorgung (ABL)</h4>
                         <p style="font-size: 13px; color: var(--text-muted);" id="ablRecommendedText">Total LEDs: 30<br>Empfohlenes Netzteil für maximales Weiß: <strong style="color: #fff;">~1.7 A</strong></p>
                     </div>
-                    
+
                     <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px;">
-                        <label for="ablEnable" style="margin: 0; font-size: 14px;">Automatischer Helligkeitsbegrenzer</label>
+                        <label for="ablEnable" style="margin: 0; font-size: 14px;" data-i18n="abl_enable">Automatischer Helligkeitsbegrenzer</label>
                         <input type="checkbox" id="ablEnable" style="width: auto; transform: scale(1.3);">
                     </div>
-                    
+
                     <div class="form-group">
-                        <label for="ablMaxMa">Maximaler Netzteil-Strom (mA)</label>
+                        <label for="ablMaxMa" data-i18n="abl_max_ma">Maximaler Netzteil-Strom (mA)</label>
                         <input type="number" id="ablMaxMa" min="250" max="65000" value="850">
-                        <small style="color: var(--text-muted); display: block; margin-top: 5px;">Verhindert das Überlasten des Netzteils (z.B. 2000 für 2A).</small>
+                        <small style="color: var(--text-muted); display: block; margin-top: 5px;" data-i18n="abl_desc">Verhindert das Überlasten des Netzteils (z.B. 2000 für 2A).</small>
                     </div>
                 </div>
-
-                <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
-                    <div style="text-align: center; margin-bottom: 15px;">
-                        <h4 style="margin-bottom: 5px; color: var(--primary);">2D Matrix Setup</h4>
-                    </div>
-                    
-                    <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px;">
-                        <label for="matrixEnable" style="margin: 0; font-size: 14px;">Als Matrix konfigurieren</label>
-                        <input type="checkbox" id="matrixEnable" style="width: auto; transform: scale(1.3);">
-                    </div>
-                    
-                    <div id="matrixConfigGroup" style="display: none;">
-                        <div class="form-group" style="display: flex; gap: 10px;">
-                            <div style="flex: 1;">
-                                <label for="matrixWidth">Breite</label>
-                                <input type="number" id="matrixWidth" min="1" max="128" value="16">
-                            </div>
-                            <div style="flex: 1;">
-                                <label for="matrixHeight">Höhe</label>
-                                <input type="number" id="matrixHeight" min="1" max="128" value="16">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="matrixLayout">Panel Layout</label>
-                            <select id="matrixLayout">
-                                <option value="0">Serpentine (Zick-Zack)</option>
-                                <option value="1">Zeilenweise (Linear)</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
-                    <div style="text-align: center; margin-bottom: 15px;">
-                        <h4 style="margin-bottom: 5px; color: var(--primary);">Pixel Art Converter</h4>
-                        <p style="font-size: 13px; color: var(--text-muted);">Wähle ein Bild aus. Es wird automatisch an deine Matrix-Größe angepasst und auf die LEDs projiziert.</p>
-                    </div>
-                    <input type="file" id="imageUpload" accept="image/*" style="display: none;">
-                    <button id="btnUploadImage" class="btn btn-secondary" style="width: 100%; margin-bottom: 15px;">Bild auswählen</button>
-                    
-                    <canvas id="pixelCanvas" style="max-width: 100%; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; image-rendering: pixelated; display: none; margin: 0 auto 15px auto;"></canvas>
-                    <button id="btnStreamMatrix" class="btn btn-primary" style="width: 100%; display:none; margin-bottom: 15px;">Auf Matrix streamen</button>
-                </div>
-
-                <button id="btnSaveConfig" class="btn-primary">LED-Konfiguration speichern</button>
+                <button id="btnSaveConfig" class="btn-primary" data-i18n="btn_save_config" style="margin-top: 15px; width: 100%;">LED-Konfiguration speichern</button>
             </div>
-            
+
+            <!-- Matrix Tab: 2D Matrix Setup, multi-panel canvas, pixel art -->
+            <div class="tab-content" id="tab-matrix">
+                <div style="margin-bottom: 20px;">
+                    <div style="text-align: center; margin-bottom: 10px;">
+                        <h4 style="margin-bottom: 5px; color: var(--primary);" data-i18n="matrix_preview_title">Matrix-Vorschau</h4>
+                        <p style="font-size: 12px; color: var(--text-muted);" id="matrixPreviewDesc" data-i18n="matrix_preview_desc">Zeigt live, was gerade auf dem Panel läuft (nur Master-Matrix).</p>
+                    </div>
+                    <div style="display: flex; justify-content: center;">
+                        <div id="matrixPreviewWrapper" style="position: relative; max-width: 100%;">
+                            <canvas id="matrixPreviewCanvas" style="max-width: 100%; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; image-rendering: pixelated; background: #000; display: block;"></canvas>
+                            <canvas id="widgetOverlayCanvas" style="position: absolute; top: 0; left: 0; max-width: 100%; display: none;"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- "Uhr / Text" element editor: only relevant while the selected segment's
+                     effect is "Uhr / Text" - shown/hidden by app.js based on state.effect. -->
+                <div id="textWidgetEditor" style="display: none; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <div style="text-align: center; margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 5px; color: var(--primary);" data-i18n="widget_title">Matrix Inhalt</h4>
+                        <p style="font-size: 13px; color: var(--text-muted);" data-i18n="widget_desc">Ziehe ein Element in der Vorschau oben an die gewünschte Position. Ein Hintergrundbild zählt auch als Element.</p>
+                    </div>
+                    <div id="textWidgetList" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;">
+                        <!-- Widget cards dynamically listed here -->
+                    </div>
+                    <button type="button" class="btn btn-secondary" id="btnAddTextWidget" style="width: 100%;" data-i18n="widget_btn_add">+ Element hinzufügen</button>
+
+                    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <h5 style="margin: 0 0 5px 0; color: var(--primary); font-size: 13px;" data-i18n="weather_title">Standort für Wetter-Element</h5>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;" data-i18n="weather_desc">Nötig für das Wetter-Element (aktuelle Temperatur + Symbol).</p>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="weatherCityInput" placeholder="Berlin" style="flex: 1; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;">
+                            <button type="button" class="btn-primary" id="btnSaveWeatherLocation" style="width: auto; flex: 0 0 auto; padding: 8px 16px;" data-i18n="weather_btn_save">Speichern</button>
+                        </div>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-top: 8px;" id="weatherStatus"></p>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <h5 style="margin: 0 0 5px 0; color: var(--primary); font-size: 13px;" data-i18n="pxl_title">Hintergrundbild hochladen</h5>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;" data-i18n="pxl_desc">Wähle ein Bild aus. Es wird automatisch an deine Matrix-Größe angepasst und als Hintergrund-Element übernommen.</p>
+                        <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+                        <button id="btnUploadImage" class="btn btn-secondary" style="width: 100%; margin-bottom: 15px;" data-i18n="pxl_btn_select">Bild auswählen</button>
+
+                        <canvas id="pixelCanvas" style="max-width: 100%; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; image-rendering: pixelated; display: none; margin: 0 auto 15px auto;"></canvas>
+                        <button id="btnStreamMatrix" class="btn btn-primary" style="width: 100%; display:none;" data-i18n="pxl_btn_stream">Als Hintergrund übernehmen</button>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <h5 style="margin: 0 0 5px 0; color: var(--primary); font-size: 13px;" data-i18n="editor_title">Hintergrundbild malen</h5>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;" data-i18n="editor_desc">Male dein eigenes Bild direkt im Raster deiner Matrix und übernimm es als Hintergrund-Element.</p>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; justify-content: center;">
+                            <label for="editorColor" style="font-size: 13px; color: var(--text-muted);" data-i18n="editor_color">Farbe</label>
+                            <input type="color" id="editorColor" value="#ff0000" style="width: 40px; height: 32px; padding: 2px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.2);">
+                        </div>
+                        <div style="display: flex; justify-content: center; overflow: auto;">
+                            <canvas id="editorCanvas" style="border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; image-rendering: pixelated; touch-action: none; cursor: crosshair;"></canvas>
+                        </div>
+                        <div style="display: flex; gap: 8px; margin-top: 15px;">
+                            <button class="btn btn-secondary" id="btnEditorClear" style="flex: 1; font-size: 13px; padding: 8px;" data-i18n="editor_btn_clear">Leeren</button>
+                            <button class="btn btn-secondary" id="btnEditorLoad" style="flex: 1; font-size: 13px; padding: 8px;" data-i18n="editor_btn_load">Von Matrix laden</button>
+                            <button class="btn btn-primary" id="btnEditorStream" style="flex: 1; font-size: 13px; padding: 8px;" data-i18n="editor_btn_stream">Als Hintergrund übernehmen</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="text-align: center; margin-bottom: 15px;">
+                    <h4 style="margin-bottom: 5px; color: var(--primary);" data-i18n="matrix_title">2D Matrix Setup</h4>
+                </div>
+
+                <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px;">
+                    <label for="matrixEnable" style="margin: 0; font-size: 14px;" data-i18n="matrix_enable">Als Matrix konfigurieren</label>
+                    <input type="checkbox" id="matrixEnable" style="width: auto; transform: scale(1.3);">
+                </div>
+
+                <div id="matrixConfigGroup" style="display: none;">
+                    <div class="form-group" style="display: flex; gap: 10px;">
+                        <div style="flex: 1;">
+                            <label for="matrixWidth" data-i18n="matrix_width">Breite</label>
+                            <input type="number" id="matrixWidth" min="1" max="128" value="16">
+                        </div>
+                        <div style="flex: 1;">
+                            <label for="matrixHeight" data-i18n="matrix_height">Höhe</label>
+                            <input type="number" id="matrixHeight" min="1" max="128" value="16">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="matrixLayout" data-i18n="matrix_layout">Panel Layout</label>
+                        <select id="matrixLayout">
+                            <option value="0" data-i18n="matrix_layout_serpentine">Serpentine (Zick-Zack)</option>
+                            <option value="1" data-i18n="matrix_layout_progressive">Zeilenweise (Linear)</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <h5 style="margin: 0 0 5px 0; color: var(--primary); font-size: 13px;" data-i18n="canvas_title">Leinwand: Slave-Panels</h5>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;" data-i18n="canvas_desc">Ordnet Slave-Matrizen relativ zur Master-Matrix an (oben-links = 0,0), damit 2D-Effekte (Plasma, Fire 2D, Ripple, Pacifica, Matrix Rain) nahtlos über alle Panels laufen.</p>
+                        <div id="canvasPanelsList" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;">
+                            <!-- Panels dynamically listed here -->
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-secondary" id="btnAddCanvasPanel" style="flex: 1; font-size: 13px; padding: 8px;" data-i18n="canvas_btn_add">+ Panel hinzufügen</button>
+                            <button class="btn btn-primary" id="btnSaveCanvasPanels" style="flex: 1; font-size: 13px; padding: 8px;" data-i18n="canvas_btn_save">Speichern</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Slaves Tab -->
             <div class="tab-content" id="tab-slaves">
                 <div style="margin-bottom: 20px;">
-                    <h3 style="margin-bottom: 10px; color: var(--primary);">Erkannte Slaves</h3>
-                    <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 15px;">Hier werden automatisch erkannte HyperLED-Slaves (via UART) aufgelistet. Du kannst sie benennen und konfigurieren.</p>
+                    <h3 style="margin-bottom: 10px; color: var(--primary);" data-i18n="slaves_title">Erkannte Slaves</h3>
+                    <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 15px;" data-i18n="slaves_desc">Hier werden automatisch erkannte HyperLED-Slaves aufgelistet. Du kannst sie benennen und konfigurieren.</p>
                     
-                    <button id="btnRefreshSlaves" class="btn-secondary" style="width: 100%; margin-bottom: 15px;">Netzwerk scannen</button>
+                    <button id="btnRefreshSlaves" class="btn-secondary" style="width: 100%; margin-bottom: 15px;" data-i18n="btn_search_slaves">Slaves suchen</button>
                     
                     <div id="slavesList" style="display: flex; flex-direction: column; gap: 10px;">
                         <!-- Dynamically populated -->
-                        <div style="text-align: center; padding: 20px; color: var(--text-muted);">
+                        <div style="text-align: center; padding: 20px; color: var(--text-muted);" data-i18n="slaves_no_found">
                             Keine Slaves gefunden. Überprüfe die UART-Verbindung.
                         </div>
                     </div>
@@ -349,64 +488,60 @@
             <!-- WLAN Network Tab -->
             <div class="tab-content" id="modalWifiContainer">
                 <div id="wlanStatusContainer" style="margin-bottom: 20px; padding: 15px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; display: none;">
-                    <h3 style="color: #10b981; margin-bottom: 5px;">Verbunden mit <span id="wlanCurrentSsid"></span></h3>
-                    <p style="font-size: 14px; color: var(--text-muted);">IP-Adresse: <span id="wlanCurrentIp"></span></p>
+                    <h3 style="color: #10b981; margin-bottom: 5px;"><span data-i18n="wlan_connected">Verbunden mit</span> <span id="wlanCurrentSsid"></span></h3>
+                    <p style="font-size: 14px; color: var(--text-muted);"><span data-i18n="wlan_ip">IP-Adresse:</span> <span id="wlanCurrentIp"></span></p>
                 </div>
-                <button class="btn btn-primary" id="btnScanNetworks" style="margin-bottom: 20px;">Netzwerke Scannen</button>
+                <button class="btn btn-primary" id="btnScanNetworks" style="margin-bottom: 20px;" data-i18n="btn_scan_networks">Netzwerke Scannen</button>
                 
                 <div class="form-group" style="display: none; margin-top: 10px;" id="wifiList">
-                    <select id="wifiSelect"><option>Wähle...</option></select>
+                    <select id="wifiSelect"><option data-i18n="wlan_select">Wähle...</option></select>
                 </div>
                 <div class="form-group" style="margin-top: 10px;">
-                    <label for="wifiSsid">SSID</label>
+                    <label for="wifiSsid" data-i18n="wlan_ssid">SSID</label>
                     <input type="text" id="wifiSsid">
                 </div>
                 <div class="form-group">
-                    <label for="wifiPass">Passwort</label>
+                    <label for="wifiPass" data-i18n="wlan_pass">Passwort</label>
                     <input type="password" id="wifiPass">
                 </div>
-                <button id="btnSaveWifi" class="btn-primary">WLAN Speichern</button>
+                <button id="btnSaveWifi" class="btn-primary" data-i18n="btn_save_wlan">WLAN Speichern</button>
 
                 <!-- MQTT Settings moved here -->
                 <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
-                    <h3 style="margin-bottom: 15px; color: var(--primary);">MQTT Konfiguration</h3>
+                    <h3 style="margin-bottom: 15px; color: var(--primary);" data-i18n="mqtt_title">MQTT Konfiguration</h3>
                     <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 15px;">
-                        <label for="mqttEnable" style="margin: 0;">MQTT Aktivieren</label>
+                        <label for="mqttEnable" style="margin: 0;" data-i18n="mqtt_enable">MQTT Aktivieren</label>
                         <input type="checkbox" id="mqttEnable" style="width: auto; transform: scale(1.5);">
                     </div>
                     <div class="form-group">
-                        <label for="mqttServer">MQTT Server (IP/Hostname)</label>
+                        <label for="mqttServer" data-i18n="mqtt_server">MQTT Server (IP/Hostname)</label>
                         <input type="text" id="mqttServer" placeholder="z.B. 192.168.1.100">
                     </div>
                     <div class="form-group">
-                        <label for="mqttPort">Port</label>
+                        <label for="mqttPort" data-i18n="mqtt_port">Port</label>
                         <input type="number" id="mqttPort" value="1883" min="1" max="65535">
                     </div>
                     <div class="form-group">
-                        <label for="mqttUser">Benutzername (Optional)</label>
+                        <label for="mqttUser" data-i18n="mqtt_user">Benutzername (Optional)</label>
                         <input type="text" id="mqttUser">
                     </div>
                     <div class="form-group">
-                        <label for="mqttPass">Passwort (Optional)</label>
+                        <label for="mqttPass" data-i18n="mqtt_pass">Passwort (Optional)</label>
                         <input type="password" id="mqttPass">
                     </div>
                     <div class="form-group">
-                        <label for="mqttTopic">Base Topic</label>
+                        <label for="mqttTopic" data-i18n="mqtt_topic">Base Topic</label>
                         <input type="text" id="mqttTopic" value="hyperled/device">
                     </div>
                     <div style="margin-top: 20px;">
-                        <button class="btn btn-primary" id="btnSaveMqtt" style="width: 100%;">MQTT Speichern & Neustart</button>
+                        <button class="btn btn-primary" id="btnSaveMqtt" style="width: 100%;" data-i18n="btn_save_mqtt">MQTT Speichern & Neustart</button>
                     </div>
                 </div>
-            </div>
-
-
-            
-            <!-- Segments Tab -->
+            </div>                        <!-- Segments Tab -->
             <div class="tab-content" id="tab-segments">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h3 style="margin: 0;">LED Segmente</h3>
-                    <button class="btn btn-primary" id="btnAddSegment" style="padding: 6px 12px; font-size: 13px;">+ Hinzufügen</button>
+                    <h3 style="margin: 0;" data-i18n="seg_title">LED Segmente</h3>
+                    <button class="btn btn-primary" id="btnAddSegment" style="padding: 6px 12px; font-size: 13px;" data-i18n="btn_add_seg">+ Hinzufügen</button>
                 </div>
                 
                 <div id="segmentsListContainer" style="display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto; overflow-x: hidden; padding-right: 5px;">
@@ -414,22 +549,95 @@
                 </div>
                 
                 <div style="margin-top: 20px;">
-                    <button class="btn btn-primary" id="btnSaveSegments" style="width: 100%;">Segmente Speichern & Anwenden</button>
+                    <button class="btn btn-primary" id="btnSaveSegments" style="width: 100%;" data-i18n="btn_save_seg">Segmente Speichern & Anwenden</button>
                 </div>
             </div>
 
+            <!-- Presets Tab -->
+            <div class="tab-content" id="tab-presets">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;" data-i18n="preset_title">Presets</h3>
+                </div>
 
-            
+                <div id="presetsListContainer" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; overflow-x: hidden; padding-right: 5px; margin-bottom: 15px;">
+                    <!-- Presets dynamically listed here -->
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-bottom: 25px;">
+                    <input type="text" id="newPresetName" placeholder="Name des neuen Presets" style="flex: 1; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;">
+                    <button class="btn btn-primary" id="btnSaveNewPreset" style="white-space: nowrap;" data-i18n="preset_btn_save_current">Aktuellen Zustand speichern</button>
+                </div>
+
+                <hr style="border-color: var(--border-color); margin-bottom: 15px;">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;" data-i18n="playlist_title">Playlist</h3>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); cursor: pointer;">
+                        <input type="checkbox" id="playlistEnabled" style="transform: scale(1.2);">
+                        <span data-i18n="playlist_enabled">Aktiv</span>
+                    </label>
+                </div>
+
+                <div id="playlistListContainer" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px;">
+                    <!-- Playlist entries dynamically listed here -->
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-bottom: 15px;">
+                    <button class="btn btn-secondary" id="btnAddPlaylistEntry" style="flex: 1;" data-i18n="playlist_btn_add">+ Preset zur Playlist hinzufügen</button>
+                </div>
+
+                <button class="btn btn-primary" id="btnSavePlaylist" style="width: 100%;" data-i18n="btn_save_playlist">Playlist Speichern</button>
+            </div>
+
+            <!-- Schedules Tab -->
+            <div class="tab-content" id="tab-schedules">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;" data-i18n="schedule_title">Zeitpläne</h3>
+                </div>
+
+                <div class="form-group">
+                    <label for="scheduleTimezone" data-i18n="schedule_timezone">Zeitzone</label>
+                    <select id="scheduleTimezone" style="width: 100%; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;">
+                        <option value="CET-1CEST,M3.5.0,M10.5.0/3" style="background: #1f2937; color: white;">Mitteleuropa (Berlin, Paris, Rom)</option>
+                        <option value="GMT0BST,M3.5.0/1,M10.5.0" style="background: #1f2937; color: white;">Westeuropa (London, Lissabon)</option>
+                        <option value="EET-2EEST,M3.5.0/3,M10.5.0/4" style="background: #1f2937; color: white;">Osteuropa (Helsinki, Athen)</option>
+                        <option value="MSK-3" style="background: #1f2937; color: white;">Moskau</option>
+                        <option value="EST5EDT,M3.2.0,M11.1.0" style="background: #1f2937; color: white;">US Ost (New York)</option>
+                        <option value="PST8PDT,M3.2.0,M11.1.0" style="background: #1f2937; color: white;">US West (Los Angeles)</option>
+                        <option value="UTC0" style="background: #1f2937; color: white;">UTC</option>
+                    </select>
+                    <p id="scheduleTimeStatus" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;"></p>
+                </div>
+
+                <div id="schedulesListContainer" style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px; margin-bottom: 15px;">
+                    <!-- Schedules dynamically listed here -->
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-bottom: 15px;">
+                    <button class="btn btn-secondary" id="btnAddSchedule" style="flex: 1;" data-i18n="schedule_btn_add">+ Zeitplan hinzufügen</button>
+                </div>
+
+                <button class="btn btn-primary" id="btnSaveSchedules" style="width: 100%;" data-i18n="btn_save_schedules">Zeitpläne Speichern</button>
+            </div>
+
             <!-- System Tab -->
             <div class="tab-content" id="tab-system">
                 <div style="text-align: center; margin-bottom: 20px;">
-                    <h3 style="margin-bottom: 5px;">HyperLED</h3>
-                    <p style="color: var(--text-muted); font-size: 14px;">Version: <strong id="sysVersion">Lade...</strong></p>
+                    <h3 style="margin-bottom: 5px;" data-i18n="sys_title">HyperLED</h3>
+                    <p style="color: var(--text-muted); font-size: 14px;"><span data-i18n="sys_version">Version:</span> <strong id="sysVersion" data-i18n="sys_loading">Lade...</strong></p>
                 </div>
                 
                 <div class="card" style="background: rgba(0,0,0,0.2); padding: 15px; margin-bottom: 15px; box-shadow: none;">
-                    <h3>Online Update</h3>
-                    <button id="btnCheckUpdate" class="btn-primary" disabled>Wird geprüft...</button>
+                    <h3 data-i18n="lang_title">Sprache / Language</h3>
+                    <select id="languageSelect" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid var(--border-color); border-radius: 8px; color: white; outline: none; margin-bottom: 10px;">
+                        <option value="de" style="background: #1f2937; color: white;">Deutsch</option>
+                        <option value="en" style="background: #1f2937; color: white;">English</option>`r`n                          <option value="ru" style="background: #1f2937; color: white;">Русский</option>
+                    </select>
+                </div>
+                
+                <div class="card" style="background: rgba(0,0,0,0.2); padding: 15px; margin-bottom: 15px; box-shadow: none;">
+                    <h3 data-i18n="update_online">Online Update</h3>
+                    <button id="btnCheckUpdate" class="btn-primary" disabled data-i18n="btn_checking">Wird geprüft...</button>
                     <div id="onlineProgressContainer" style="display: none; width: 100%; background: rgba(255,255,255,0.1); border-radius: 4px; height: 10px; margin-top: 15px; margin-bottom: 5px; overflow: hidden;">
                         <div id="onlineProgressBar" style="width: 0%; background: #10b981; height: 100%; border-radius: 4px; transition: width 0.2s;"></div>
                     </div>
@@ -437,26 +645,26 @@
                 </div>
 
                 <div class="card" style="background: rgba(0,0,0,0.2); padding: 15px; margin-bottom: 15px; box-shadow: none;">
-                    <h3>Lokales Update</h3>
-                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 10px;">Flashen von firmware.bin / littlefs.bin.</p>
+                    <h3 data-i18n="update_local">Lokales Update</h3>
+                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 10px;" data-i18n="update_local_desc">Flashen von firmware.bin / littlefs.bin.</p>
                     <div class="file-upload-wrapper" style="margin-bottom: 15px;">
-                        <span class="btn-upload" id="fileUploadLabel">Datei auswählen</span>
+                        <span class="btn-upload" id="fileUploadLabel" data-i18n="file_select">Datei auswählen</span>
                         <input type="file" id="updateFile" accept=".bin" multiple>
                     </div>
                     <div id="otaProgressContainer" style="display: none; width: 100%; background: rgba(255,255,255,0.1); border-radius: 4px; height: 10px; margin-top: 15px; margin-bottom: 15px; overflow: hidden;">
                         <div id="otaProgressBar" style="width: 0%; background: #10b981; height: 100%; border-radius: 4px; transition: width 0.2s;"></div>
                     </div>
-                    <button class="btn btn-primary" id="btnUpdateLocal">Firmware hochladen</button>
-                    <button id="btnFactoryReset" class="btn-danger">Auf Werkseinstellungen zurücksetzen</button>
+                    <button class="btn btn-primary" id="btnUpdateLocal" data-i18n="btn_update_local">Firmware hochladen</button>
+                    <button id="btnFactoryReset" class="btn-danger" data-i18n="btn_factory_reset">Auf Werkseinstellungen zurücksetzen</button>
                 </div>
 
                 <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
                     <div style="text-align: center; margin-bottom: 15px;">
-                        <h4 style="margin-bottom: 5px; color: var(--primary);">Slave System</h4>
-                        <p style="font-size: 13px; color: var(--text-muted);">Aktualisiert die Firmware aller verbundenen Slaves via WLAN-On-Demand.</p>
+                        <h4 style="margin-bottom: 5px; color: var(--primary);" data-i18n="slave_sys_title">Slave System</h4>
+                        <p style="font-size: 13px; color: var(--text-muted);" data-i18n="slave_sys_desc">Aktualisiert die Firmware aller verbundenen Slaves via WLAN-On-Demand.</p>
                     </div>
                     <div class="form-group" style="display: flex; gap: 10px;">
-                        <button id="btnUpdateSlaves" class="btn-secondary" style="width: 100%;">Slaves jetzt aktualisieren</button>
+                        <button id="btnUpdateSlaves" class="btn-secondary" style="width: 100%;" data-i18n="btn_update_slaves">Slaves jetzt aktualisieren</button>
                     </div>
                 </div>
             </div>
@@ -465,6 +673,10 @@
     </div>
     
     <script src="iro.min.js"></script>
-    <script src="app.js?v=3"></script>
+    <script src="i18n.js?v=1"></script>
+    <script src="app.js?v=4"></script>
 </body>
 </html>
+
+
+

@@ -11,7 +11,7 @@ This project uses **PlatformIO** (often as an extension in Visual Studio Code) i
 The C++ code handles Wi-Fi connectivity, LED control, and hosts the web server.
 
 1. Open the `HyperLED` project folder in VS Code.
-2. Connect your ESP32-C6 via USB to the PC.
+2. Connect your ESP32-S3 via USB to the PC.
 3. Click the small **Checkmark Icon (Build)** in the bottom blue bar (or in the left PlatformIO menu) to ensure everything compiles correctly.
 4. Click the **Right Arrow (Upload)**. The firmware will now be written to the ESP32.
 
@@ -22,7 +22,7 @@ The C++ code handles Wi-Fi connectivity, LED control, and hosts the web server.
 The web frontend is located in the `/data/` folder and must be flashed into a special memory partition (LittleFS) on the ESP32.
 
 1. Click the **PlatformIO Icon** (Alien head) in the left sidebar.
-2. Under "Project Tasks", expand your environment (e.g., `esp32-c6-devkitc-1`).
+2. Under "Project Tasks", expand your environment (e.g., `esp32-s3`).
 3. Expand the **Platform** section.
 4. First, click **Build Filesystem Image**.
 5. Then, click **Upload Filesystem Image**.

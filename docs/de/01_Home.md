@@ -1,6 +1,6 @@
 # Willkommen bei HyperLED! 🚀
 
-**HyperLED** ist eine State-of-the-Art Firmware zur Steuerung von digitalen LED-Streifen, maßgeschneidert für den modernen **ESP32-C6**. 
+**HyperLED** ist eine State-of-the-Art Firmware zur Steuerung von digitalen LED-Streifen, maßgeschneidert für den modernen **ESP32-S3**. 
 
 ## Was bietet HyperLED?
 Wir haben HyperLED mit dem Ziel entwickelt, eine schnelle, visuell atemberaubende und leicht bedienbare Lösung für LED-Projekte zu schaffen. 

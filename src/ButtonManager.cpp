@@ -3,7 +3,7 @@
  * 
  * Copyright (c) 2026 Dennis Guse
  * 
- * Licensed under the EUPL, Version 1.2 or – as soon they will be approved by 
+ * Licensed under the EUPL, Version 1.2 or â€“ as soon they will be approved by 
  * the European Commission - subsequent versions of the EUPL (the "Licence");
  * You may not use this work except in compliance with the Licence.
  * You may obtain a copy of the Licence at:
@@ -43,63 +43,64 @@ void ButtonManagerClass::begin() {
 void ButtonManagerClass::loop() {
     if (_btn1Enabled) {
         if (_btn1Type == "push") {
-            handlePushButton(_pin1, _btn1LastState, _btn1PressTime, _btn1Handled, _btn1DimmingDown, _btn1LastDimTime);
+            handlePushButton(_pin1, _btn1LastState, _btn1PressTime, _btn1Handled, _btn1DimmingDown, _btn1LastDimTime, _btn1DebounceTime);
         } else {
             handleSwitchButton(_pin1, _btn1LastState, _btn1PressTime);
         }
     }
-    
+
     if (_btn2Enabled) {
         if (_btn2Type == "push") {
-            handlePushButton(_pin2, _btn2LastState, _btn2PressTime, _btn2Handled, _btn2DimmingDown, _btn2LastDimTime);
+            handlePushButton(_pin2, _btn2LastState, _btn2PressTime, _btn2Handled, _btn2DimmingDown, _btn2LastDimTime, _btn2DebounceTime);
         } else {
             handleSwitchButton(_pin2, _btn2LastState, _btn2PressTime);
         }
     }
 }
 
-void ButtonManagerClass::handlePushButton(int pin, bool& lastState, unsigned long& pressTime, bool& handled, bool& dimmingDown, unsigned long& lastDimTime) {
-    bool currentState = digitalRead(pin);
+void ButtonManagerClass::handlePushButton(int pin, bool& lastState, unsigned long& pressTime, bool& handled, bool& dimmingDown, unsigned long& lastDimTime, unsigned long& debounceTime) {
+    bool reading = digitalRead(pin);
     unsigned long now = millis();
-    
-    // Button pressed (LOW because INPUT_PULLUP)
-    if (currentState == LOW && lastState == HIGH) {
-        pressTime = now;
-        handled = false;
-        delay(20); // Basic debounce
+
+    // Non-blocking debounce: only accept a raw pin change once it has been
+    // stable for 20ms, instead of blocking the whole main loop with delay(20).
+    if (reading != lastState && (now - debounceTime) > 20) {
+        debounceTime = now;
+        lastState = reading;
+
+        if (lastState == LOW) {
+            // Button pressed (LOW because INPUT_PULLUP)
+            pressTime = now;
+            handled = false;
+        } else {
+            // Button released
+            if (!handled && (now - pressTime > 20) && (now - pressTime < 500)) { // Short press
+                // Toggle Segment 0
+                bool isOn = LEDManager.getPower(0);
+                LEDManager.setPower(0, !isOn);
+            }
+            if (now - pressTime >= 500) {
+                // End of hold, flip dimming direction for next hold
+                dimmingDown = !dimmingDown;
+            }
+            handled = true;
+        }
     }
-    // Button held down
-    else if (currentState == LOW && lastState == LOW) {
-        if (!handled && (now - pressTime > 500)) { // Held for 500ms
-            if (now - lastDimTime > 30) {
-                lastDimTime = now;
-                uint8_t currentBri = LEDManager.getBrightness(0);
-                if (dimmingDown) {
-                    if (currentBri > 5) LEDManager.setBrightness(0, currentBri - 5);
-                    else { LEDManager.setBrightness(0, 0); dimmingDown = false; }
-                } else {
-                    if (currentBri < 250) LEDManager.setBrightness(0, currentBri + 5);
-                    else { LEDManager.setBrightness(0, 255); dimmingDown = true; }
-                }
+
+    // Button held down - ramp brightness, independent of the debounce edge above
+    if (lastState == LOW && !handled && (now - pressTime > 500)) { // Held for 500ms
+        if (now - lastDimTime > 30) {
+            lastDimTime = now;
+            uint8_t currentBri = LEDManager.getBrightness(0);
+            if (dimmingDown) {
+                if (currentBri > 5) LEDManager.setBrightness(0, currentBri - 5);
+                else { LEDManager.setBrightness(0, 0); dimmingDown = false; }
+            } else {
+                if (currentBri < 250) LEDManager.setBrightness(0, currentBri + 5);
+                else { LEDManager.setBrightness(0, 255); dimmingDown = true; }
             }
         }
     }
-    // Button released
-    else if (currentState == HIGH && lastState == LOW) {
-        if (!handled && (now - pressTime > 20) && (now - pressTime < 500)) { // Short press
-            // Toggle Segment 0
-            bool isOn = LEDManager.getPower(0);
-            LEDManager.setPower(0, !isOn);
-        }
-        if (now - pressTime >= 500) {
-            // End of hold, flip dimming direction for next hold
-            dimmingDown = !dimmingDown;
-        }
-        handled = true;
-        delay(20); // Debounce
-    }
-    
-    lastState = currentState;
 }
 
 void ButtonManagerClass::handleSwitchButton(int pin, bool& lastState, unsigned long& pressTime) {

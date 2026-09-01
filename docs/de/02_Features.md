@@ -14,7 +14,7 @@ HyperLED bietet eine riesige Bandbreite an Funktionen, die das System sowohl fü
 * **Tastensteuerung (Physisch):** Unterstützt den Anschluss von Push-Buttons oder Schaltern direkt an die ESP32 GPIO-Pins.
 
 ## Netzwerk & Smart Home
-* **mDNS Support:** Erreichbar unter `http://hyperled.local` (oder deinem vergebenen Namen).
+* **mDNS & NetBIOS Support:** Erreichbar unter `http://hyperled.local` (macOS/iOS/Linux/Android) oder `http://hyperled` (Windows, per NetBIOS - funktioniert ohne zusätzliche Software wie Bonjour).
 * **WLAN Manager & Captive Portal:** Keine fest kodierten Passwörter mehr. Richte das WLAN einfach über dein Smartphone ein, wenn der ESP32 im Access-Point (AP) Modus startet.
 * **MQTT:** Volle Integration für Home Assistant, ioBroker und andere Smart Home Zentralen. Sende JSON-Pakete an den Controller, um ihn komplett fernzusteuern.
 * **Over-The-Air (OTA) Updates:** Update die Firmware oder die WebUI über eine elegante Lade-Animation direkt im Browser, ohne den ESP32 an den PC anschließen zu müssen.

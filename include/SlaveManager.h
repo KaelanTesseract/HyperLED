@@ -3,7 +3,7 @@
  * 
  * Copyright (c) 2026 Dennis Guse
  * 
- * Licensed under the EUPL, Version 1.2 or – as soon they will be approved by 
+ * Licensed under the EUPL, Version 1.2 or ï¿½ as soon they will be approved by 
  * the European Commission - subsequent versions of the EUPL (the "Licence");
  * You may not use this work except in compliance with the Licence.
  * You may obtain a copy of the Licence at:
@@ -39,7 +39,9 @@ public:
     void loop();
     
     std::vector<DiscoveredSlave> getDiscoveredSlaves();
-    void configureSlave(uint8_t currentId, uint8_t newId, uint8_t pin, uint8_t pin2, uint16_t count, uint8_t type, const String& name);
+    // matrixWidth/matrixHeight/hub75ShiftDriver only matter when type == TYPE_HUB75
+    // (see HUB75_PIN_* in Config.h) - harmless to send for any other type.
+    void configureSlave(uint8_t currentId, uint8_t newId, uint8_t pin, uint8_t pin2, uint16_t count, uint8_t type, const String& name, uint16_t matrixWidth = 16, uint16_t matrixHeight = 16, uint8_t hub75ShiftDriver = 0);
     void triggerSlaveUpdate(uint8_t slaveId, const String& ssid, const String& pass, const String& url);
     void sendLEDData(uint8_t slaveId, const uint8_t* rgbData, uint16_t length);
 

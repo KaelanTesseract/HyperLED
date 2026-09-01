@@ -3,7 +3,7 @@
  * 
  * Copyright (c) 2026 Dennis Guse
  * 
- * Licensed under the EUPL, Version 1.2 or – as soon they will be approved by 
+ * Licensed under the EUPL, Version 1.2 or â€“ as soon they will be approved by 
  * the European Commission - subsequent versions of the EUPL (the "Licence");
  * You may not use this work except in compliance with the Licence.
  * You may obtain a copy of the Licence at:
@@ -18,17 +18,18 @@
  */
 #include "AppWebServer.h"
 #include <LittleFS.h>
+#include <time.h>
 #include "Config.h"
 #include "LEDManager.h"
+#include "WeatherManager.h"
 #include <ArduinoJson.h>
 #include "UpdateManager.h"
 #include "SlaveManager.h"
 #include <AsyncJson.h>
-#include <HTTPClient.h>
-#include <HTTPUpdate.h>
-#include <WiFiClientSecure.h>
 #include <ESPmDNS.h>
 #include "MqttManager.h"
+#include "PresetManager.h"
+#include "ScheduleManager.h"
 
 WebServerManagerClass WebServerManager;
 AsyncWebServer server(80);
@@ -88,12 +89,6 @@ void WebServerManagerClass::setupRoutes() {
     server.on("/api/version", HTTP_GET, [](AsyncWebServerRequest *request){
         String json = "{\"version\": \"" + String(SOFTWARE_VERSION) + "\"}";
         request->send(200, "application/json", json);
-    });
-
-    server.on("/api/internet_update", HTTP_POST, [](AsyncWebServerRequest *request){
-        // Trigger the update in the main loop to avoid blocking AsyncWebServer
-        WebServerManager._triggerInternetUpdate = true;
-        request->send(200, "application/json", "{\"status\": \"started\", \"message\": \"Update-Prozess gestartet...\"}");
     });
 
     server.on("/api/save_wifi", HTTP_POST, [](AsyncWebServerRequest *request){
@@ -174,10 +169,21 @@ void WebServerManagerClass::setupRoutes() {
                         LEDManager.setColor(id, oldW | newRgb);
                     }
                     if (!s["white"].isNull()) {
-                        uint8_t w = s["white"].as<uint8_t>();
-                        uint32_t c = LEDManager.getColor(id);
-                        LEDManager.setColor(id, (c & 0x00FFFFFF) | ((uint32_t)w << 24));
-                    }
+                          uint8_t w = s["white"].as<uint8_t>();
+                          uint32_t c = LEDManager.getColor(id);
+                          LEDManager.setColor(id, (c & 0x00FFFFFF) | ((uint32_t)w << 24));
+                      }
+                      if (!s["whiteOnly"].isNull()) LEDManager.setWhiteOnly(id, s["whiteOnly"].as<bool>());
+                      if (!s["cct"].isNull()) LEDManager.setCct(id, s["cct"].as<uint8_t>());
+                      if (!s["palette"].isNull()) LEDManager.setPalette(id, s["palette"].as<uint8_t>());
+                      if (!s["intensity"].isNull()) LEDManager.setIntensity(id, s["intensity"].as<uint8_t>());
+                      if (!s["color2"].isNull()) {
+                          String c2 = s["color2"].as<String>();
+                          if (c2.startsWith("#")) c2.remove(0, 1);
+                          uint32_t newRgb2 = strtol(c2.c_str(), NULL, 16) & 0x00FFFFFF;
+                          LEDManager.setColor2(id, newRgb2);
+                      }
+                      if (!s["color2Enabled"].isNull()) LEDManager.setColor2Enabled(id, s["color2Enabled"].as<bool>());
                 }
             }
         }
@@ -215,8 +221,11 @@ void WebServerManagerClass::setupRoutes() {
             uint16_t count = jsonObj["ledCount"] | 0;
             uint8_t type = jsonObj["type"] | 22; // Default to WS281x
             String name = jsonObj["name"] | "New Slave";
-            
-            SlaveManager.configureSlave(currentId, newId, pin, pin2, count, type, name);
+            uint16_t matrixWidth = jsonObj["matrixWidth"] | 16;
+            uint16_t matrixHeight = jsonObj["matrixHeight"] | 16;
+            uint8_t hub75ShiftDriver = jsonObj["hub75ShiftDriver"] | 0;
+
+            SlaveManager.configureSlave(currentId, newId, pin, pin2, count, type, name, matrixWidth, matrixHeight, hub75ShiftDriver);
             
             // Also create or update a dynamic segment in LEDManager
             if (newId != 254 && count > 0) {
@@ -236,7 +245,7 @@ void WebServerManagerClass::setupRoutes() {
         if (!jsonObj.isNull() && jsonObj["url"].is<String>()) {
             url = jsonObj["url"].as<String>();
         } else {
-            url = "https://raw.githubusercontent.com/KaelanTesseract/HyperLED-Slave/main/.pio/build/esp32-c6/firmware.bin";
+            url = "https://raw.githubusercontent.com/KaelanTesseract/HyperLED-Slave/main/.pio/build/esp32-s3/firmware.bin";
         }
         
         // We need the current WiFi credentials
@@ -268,12 +277,37 @@ void WebServerManagerClass::setupRoutes() {
                     y++;
                 }
             }
+
+            // Switch any local segment covering the matrix into the "Bild" (Image)
+            // hold effect, so the streamed frame isn't immediately overwritten by
+            // whatever effect was previously running - then push it out right away.
+            uint32_t matrixPixelCount = (uint32_t)LEDManager.getMatrixWidth() * LEDManager.getMatrixHeight();
+            for (uint8_t i = 0; i < LEDManager.getNumSegments(); i++) {
+                const Segment* seg = LEDManager.getSegment(i);
+                if (seg && !seg->isSlave && seg->start < matrixPixelCount && seg->stop > 0) {
+                    LEDManager.setEffect(i, 25);
+                }
+            }
+            LEDManager.showNow();
+
             request->send(200, "text/plain", "OK");
         } else {
             request->send(400, "text/plain", "Bad Request");
         }
     });
+    matrixHandler->setMaxContentLength(100000); // room for up to ~64x64 matrix uploads (default 16KB was far too small)
     server.addHandler(matrixHandler);
+
+    // Live preview: current pixel colors of the Master's own matrix (whatever
+    // effect is driving it), so the WebUI can mirror the panel without a camera.
+    server.on("/api/matrix_preview", HTTP_GET, [](AsyncWebServerRequest *request){
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        LEDManager.getMatrixPreviewJson(arr);
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
 
     AsyncCallbackJsonWebHandler* matrixConfigHandler = new AsyncCallbackJsonWebHandler("/api/matrix_config", [](AsyncWebServerRequest *request, JsonVariant &json) {
         JsonObject jsonObj = json.as<JsonObject>();
@@ -285,6 +319,26 @@ void WebServerManagerClass::setupRoutes() {
         request->send(200, "text/plain", "OK");
     });
     server.addHandler(matrixConfigHandler);
+
+    // --- Multi-Panel Canvas API ---
+    server.on("/api/canvas_panels", HTTP_GET, [](AsyncWebServerRequest *request){
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        LEDManager.getCanvasPanelsJson(arr);
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
+    AsyncCallbackJsonWebHandler* canvasPanelsHandler = new AsyncCallbackJsonWebHandler("/api/canvas_panels", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        if (json.is<JsonArray>()) {
+            LEDManager.setCanvasPanels(json.as<JsonArray>());
+            request->send(200, "text/plain", "OK");
+        } else {
+            request->send(400, "text/plain", "Bad Request");
+        }
+    });
+    server.addHandler(canvasPanelsHandler);
 
     // --- Segments API ---
     server.on("/api/segments", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -299,13 +353,81 @@ void WebServerManagerClass::setupRoutes() {
     AsyncCallbackJsonWebHandler* segmentsHandler = new AsyncCallbackJsonWebHandler("/api/segments", [](AsyncWebServerRequest *request, JsonVariant &json) {
         if (json.is<JsonArray>()) {
             LEDManager.setSegmentsFromJson(json.as<JsonArray>());
-            WebServerManager._triggerRestart = true; 
+            LEDManager.recalculateSegments(); 
             request->send(200, "text/plain", "OK");
         } else {
             request->send(400, "text/plain", "Expected JSON Array");
         }
     });
     server.addHandler(segmentsHandler);
+
+    // --- "Uhr / Text" widgets API (see TextWidget in LEDManager.h) ---
+    AsyncCallbackJsonWebHandler* textWidgetsHandler = new AsyncCallbackJsonWebHandler("/api/text_widgets", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject jsonObj = json.as<JsonObject>();
+        uint8_t segId = jsonObj["seg"] | 0;
+        if (!jsonObj["widgets"].isNull() && jsonObj["widgets"].is<JsonArray>()) {
+            LEDManager.setTextWidgets(segId, jsonObj["widgets"].as<JsonArray>());
+            request->send(200, "text/plain", "OK");
+        } else {
+            request->send(400, "text/plain", "Expected {seg, widgets:[]}");
+        }
+    });
+    server.addHandler(textWidgetsHandler);
+
+    // Uploads one image widget's pixel data: { seg, widget, w, h, pixels:[0xRRGGBB,...] }
+    // (same flat-array pixel convention as /api/matrix).
+    AsyncCallbackJsonWebHandler* textWidgetImageHandler = new AsyncCallbackJsonWebHandler("/api/text_widget_image", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject jsonObj = json.as<JsonObject>();
+        uint8_t segId = jsonObj["seg"] | 0;
+        uint8_t widgetId = jsonObj["widget"] | 0;
+        uint8_t w = jsonObj["w"] | 0;
+        uint8_t h = jsonObj["h"] | 0;
+        if (widgetId == 0 || w == 0 || h == 0 || !jsonObj["pixels"].is<JsonArray>()) {
+            request->send(400, "text/plain", "Bad Request");
+            return;
+        }
+        JsonArray arr = jsonObj["pixels"].as<JsonArray>();
+        std::vector<uint8_t> rgb;
+        rgb.reserve(arr.size() * 3);
+        for (uint32_t c : arr) {
+            rgb.push_back((c >> 16) & 0xFF);
+            rgb.push_back((c >> 8) & 0xFF);
+            rgb.push_back(c & 0xFF);
+        }
+        LEDManager.setTextWidgetImage(segId, widgetId, w, h, rgb);
+        request->send(200, "text/plain", "OK");
+    });
+    textWidgetImageHandler->setMaxContentLength(100000); // room for up to ~64x64 image widgets (matches /api/matrix's cap)
+    server.addHandler(textWidgetImageHandler);
+
+    // --- Weather API (see WeatherManager.h - used by the "Wetter" widget) ---
+    server.on("/api/weather_status", HTTP_GET, [](AsyncWebServerRequest *request){
+        JsonDocument doc;
+        doc["city"] = WeatherManager.getCity();
+        doc["hasLocation"] = WeatherManager.hasLocation();
+        doc["hasData"] = WeatherManager.hasData();
+        doc["temperature"] = WeatherManager.getTemperature();
+        doc["icon"] = WeatherManager.getWeatherIcon();
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
+    AsyncCallbackJsonWebHandler* weatherLocationHandler = new AsyncCallbackJsonWebHandler("/api/weather_location", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject jsonObj = json.as<JsonObject>();
+        String city = jsonObj["city"] | "";
+        if (city.length() == 0) {
+            request->send(400, "text/plain", "Missing city");
+            return;
+        }
+        bool ok = WeatherManager.setLocation(city);
+        if (ok) {
+            request->send(200, "text/plain", "OK");
+        } else {
+            request->send(422, "text/plain", "Standort nicht gefunden oder kein WLAN");
+        }
+    });
+    server.addHandler(weatherLocationHandler);
 
     // --- MQTT API ---
     server.on("/api/mqtt", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -364,7 +486,7 @@ void WebServerManagerClass::setupRoutes() {
         prefs.end();
         
         request->send(200, "application/json", "{\"status\":\"ok\"}");
-        WebServerManager._triggerRestart = true;
+        LEDManager.recalculateSegments();
     });
 
 
@@ -375,6 +497,7 @@ void WebServerManagerClass::setupRoutes() {
         JsonArray pins = doc["pins"].to<JsonArray>();
         for(int i=0; i<5; i++) pins.add(LEDManager.getPin(i));
         doc["count"] = LEDManager.getCount();
+    doc["ledsPerIC"] = LEDManager.getLedsPerIC();
         doc["type"] = LEDManager.getType();
         doc["abl_en"] = LEDManager.getAblEnabled();
         doc["abl_ma"] = LEDManager.getAblMaxmA();
@@ -385,7 +508,8 @@ void WebServerManagerClass::setupRoutes() {
         // Assume Matrix Layout has a getter or we just don't return it strictly since it's write-only or we can skip it.
         // I will add getMatrixLayout to LEDManager.h
         doc["matrix_l"] = LEDManager.getMatrixLayout();
-        
+        doc["hub75_shift_driver"] = LEDManager.getHub75ShiftDriver();
+
         String response;
         serializeJson(doc, response);
         request->send(200, "application/json", response);
@@ -405,11 +529,16 @@ void WebServerManagerClass::setupRoutes() {
             bool ablEn = jsonObj["abl_en"].isNull() ? true : jsonObj["abl_en"].as<bool>();
             uint16_t ablMa = jsonObj["abl_ma"].isNull() ? 850 : jsonObj["abl_ma"].as<uint16_t>();
             
-            LEDManager.setConfig(p0, p1, p2, p3, p4, jsonObj["count"].as<uint16_t>(), jsonObj["type"].as<uint8_t>(), ablEn, ablMa);
+            uint8_t ledsPerIC = jsonObj["ledsPerIC"].isNull() ? 1 : jsonObj["ledsPerIC"].as<uint8_t>();
+              LEDManager.setConfig(p0, p1, p2, p3, p4, jsonObj["count"].as<uint16_t>(), jsonObj["type"].as<uint8_t>(), ablEn, ablMa, ledsPerIC);
+
+            if (!jsonObj["hub75_shift_driver"].isNull()) {
+                LEDManager.setHub75ShiftDriver(jsonObj["hub75_shift_driver"].as<uint8_t>());
+            }
         }
-        
+
         request->send(200, "text/plain", "OK");
-        WebServerManager._triggerRestart = true;
+        LEDManager.recalculateSegments();
     });
     server.addHandler(configHandler);
 
@@ -450,7 +579,7 @@ void WebServerManagerClass::setupRoutes() {
         prefs.end();
         
         request->send(200, "text/plain", "OK");
-        WebServerManager._triggerRestart = true; // Buttons need restart to init pins
+        LEDManager.recalculateSegments(); // Buttons need restart to init pins
     });
     server.addHandler(buttonsHandler);
     
@@ -502,7 +631,7 @@ void WebServerManagerClass::setupRoutes() {
         prefs.end();
         
         request->send(200, "text/plain", "OK");
-        WebServerManager._triggerRestart = true;
+        LEDManager.recalculateSegments();
     });
 }
 
@@ -523,7 +652,7 @@ void WebServerManagerClass::setupOTA() {
         response->addHeader("Connection", "close");
         request->send(response);
         if (shouldReboot) {
-            WebServerManager._triggerRestart = true;
+            LEDManager.recalculateSegments();
         }
     }, [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
         if(!index){
@@ -554,58 +683,10 @@ void WebServerManagerClass::loop() {
         delay(500);
         ESP.restart();
     }
-    
-    if (_triggerInternetUpdate) {
-        _triggerInternetUpdate = false;
-        Serial.println("Internet Update triggered...");
-        
-        WiFiClientSecure client;
-        client.setInsecure(); // For GitHub or self-signed
-        
-        HTTPClient http;
-        http.begin(client, UPDATE_JSON_URL);
-        
-        int httpCode = http.GET();
-        if (httpCode == HTTP_CODE_OK) {
-            String payload = http.getString();
-            JsonDocument doc;
-            DeserializationError error = deserializeJson(doc, payload);
-            
-            if (!error) {
-                String latestVersion = doc["version"].as<String>();
-                String binUrl = doc["bin_url"].as<String>();
-                
-                if (latestVersion != String(SOFTWARE_VERSION) && binUrl.length() > 0) {
-                    Serial.println("New version found: " + latestVersion);
-                    Serial.println("Downloading from: " + binUrl);
-                    
-                    t_httpUpdate_return ret = httpUpdate.update(client, binUrl);
-                    switch (ret) {
-                        case HTTP_UPDATE_FAILED:
-                            Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
-                            break;
-                        case HTTP_UPDATE_NO_UPDATES:
-                            Serial.println("HTTP_UPDATE_NO_UPDATES");
-                            break;
-                        case HTTP_UPDATE_OK:
-                            Serial.println("HTTP_UPDATE_OK");
-                            break;
-                    }
-                } else {
-                    Serial.println("Already up to date.");
-                }
-            } else {
-                Serial.println("Failed to parse update JSON");
-            }
-        } else {
-            Serial.printf("Failed to fetch update JSON, HTTP Code: %d\n", httpCode);
-        }
-        http.end();
-    }
 }
 
 void WebServerManagerClass::setupWLEDJsonAPI() {
-    auto buildState = [](JsonDocument& doc) {
+    auto buildState = [](JsonVariant doc) {
         JsonObject state = doc.to<JsonObject>();
         state["on"] = LEDManager.getPower(0);
         state["bri"] = LEDManager.getBrightness(0);
@@ -631,7 +712,7 @@ void WebServerManagerClass::setupWLEDJsonAPI() {
         LEDManager.getSegmentsJson(seg);
     };
 
-    auto buildInfo = [](JsonDocument& doc) {
+    auto buildInfo = [](JsonVariant doc) {
         JsonObject info = doc.to<JsonObject>();
         info["ver"] = "0.14.0";
         info["vid"] = 2401010;
@@ -685,43 +766,132 @@ void WebServerManagerClass::setupWLEDJsonAPI() {
 
     server.on("/json", HTTP_GET, [buildState, buildInfo](AsyncWebServerRequest *request){
         JsonDocument doc;
-        JsonDocument stateDoc;
-        JsonDocument infoDoc;
-        
-        buildState(stateDoc);
-        buildInfo(infoDoc);
-        
-        doc["state"] = stateDoc;
-        doc["info"] = infoDoc;
-        
+
+        buildState(doc["state"].to<JsonVariant>());
+        buildInfo(doc["info"].to<JsonVariant>());
+
         JsonArray eff = doc["effects"].to<JsonArray>();
-        const char* effects[] = {"Solid", "Blink", "Breathe", "Wipe", "Wipe Random", "Random Colors", "Sweep", "Dynamic", "Colorloop", "Rainbow", "Scan", "Scan Dual"};
-        for(int i=0; i<12; i++) eff.add(effects[i]);
-        
+        for (uint8_t i = 0; i < EFFECT_COUNT; i++) eff.add(EFFECT_NAMES[i]);
+
         JsonArray pal = doc["palettes"].to<JsonArray>();
-        const char* palettes[] = {"Default", "Random Cycle", "Color 1", "Colors 1&2", "Color Gradient"};
-        for(int i=0; i<5; i++) pal.add(palettes[i]);
-        
+        for (uint8_t i = 0; i < PALETTE_COUNT; i++) pal.add(PALETTE_NAMES[i]);
+
         String response;
         serializeJson(doc, response);
         request->send(200, "application/json", response);
     });
 
     server.on("/json/eff", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(200, "application/json", "[\"Solid\",\"Blink\",\"Breathe\",\"Wipe\",\"Wipe Random\",\"Random Colors\",\"Sweep\",\"Dynamic\",\"Colorloop\",\"Rainbow\",\"Scan\",\"Scan Dual\"]");
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        for (uint8_t i = 0; i < EFFECT_COUNT; i++) arr.add(EFFECT_NAMES[i]);
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
     });
-    
+
     server.on("/json/pal", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(200, "application/json", "[\"Default\",\"Random Cycle\",\"Color 1\",\"Colors 1&2\",\"Color Gradient\"]");
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        for (uint8_t i = 0; i < PALETTE_COUNT; i++) arr.add(PALETTE_NAMES[i]);
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
     });
 
     server.on("/presets.json", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(200, "application/json", "{\"0\":{}}");
+        if (LittleFS.exists("/presets.json")) {
+            request->send(LittleFS, "/presets.json", "application/json");
+        } else {
+            request->send(200, "application/json", "{}");
+        }
+    });
+
+    AsyncCallbackJsonWebHandler* presetSaveHandler = new AsyncCallbackJsonWebHandler("/api/presets/save", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject jsonObj = json.as<JsonObject>();
+        uint8_t id = jsonObj["id"] | 0;
+        String name = jsonObj["name"] | "Preset";
+        if (id == 0) id = PresetManager.nextFreePresetId();
+
+        if (PresetManager.savePreset(id, name)) {
+            request->send(200, "application/json", "{\"status\":\"ok\",\"id\":" + String(id) + "}");
+        } else {
+            request->send(500, "application/json", "{\"error\":\"save failed\"}");
+        }
+    });
+    server.addHandler(presetSaveHandler);
+
+    AsyncCallbackJsonWebHandler* presetApplyHandler = new AsyncCallbackJsonWebHandler("/api/presets/apply", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject jsonObj = json.as<JsonObject>();
+        uint8_t id = jsonObj["id"] | 0;
+        if (PresetManager.applyPreset(id)) {
+            request->send(200, "text/plain", "OK");
+        } else {
+            request->send(404, "application/json", "{\"error\":\"preset not found\"}");
+        }
+    });
+    server.addHandler(presetApplyHandler);
+
+    AsyncCallbackJsonWebHandler* presetDeleteHandler = new AsyncCallbackJsonWebHandler("/api/presets/delete", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject jsonObj = json.as<JsonObject>();
+        uint8_t id = jsonObj["id"] | 0;
+        if (PresetManager.deletePreset(id)) {
+            request->send(200, "text/plain", "OK");
+        } else {
+            request->send(404, "application/json", "{\"error\":\"preset not found\"}");
+        }
+    });
+    server.addHandler(presetDeleteHandler);
+
+    // --- Playlist API ---
+    server.on("/api/playlist", HTTP_GET, [](AsyncWebServerRequest *request){
+        JsonDocument doc;
+        PresetManager.getPlaylistJson(doc);
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
+    AsyncCallbackJsonWebHandler* playlistHandler = new AsyncCallbackJsonWebHandler("/api/playlist", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        PresetManager.setPlaylistFromJson(json);
+        request->send(200, "text/plain", "OK");
+    });
+    server.addHandler(playlistHandler);
+
+    // --- Schedules API (NTP-based time schedules) ---
+    server.on("/api/schedules", HTTP_GET, [](AsyncWebServerRequest *request){
+        JsonDocument doc;
+        ScheduleManager.getSchedulesJson(doc);
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
+    AsyncCallbackJsonWebHandler* schedulesHandler = new AsyncCallbackJsonWebHandler("/api/schedules", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        ScheduleManager.setSchedulesFromJson(json);
+        request->send(200, "text/plain", "OK");
+    });
+    server.addHandler(schedulesHandler);
+
+    server.on("/api/time", HTTP_GET, [](AsyncWebServerRequest *request){
+        JsonDocument doc;
+        doc["synced"] = ScheduleManager.isTimeSynced();
+        if (ScheduleManager.isTimeSynced()) {
+            time_t now = time(nullptr);
+            struct tm ti;
+            localtime_r(&now, &ti);
+            char buf[32];
+            strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ti);
+            doc["localTime"] = buf;
+        }
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
     });
 
     server.on("/json/state", HTTP_GET, [buildState](AsyncWebServerRequest *request){
         JsonDocument doc;
-        buildState(doc);
+        buildState(doc.to<JsonVariant>());
         String response;
         serializeJson(doc, response);
         request->send(200, "application/json", response);
@@ -729,7 +899,7 @@ void WebServerManagerClass::setupWLEDJsonAPI() {
 
     server.on("/json/info", HTTP_GET, [buildInfo](AsyncWebServerRequest *request){
         JsonDocument doc;
-        buildInfo(doc);
+        buildInfo(doc.to<JsonVariant>());
         String response;
         serializeJson(doc, response);
         request->send(200, "application/json", response);

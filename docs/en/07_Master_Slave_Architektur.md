@@ -8,7 +8,7 @@ During every frame calculation, the Master sends the raw color data of all LEDs 
 
 ### Wiring (UART)
 For communication, the Master and Slaves must be connected with a data line (+ common ground):
-- **Master TX** (Default: GPIO 21) connects to **Slave RX** (Default: GPIO 20).
+- **Master TX** (Default: GPIO 17) connects to **Slave RX** (Default: GPIO 16).
 - All connected boards MUST share the same **Ground (GND)**!
 
 ## Setup
