@@ -11,9 +11,12 @@ Certain pins are pre-configured as defaults in HyperLED. You can change these la
 
 | Function | ESP32-S3 Pin (Default) | Description |
 |---|---|---|
-| **LED Data Line (Data)** | **GPIO 4** | Connect this to `DIN` or `DI` of your LED strip. |
-| **Button 1 (Push)** | *Not active* | Can be activated in the UI to connect physical push buttons. Switches to GND. |
-| **Button 2 (Switch)** | *Not active* | Intended for toggle switches. |
+| **LED Data Line (Data)** | **GPIO 4** | Connect this to `DIN` or `DI` of your LED strip. Freely selectable in the WebUI. |
+| **Input 1 (Push button)** | **GPIO 39** | Hardwired, must be enabled in the WebUI. Switches to GND. |
+| **Input 2 (Switch)** | **GPIO 40** | Hardwired, must be enabled in the WebUI. Intended for toggle switches. |
+
+> [!NOTE]
+> For a HUB75 matrix panel, the pinout is hardwired (14 signals needed at once) and shown directly in the WebUI as a reference when you select the **HUB75** LED type.
 
 ## Supported LED Types
 

@@ -1,22 +1,27 @@
 # Master/Slave Architecture
 
-One of the most powerful features of HyperLED is the ability to connect multiple ESP32 controllers together extremely reliably and in perfect sync. This is done **wired** via a highly performant serial protocol called **HyperBus** (using the UART pins).
+One of HyperLED's most powerful features is its ability to link multiple ESP32 controllers together extremely reliably and in perfect sync. The high-performance protocol behind this is called **HyperBus**, and it works either wired or wireless.
 
-## How it works
-One controller acts as the **Master** (Sender). Other controllers in the chain act as **Slaves**.
-During every frame calculation, the Master sends the raw color data of all LEDs as a high-speed serial packet (HyperBus) to the slaves. The slaves listen to this stream and forward it 1:1 to their own LED strips.
+## How It Works
 
-### Wiring (UART)
-For communication, the Master and Slaves must be connected with a data line (+ common ground):
-- **Master TX** (Default: GPIO 17) connects to **Slave RX** (Default: GPIO 16).
-- All connected boards MUST share the same **Ground (GND)**!
+One controller acts as the **Master**, other controllers in the chain act as **Slaves**. On every frame, the Master sends the raw color data for the assigned LEDs as a packet to the Slaves. The Slaves listen to this stream and output it 1:1 to their own LED strip or HUB75 panel.
+
+A Slave doesn't run its own control logic – its name, LED type, pinout, or matrix size are configured entirely through the Master's web interface.
+
+### Two Transport Options
+
+- **Wired (UART):** The highest reliability and speed. Master and Slave are connected via a data line plus a shared ground (default: Master TX GPIO 17 → Slave RX GPIO 16). Wired Slaves can pass further Slaves along on their own downlink port (daisy-chaining).
+- **Wireless (ESP-NOW):** For Slaves where wiring isn't practical. On boot, a Slave automatically detects whether a wired connection is present – if not, it switches to ESP-NOW mode on its own and locks in.
+
+A Slave doesn't need to be manually set to a transport mode before first use: it detects and remembers the right mode automatically.
 
 ## Setup
-1. Connect the hardware pins as described above.
-2. Open the web interface of your main controller.
-3. Slaves on the HyperBus will automatically register with the Master (Ping/Pong protocol).
-4. Go to the **LEDs** tab.
-5. Create so-called **Slave Segments**. These are virtual sections whose calculated data is exclusively sent over the HyperBus to the corresponding Slave IDs.
 
-> [!TIP]
-> **Freeze Function:** A slave can be "frozen" via an API command (`/api/slaves?cmd=freeze`). In this state, it temporarily ignores the master stream. This allows you, for example, to sync an entire room but temporarily decouple individual display cases for a different action.
+1. Wire the hardware (as described above for wired mode), or simply power the Slave (for ESP-NOW).
+2. Open the Master controller's web interface and go to the **Slaves** tab in Settings.
+3. Newly found Slaves announce themselves here automatically (ping/pong protocol) and can be named and configured.
+4. Pick the matching LED type – for a HUB75 panel, choose **HUB75** and enter the panel's width, height, and driver chip if needed. The pinout itself is hardwired on the Slave (see [Hardware Setup](03_Hardware_Setup.md)).
+5. After saving, the Slave shows up as its own segment on the main screen and can be controlled like any other segment.
+
+> [!NOTE]
+> Large HUB75 panels may need more RAM than is available on the ESP32-S3. The firmware detects this and safely refuses to initialize instead of crashing – in that case, choose a smaller panel or a lower color depth.

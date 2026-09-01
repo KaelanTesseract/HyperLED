@@ -11,9 +11,12 @@ In HyperLED sind bestimmte Pins ab Werk als Standard vorkonfiguriert. Du kannst 
 
 | Funktion | ESP32-S3 Pin (Standard) | Beschreibung |
 |---|---|---|
-| **LED Datenleitung (Data)** | **GPIO 4** | Verbinde dies mit `DIN` oder `DI` deines LED-Streifens. |
-| **Button 1 (Push)** | *Nicht aktiv* | Kann in der UI aktiviert werden, um physische Taster anzuschließen. Schaltet gegen GND. |
-| **Button 2 (Switch)** | *Nicht aktiv* | Für Kippschalter gedacht. |
+| **LED Datenleitung (Data)** | **GPIO 4** | Verbinde dies mit `DIN` oder `DI` deines LED-Streifens. In der WebUI frei wählbar. |
+| **Eingang 1 (Taster)** | **GPIO 39** | Fest verdrahtet, muss in der WebUI aktiviert werden. Schaltet gegen GND. |
+| **Eingang 2 (Schalter)** | **GPIO 40** | Fest verdrahtet, muss in der WebUI aktiviert werden. Für Kippschalter gedacht. |
+
+> [!NOTE]
+> Für ein HUB75-Matrixpanel ist die Pinbelegung fest verdrahtet (14 gleichzeitig benötigte Signale) und wird beim Auswählen des LED-Typs **HUB75** direkt in der WebUI als Referenz angezeigt.
 
 ## Unterstützte LED-Typen
 
