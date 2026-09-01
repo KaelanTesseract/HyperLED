@@ -28,3 +28,5 @@ test2.py
 
 # Personal feature backlog, kept local.
 Ideen.md
+
+__pycache__/

@@ -232,3 +232,8 @@ components are distributed are respected and acknowledged.
    Copyright (c) 2017, Arm Limited. All rights reserved.
    License: BSD 3-Clause License
 
+9. esp-hub75
+   Copyright (c) 2025 Stuart Parmenter
+   License: MIT License (https://opensource.org/licenses/MIT)
+   Source: https://github.com/esphome-libs/esp-hub75
+
