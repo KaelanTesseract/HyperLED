@@ -1181,8 +1181,14 @@ uint8_t LEDManagerClass::getGlobalAblCap() {
             seg_mA = (uint32_t)count * 50;
         }
         
-        // Scale by segment brightness relative to 255
-        total_led_mA_full += (seg_mA * seg.brightness) / 255;
+        // Deliberately NOT scaled by seg.brightness: the effects apply this cap
+        // multiplicatively as (seg.brightness * ablCap) / 255. Folding brightness in here
+        // too would cancel it out entirely - the cap would then hold the output at a fixed
+        // level and the brightness slider would do nothing until it drops below the point
+        // where ABL stops limiting at all. Estimating at full brightness keeps the cap a
+        // true ceiling: at 100% the output lands exactly on the current budget, and every
+        // step below scales down linearly from there (and thus stays safely under it).
+        total_led_mA_full += seg_mA;
     }
     
     uint32_t current_mA_full = base_mA + total_led_mA_full;
