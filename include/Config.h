@@ -34,6 +34,11 @@
 #define PREF_ABL_ENABLE "abl_en"
 #define PREF_ABL_MA "abl_ma"
 
+// Status LED (onboard WS2812)
+#define PREF_STATUSLED_ON "sled_on"
+#define PREF_STATUSLED_COLOR "sled_col"
+#define PREF_STATUSLED_BRI "sled_bri"
+
 // WiFi
 #define PREF_WIFI_SSID "wifi_ssid"
 #define PREF_WIFI_PASS "wifi_pass"
@@ -89,8 +94,9 @@
 
 // HUB75 needs 14 GPIOs at once (far more than the 1-5 pin dropdowns other LED
 // types use), so its pinout is fixed rather than user-configurable. Chosen for
-// the Waveshare ESP32-S3-Zero (ESP32-S3FH4R2, embedded flash + Octal PSRAM):
-// GPIO33-37 aren't exposed on this chip variant (wired internally to PSRAM),
+// the Waveshare ESP32-S3-Zero (ESP32-S3FH4R2, embedded flash + 2MB quad-SPI PSRAM):
+// GPIO33-37 aren't broken out on this board (Waveshare reserves them for the
+// in-package flash/PSRAM),
 // GPIO0/3/45/46 are strapping pins, GPIO19/20 are native USB, GPIO21 drives
 // the onboard WS2812, and GPIO43/44 are the debug UART - all avoided here.
 // GPIO16/17 (HyperBus's wired UART to the first Slave) are left free too.
@@ -111,6 +117,13 @@
 #define HUB75_PIN_CLK 13
 #define HUB75_PIN_LAT 14
 #define HUB75_PIN_OE 15
+
+// Onboard WS2812 status LED of the Waveshare ESP32-S3-Zero. Driven by StatusLedManager
+// through NeoPixelBus on RMT channel 0 (the main LED bus uses channel 1), NOT through the
+// Arduino core's rgbLedWrite(): that path is disabled via ESP32_ARDUINO_NO_RGB_BUILTIN
+// because it pulls in the next-gen RMT driver, which conflicts with NeoPixelBus and
+// bootloops the device (see platformio.ini).
+#define STATUS_LED_PIN 21
 
 // Wired HyperBus UART to the first Slave (Master's downlink). Cross-wired to
 // the same GPIO16/17 pair on the Slave's own "uplink" pins (see

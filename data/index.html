@@ -144,9 +144,21 @@
         <!-- AP Mode Setup Screen -->
         <main id="apSetupScreen" style="display: none;">
             <div class="card glass">
-                <h2>Willkommen beim HyperLED</h2>
-                <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 14px;">Bitte verbinde das Gerät mit deinem WLAN, um die Steuerung freizuschalten.</p>
+                <h2 data-i18n="ap_setup_title">Willkommen bei HyperLED</h2>
+                <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 14px;" data-i18n="ap_setup_desc">Bitte verbinde das Gerät mit deinem WLAN, um die Steuerung freizuschalten.</p>
                 <div id="apWifiContainer"></div>
+
+                <!-- Connection test feedback (AP mode only) -->
+                <div id="apConnectStatus" style="display: none; margin-top: 20px; padding: 15px; border-radius: 8px;">
+                    <p id="apConnectMessage" style="margin: 0; font-size: 14px;"></p>
+                    <div id="apConnectResult" style="display: none; margin-top: 12px;">
+                        <p style="margin: 0 0 4px 0; font-size: 13px; color: var(--text-muted);" data-i18n="ap_connect_reachable">Das Gerät ist jetzt unter dieser Adresse erreichbar:</p>
+                        <p style="margin: 0; font-size: 20px; font-weight: 600; color: #10b981;" id="apConnectIp"></p>
+                        <p style="margin: 8px 0 0 0; font-size: 13px; color: var(--text-muted);" data-i18n="ap_connect_hostname">Alternativ per Name: <strong>http://hyperled</strong> (Windows) bzw. <strong>http://hyperled.local</strong></p>
+                        <p style="margin: 12px 0 0 0; font-size: 13px; color: var(--text-muted);" data-i18n="ap_connect_note">Notiere dir die Adresse. Nach dem Neustart verschwindet dieses Setup-WLAN und du verbindest dich wieder mit deinem normalen Netzwerk.</p>
+                        <button id="btnApFinish" class="btn-primary" style="margin-top: 15px;" data-i18n="ap_connect_finish">Fertig &amp; Neustarten</button>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -506,8 +518,8 @@
                 </div>
                 <button id="btnSaveWifi" class="btn-primary" data-i18n="btn_save_wlan">WLAN Speichern</button>
 
-                <!-- MQTT Settings moved here -->
-                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <!-- MQTT Settings moved here (hidden during AP-mode setup, see app.js) -->
+                <div id="mqttSettingsSection" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
                     <h3 style="margin-bottom: 15px; color: var(--primary);" data-i18n="mqtt_title">MQTT Konfiguration</h3>
                     <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 15px;">
                         <label for="mqttEnable" style="margin: 0;" data-i18n="mqtt_enable">MQTT Aktivieren</label>
@@ -635,6 +647,25 @@
                     </select>
                 </div>
                 
+                <div class="card" style="background: rgba(0,0,0,0.2); padding: 15px; margin-bottom: 15px; box-shadow: none;">
+                    <h3 data-i18n="statusled_title">Onboard-LED</h3>
+                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;" data-i18n="statusled_desc">Die kleine LED auf der Platine selbst - unabhängig von deinen angeschlossenen LED-Streifen.</p>
+                    <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 12px;">
+                        <label for="statusLedOn" style="margin: 0;" data-i18n="statusled_enable">Onboard-LED aktivieren</label>
+                        <input type="checkbox" id="statusLedOn" style="width: auto; transform: scale(1.3);">
+                    </div>
+                    <div id="statusLedOptions" style="display: flex; gap: 12px; align-items: flex-end;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="statusLedColor" data-i18n="statusled_color">Farbe</label>
+                            <input type="color" id="statusLedColor" value="#0000ff" style="width: 60px; height: 42px; padding: 4px; cursor: pointer;">
+                        </div>
+                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                            <label for="statusLedBri" data-i18n="statusled_bri">Helligkeit</label>
+                            <input type="range" id="statusLedBri" min="1" max="255" value="40">
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card" style="background: rgba(0,0,0,0.2); padding: 15px; margin-bottom: 15px; box-shadow: none;">
                     <h3 data-i18n="update_online">Online Update</h3>
                     <button id="btnCheckUpdate" class="btn-primary" disabled data-i18n="btn_checking">Wird geprüft...</button>

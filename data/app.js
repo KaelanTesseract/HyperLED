@@ -87,6 +87,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeSettings = document.getElementById('closeSettings');
     const apWifiContainer = document.getElementById('apWifiContainer');
     const modalWifiContainer = document.getElementById('modalWifiContainer');
+    const mqttSettingsSection = document.getElementById('mqttSettingsSection');
+    const apConnectStatus = document.getElementById('apConnectStatus');
+    const apConnectMessage = document.getElementById('apConnectMessage');
+    const apConnectResult = document.getElementById('apConnectResult');
+    const apConnectIp = document.getElementById('apConnectIp');
+    const btnApFinish = document.getElementById('btnApFinish');
     const imageUpload = document.getElementById('imageUpload');
     const btnUploadImage = document.getElementById('btnUploadImage');
     const pixelCanvas = document.getElementById('pixelCanvas');
@@ -180,6 +186,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const scheduleTimeStatus = document.getElementById('scheduleTimeStatus');
     let currentPresets = {};
 
+    // Onboard status LED Elements
+    const statusLedOn = document.getElementById('statusLedOn');
+    const statusLedColor = document.getElementById('statusLedColor');
+    const statusLedBri = document.getElementById('statusLedBri');
+    const statusLedOptions = document.getElementById('statusLedOptions');
+
     // System Elements
     const sysVersion = document.getElementById('sysVersion');
     const btnCheckUpdate = document.getElementById('btnCheckUpdate');
@@ -262,12 +274,16 @@ document.addEventListener('DOMContentLoaded', () => {
             apSetupScreen.style.display = 'block';
             apWifiContainer.appendChild(modalWifiContainer);
             modalWifiContainer.style.display = 'block';
+            // MQTT can only be set up meaningfully once the device is on the real network,
+            // so it stays hidden during the initial AP-mode WLAN setup.
+            if (mqttSettingsSection) mqttSettingsSection.style.display = 'none';
         } else {
             apSetupScreen.style.display = 'none';
             fetchState();
             setInterval(fetchState, 2000);
             fetchConfig();
             fetchMqtt();
+            fetchStatusLed();
             fetchCanvasPanels();
         }
     });
@@ -834,28 +850,89 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // In AP mode the device tests the credentials while the AP stays up, so we can poll for
+    // the result and show the new IP before anything reboots. Network errors during polling
+    // are expected and ignored: the SoftAP briefly follows the router's channel while the
+    // station connects, which can drop a request or two.
+    function pollWifiSetupStatus(deadline) {
+        fetch('/api/wifi/setup_status')
+            .then(res => res.json())
+            .then(data => {
+                if (data.state === 'success') {
+                    apConnectStatus.style.background = 'rgba(16, 185, 129, 0.1)';
+                    apConnectStatus.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+                    apConnectMessage.style.color = '#10b981';
+                    apConnectMessage.innerText = t('ap_connect_success') + (data.ssid ? ' (' + data.ssid + ')' : '');
+                    apConnectIp.innerText = 'http://' + data.ip;
+                    apConnectResult.style.display = 'block';
+                    btnSaveWifi.innerText = t('btn_save_wlan');
+                    btnSaveWifi.disabled = false;
+                    return;
+                }
+                if (data.state === 'failed') {
+                    apConnectStatus.style.background = 'rgba(239, 68, 68, 0.1)';
+                    apConnectStatus.style.border = '1px solid rgba(239, 68, 68, 0.5)';
+                    apConnectMessage.style.color = '#ef4444';
+                    apConnectMessage.innerText = t('ap_connect_failed');
+                    apConnectResult.style.display = 'none';
+                    btnSaveWifi.innerText = t('btn_save_wlan');
+                    btnSaveWifi.disabled = false;
+                    return;
+                }
+                if (Date.now() < deadline) setTimeout(() => pollWifiSetupStatus(deadline), 1000);
+            })
+            .catch(() => {
+                if (Date.now() < deadline) setTimeout(() => pollWifiSetupStatus(deadline), 1000);
+            });
+    }
+
     btnSaveWifi.addEventListener('click', () => {
         const formData = new URLSearchParams();
         formData.append('ssid', wifiSsid.value);
         formData.append('password', wifiPass.value);
-        
+
         btnSaveWifi.innerText = t('btn_saving');
+
+        if (isAPMode) {
+            btnSaveWifi.disabled = true;
+            apConnectStatus.style.display = 'block';
+            apConnectStatus.style.background = 'rgba(255,255,255,0.05)';
+            apConnectStatus.style.border = '1px solid rgba(255,255,255,0.1)';
+            apConnectMessage.style.color = 'var(--text-muted)';
+            apConnectMessage.innerText = t('ap_connect_testing');
+            apConnectResult.style.display = 'none';
+        }
+
         fetch('/api/save_wifi', {
             method: 'POST',
             body: formData
         }).then(res => {
-            if(res.ok) {
-                const originalText = btnSaveWifi.innerText;
-                btnSaveWifi.innerText = 'Gespeichert!';
-                btnSaveWifi.style.backgroundColor = '#10b981';
-                setTimeout(() => {
-                    btnSaveWifi.innerText = originalText;
-                    btnSaveWifi.style.backgroundColor = '';
-                    settingsModal.classList.remove('show');
-                }, 1500);
+            if (!res.ok) return;
+            if (isAPMode) {
+                // Give the device up to ~40s: the attempt itself runs for ~10s, plus retries
+                // while the AP channel settles.
+                pollWifiSetupStatus(Date.now() + 40000);
+                return;
             }
+            const originalText = btnSaveWifi.innerText;
+            btnSaveWifi.innerText = 'Gespeichert!';
+            btnSaveWifi.style.backgroundColor = '#10b981';
+            setTimeout(() => {
+                btnSaveWifi.innerText = originalText;
+                btnSaveWifi.style.backgroundColor = '';
+                settingsModal.classList.remove('show');
+            }, 1500);
         });
     });
+
+    if (btnApFinish) {
+        btnApFinish.addEventListener('click', () => {
+            btnApFinish.disabled = true;
+            btnApFinish.innerText = t('ap_connect_restarting');
+            fetch('/api/wifi/setup_finish', { method: 'POST' }).catch(() => {});
+            apConnectMessage.innerText = t('ap_connect_restarting');
+        });
+    }
 
     // Event Listeners - MQTT
     btnSaveMqtt.addEventListener('click', () => {
@@ -2195,6 +2272,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // --- Onboard status LED ---
+    async function fetchStatusLed() {
+        try {
+            const res = await fetch('/api/statusled');
+            if (!res.ok) return;
+            const data = await res.json();
+            statusLedOn.checked = !!data.on;
+            statusLedColor.value = '#' + (data.color >>> 0).toString(16).padStart(6, '0');
+            statusLedBri.value = data.bri;
+            statusLedOptions.style.opacity = data.on ? '1' : '0.4';
+        } catch (e) {
+            console.error("Status LED fetch error:", e);
+        }
+    }
+
+    function sendStatusLed() {
+        statusLedOptions.style.opacity = statusLedOn.checked ? '1' : '0.4';
+        fetch('/api/statusled', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                on: statusLedOn.checked,
+                color: parseInt(statusLedColor.value.slice(1), 16),
+                bri: parseInt(statusLedBri.value)
+            })
+        }).catch(e => console.error("Status LED save error:", e));
+    }
+
+    if (statusLedOn) {
+        statusLedOn.addEventListener('change', sendStatusLed);
+        statusLedColor.addEventListener('input', throttle(sendStatusLed, 200));
+        statusLedBri.addEventListener('input', throttle(sendStatusLed, 200));
+    }
+
     // fetchZigbee removed
     
     function fetchWlanStatus() {

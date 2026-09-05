@@ -30,6 +30,7 @@
 #include "MqttManager.h"
 #include "PresetManager.h"
 #include "ScheduleManager.h"
+#include "StatusLedManager.h"
 
 WebServerManagerClass WebServerManager;
 AsyncWebServer server(80);
@@ -96,9 +97,40 @@ void WebServerManagerClass::setupRoutes() {
         String pass = "";
         if(request->hasParam("ssid", true)) ssid = request->getParam("ssid", true)->value();
         if(request->hasParam("password", true)) pass = request->getParam("password", true)->value();
-        
-        request->send(200, "text/plain", "Saved. Rebooting...");
-        WiFiManager.saveCredentials(ssid, pass);
+
+        if (WiFiManager.isAPMode()) {
+            // During AP-mode setup, test the credentials first and keep the AP up, so the
+            // client can be told the new IP (or the failure) instead of silently losing the
+            // connection to a rebooting device. Poll /api/wifi/setup_status for the result.
+            WiFiManager.startSetupConnect(ssid, pass);
+            request->send(200, "application/json", "{\"status\":\"connecting\"}");
+        } else {
+            request->send(200, "application/json", "{\"status\":\"rebooting\"}");
+            WiFiManager.saveCredentials(ssid, pass);
+        }
+    });
+
+    server.on("/api/wifi/setup_status", HTTP_GET, [](AsyncWebServerRequest *request){
+        JsonDocument doc;
+        switch (WiFiManager.getSetupState()) {
+            case WIFI_SETUP_CONNECTING: doc["state"] = "connecting"; break;
+            case WIFI_SETUP_SUCCESS:    doc["state"] = "success";    break;
+            case WIFI_SETUP_FAILED:     doc["state"] = "failed";     break;
+            default:                    doc["state"] = "idle";       break;
+        }
+        if (WiFiManager.getSetupState() == WIFI_SETUP_SUCCESS) {
+            doc["ip"] = WiFiManager.getSetupIp();
+            doc["ssid"] = WiFi.SSID();
+        }
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
+    server.on("/api/wifi/setup_finish", HTTP_POST, [](AsyncWebServerRequest *request){
+        request->send(200, "application/json", "{\"status\":\"restarting\"}");
+        // Give the response a moment to reach the client before the radio goes down.
+        WiFiManager.requestRestart(1000);
     });
 
     // --- State API ---
@@ -543,6 +575,27 @@ void WebServerManagerClass::setupRoutes() {
     server.addHandler(configHandler);
 
     // --- Buttons API ---
+    // --- Onboard status LED (independent of the configured LED strips) ---
+    server.on("/api/statusled", HTTP_GET, [](AsyncWebServerRequest *request){
+        JsonDocument doc;
+        doc["on"] = StatusLedManager.isOn();
+        doc["color"] = StatusLedManager.getColor();
+        doc["bri"] = StatusLedManager.getBrightness();
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+
+    AsyncCallbackJsonWebHandler* statusLedHandler = new AsyncCallbackJsonWebHandler("/api/statusled", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject jsonObj = json.as<JsonObject>();
+        bool on = jsonObj["on"] | StatusLedManager.isOn();
+        uint32_t color = jsonObj["color"] | StatusLedManager.getColor();
+        uint8_t bri = jsonObj["bri"] | StatusLedManager.getBrightness();
+        StatusLedManager.setState(on, color, bri);
+        request->send(200, "text/plain", "OK");
+    });
+    server.addHandler(statusLedHandler);
+
     server.on("/api/buttons", HTTP_GET, [](AsyncWebServerRequest *request){
         Preferences prefs;
         prefs.begin("wled_clone", true);

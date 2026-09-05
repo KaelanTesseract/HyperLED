@@ -95,6 +95,14 @@ void WiFiManagerClass::loop() {
     if (_isAPMode) {
         _dnsServer.processNextRequest();
     }
+    if (_restartAt > 0 && millis() >= _restartAt) {
+        Serial.println("Restarting to apply the new Wi-Fi configuration...");
+        ESP.restart();
+    }
+    if (_triggerSetupConnect) {
+        _triggerSetupConnect = false;
+        runSetupConnect();
+    }
     if (_triggerScan) {
         _triggerScan = false;
         Serial.println("Starting Wi-Fi Scan...");
@@ -140,8 +148,62 @@ void WiFiManagerClass::saveCredentials(const String& ssid, const String& passwor
     preferences.putString(PREF_WIFI_SSID, ssid);
     preferences.putString(PREF_WIFI_PASS, password);
     preferences.end();
-    
+
     Serial.println("Saved new WiFi credentials. Rebooting...");
     delay(1000);
     ESP.restart();
+}
+
+void WiFiManagerClass::startSetupConnect(const String& ssid, const String& password) {
+    _setupSsid = ssid;
+    _setupPassword = password;
+    _setupIp = "";
+    _setupState = WIFI_SETUP_CONNECTING;
+    _triggerSetupConnect = true;
+}
+
+void WiFiManagerClass::requestRestart(uint32_t delayMs) {
+    _restartAt = millis() + delayMs;
+}
+
+// Runs from loop(), never from a web handler: the connection attempt below blocks for up
+// to ~10s, which would stall the async web server (and with it the very request that is
+// polling for the result). The SoftAP stays up throughout because startAP() puts the radio
+// in WIFI_AP_STA - that is what lets the client read the new IP before anything reboots.
+void WiFiManagerClass::runSetupConnect() {
+    Serial.println("Setup: testing Wi-Fi credentials for SSID '" + _setupSsid + "'");
+    WiFi.begin(_setupSsid.c_str(), _setupPassword.c_str());
+
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(500);
+        attempts++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        _setupIp = WiFi.localIP().toString();
+        _setupState = WIFI_SETUP_SUCCESS;
+        Serial.println("Setup: connected, IP is " + _setupIp);
+
+        // Only persist once the credentials are proven to work, so a typo can be corrected
+        // without the device rebooting into a broken configuration.
+        Preferences preferences;
+        preferences.begin(PREF_NAMESPACE, false);
+        preferences.putString(PREF_WIFI_SSID, _setupSsid);
+        preferences.putString(PREF_WIFI_PASS, _setupPassword);
+        preferences.end();
+
+        _ssid = _setupSsid;
+        _password = _setupPassword;
+
+        // Fallback in case the user never confirms (closed the tab, walked away): the setup
+        // AP is open/passwordless, so it must not stay up indefinitely. 5 minutes is enough
+        // to read and note the address down.
+        requestRestart(5 * 60 * 1000);
+    } else {
+        _setupState = WIFI_SETUP_FAILED;
+        Serial.println("Setup: could not connect with the given credentials");
+        // Drop the half-open attempt so the AP keeps working and the user can retry.
+        WiFi.disconnect();
+    }
 }

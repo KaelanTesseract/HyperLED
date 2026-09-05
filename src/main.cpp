@@ -28,6 +28,7 @@
 #include "PresetManager.h"
 #include "ScheduleManager.h"
 #include "WeatherManager.h"
+#include "StatusLedManager.h"
 
 void setup() {
     Serial.begin(115200);
@@ -35,6 +36,7 @@ void setup() {
     Serial.println("HyperLED Starting...");
 
     LEDManager.begin();
+    StatusLedManager.begin();
     ScheduleManager.begin(); // must load the timezone before WiFiManager connects and syncs NTP
     WiFiManager.begin();
     WebServerManager.begin();
@@ -57,6 +59,7 @@ void loop() {
     PresetManager.loop();
     ScheduleManager.loop();
     WeatherManager.loop();
+    StatusLedManager.loop();
 
 #if DEBUG_SERIAL
     static unsigned long lastMemPrint = 0;
