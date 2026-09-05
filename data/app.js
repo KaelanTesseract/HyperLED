@@ -468,8 +468,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ['CLK', 13], ['LAT', 14], ['OE', 15]
     ];
 
-    function renderHub75Pinout() {
-        const table = document.getElementById('hub75PinoutTable');
+    function renderHub75Pinout(tableId) {
+        const table = document.getElementById(tableId || 'hub75PinoutTable');
         if (!table) return;
         table.innerHTML = '';
         HUB75_PINS.forEach(([signal, gpio]) => {
@@ -1839,7 +1839,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                         </div>
                         <div id="groupSlaveHub75_${slave.id}" style="display: none; margin-bottom: 10px;">
-                            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;" data-i18n="dyn_slave_hub75_hint">Feste Pinbelegung wie beim Master (siehe Master-LED-Tab) - hier nur Panelgröße und Treiber-Chip einstellen.</p>
+                            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">${t('dyn_slave_hub75_hint')}</p>
+                            <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px; margin-bottom: 10px;">
+                                <h5 style="margin: 0 0 8px 0; color: var(--primary); font-size: 13px;">${t('hub75_pinout_title')}</h5>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 12px; font-family: monospace;" id="slaveHub75Pinout_${slave.id}">
+                                    <!-- Filled below from the same fixed HUB75_PIN_* list as the Master -->
+                                </div>
+                            </div>
                             <div style="display: flex; gap: 10px; margin-bottom: 8px;">
                                 <div class="form-group" style="flex: 1;">
                                     <label>${t('matrix_width') || 'Breite'}</label>
@@ -1863,12 +1869,25 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                         </div>
                         <button id="btnSaveSlave_${slave.id}" class="btn-primary" onclick="configureSlave(${slave.id})" style="width: 100%; padding: 8px;">${t('dyn_send_config')}</button>
+
+                        <div style="margin-top: 15px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                <label for="slaveLedOn_${slave.id}" style="margin: 0; font-size: 14px;">${t('slave_led_title')}</label>
+                                <input type="checkbox" id="slaveLedOn_${slave.id}" checked style="width: auto; transform: scale(1.3);" onchange="sendSlaveStatusLed(${slave.id})">
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <input type="color" id="slaveLedColor_${slave.id}" value="#00ff00" style="width: 50px; height: 34px; padding: 3px; cursor: pointer;" onchange="sendSlaveStatusLed(${slave.id})">
+                                <input type="range" id="slaveLedBri_${slave.id}" min="1" max="255" value="40" style="flex: 1;" onchange="sendSlaveStatusLed(${slave.id})">
+                            </div>
+                            <p style="font-size: 11px; color: var(--text-muted); margin: 8px 0 0 0;">${t('slave_led_hint')}</p>
+                        </div>
                     `;
                     slavesList.appendChild(card);
 
                     // Set correct type if it was already configured
                     // (Requires backend to send type, but for now defaults to current master type or user selects)
                     // We can just trigger onchange to update pin2/HUB75 group visibility
+                    renderHub75Pinout(`slaveHub75Pinout_${slave.id}`);
                     document.getElementById(`slaveType_${slave.id}`).dispatchEvent(new Event('change'));
                 });
             })
@@ -1876,6 +1895,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 slavesList.innerHTML = `<div style="text-align: center; padding: 20px; color: #ef4444;">${t('dyn_err_load_slaves')}</div>`;
             });
     }
+
+    // Sends only the "everything is fine" appearance. The Slave still signals problems
+    // (unconfigured, connection lost) by itself, even when the LED is switched off here.
+    window.sendSlaveStatusLed = function(slaveId) {
+        const onEl = document.getElementById(`slaveLedOn_${slaveId}`);
+        const colorEl = document.getElementById(`slaveLedColor_${slaveId}`);
+        const briEl = document.getElementById(`slaveLedBri_${slaveId}`);
+        if (!onEl || !colorEl || !briEl) return;
+        fetch('/api/slaves/statusled', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: slaveId,
+                on: onEl.checked,
+                color: parseInt(colorEl.value.slice(1), 16),
+                bri: parseInt(briEl.value)
+            })
+        }).catch(e => console.error("Slave status LED error:", e));
+    };
 
     window.onSlaveTypeChange = function(slaveId) {
         const typeEl = document.getElementById(`slaveType_${slaveId}`);

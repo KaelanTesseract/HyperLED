@@ -15,6 +15,9 @@ A Slave doesn't run its own control logic – its name, LED type, pinout, or mat
 
 A Slave doesn't need to be manually set to a transport mode before first use: it detects and remembers the right mode automatically.
 
+> [!NOTE]
+> In ESP-NOW mode, Master and Slave have to be on the same Wi-Fi channel. The Slave scans the channels in turn and then adopts the channel the Master tells it – the channel follows from whichever network the Master is connected to, and never needs to be configured. If the Master changes channel, the Slave starts scanning again after a few seconds of silence.
+
 ## Setup
 
 1. Wire the hardware (as described above for wired mode), or simply power the Slave (for ESP-NOW).

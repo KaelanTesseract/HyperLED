@@ -42,8 +42,15 @@ public:
     // matrixWidth/matrixHeight/hub75ShiftDriver only matter when type == TYPE_HUB75
     // (see HUB75_PIN_* in Config.h) - harmless to send for any other type.
     void configureSlave(uint8_t currentId, uint8_t newId, uint8_t pin, uint8_t pin2, uint16_t count, uint8_t type, const String& name, uint16_t matrixWidth = 16, uint16_t matrixHeight = 16, uint8_t hub75ShiftDriver = 0);
+    // Onboard status LED of a Slave. Only sets what "everything is fine" looks like - the
+    // Slave still signals problems (unconfigured, lost connection) on its own, even when
+    // the LED is switched off here.
+    void setSlaveStatusLed(uint8_t slaveId, bool on, uint32_t color, uint8_t brightness);
     void triggerSlaveUpdate(uint8_t slaveId, const String& ssid, const String& pass, const String& url);
     void sendLEDData(uint8_t slaveId, const uint8_t* rgbData, uint16_t length);
+
+    // For the ESP-NOW diagnostics on /api/espnow_status.
+    EspNowBusClass* getEspBus() { return _espBus; }
 
 private:
     HyperBusClass* _uartBus;

@@ -66,13 +66,25 @@ void SlaveManagerClass::loop() {
         _lastPingTime = now;
         _uartBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_PING, nullptr, 0);
 
+        // The wireless PING carries the channel we are actually on. A scanning Slave cannot
+        // derive it from reception alone: 2.4GHz channels overlap, so our PING is still picked
+        // up while the Slave listens one or two channels off. It then locks onto that wrong
+        // channel and its PONG - sent from there - never reaches us, so it receives everything
+        // but stays invisible. Telling it the number outright removes the guesswork.
+        uint8_t pingPayload[1] = {0};
+        wifi_second_chan_t second;
+        uint8_t primary = 0;
+        if (esp_wifi_get_channel(&primary, &second) == ESP_OK) {
+            pingPayload[0] = primary;
+        }
+
         // Broadcast PING for discovery
-        _espBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_PING, nullptr, 0);
+        _espBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_PING, pingPayload, 1);
 
         // Unicast PING for keep-alive (since Broadcasts drop in Power Save mode)
         for (const auto& s : _discoveredSlaves) {
             if (s.isWireless) {
-                _espBus->sendPacket(s.currentId, HYPERBUS_MASTER_ID, CMD_PING, nullptr, 0);
+                _espBus->sendPacket(s.currentId, HYPERBUS_MASTER_ID, CMD_PING, pingPayload, 1);
             }
         }
 
@@ -203,6 +215,29 @@ void SlaveManagerClass::configureSlave(uint8_t currentId, uint8_t newId, uint8_t
             break;
         }
     }
+}
+
+void SlaveManagerClass::setSlaveStatusLed(uint8_t slaveId, bool on, uint32_t color, uint8_t brightness) {
+    uint8_t payload[5];
+    payload[0] = on ? 1 : 0;
+    payload[1] = (color >> 16) & 0xFF;
+    payload[2] = (color >> 8) & 0xFF;
+    payload[3] = color & 0xFF;
+    payload[4] = brightness;
+
+    if (slaveId == HYPERBUS_BROADCAST_ID) {
+        _uartBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_SET_STATUS_LED, payload, 5);
+        // Broadcasts are dropped in Power Save mode, so wireless Slaves get a unicast each.
+        for (const auto& s : _discoveredSlaves) {
+            if (s.isWireless) {
+                _espBus->sendPacket(s.currentId, HYPERBUS_MASTER_ID, CMD_SET_STATUS_LED, payload, 5);
+            }
+        }
+        return;
+    }
+
+    BusInterface* targetBus = getBusForSlave(slaveId, _discoveredSlaves, _uartBus, _espBus);
+    targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_STATUS_LED, payload, 5);
 }
 
 void SlaveManagerClass::triggerSlaveUpdate(uint8_t slaveId, const String& ssid, const String& pass, const String& url) {

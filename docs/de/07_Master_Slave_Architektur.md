@@ -15,6 +15,9 @@ Ein Slave übernimmt selbst keine eigene Steuerlogik – Name, LED-Typ, Pinbeleg
 
 Ein Slave muss vor dem ersten Betrieb nicht manuell auf einen Übertragungsweg festgelegt werden: Er erkennt und speichert die passende Betriebsart automatisch.
 
+> [!NOTE]
+> Im ESP-NOW-Betrieb müssen Master und Slave auf demselben WLAN-Kanal funken. Der Slave sucht die Kanäle nacheinander ab und übernimmt anschließend den Kanal, den der Master ihm mitteilt – der Kanal ergibt sich also aus dem WLAN, mit dem der Master verbunden ist, und muss nirgends eingestellt werden. Wechselt der Master den Kanal, beginnt der Slave nach wenigen Sekunden Funkstille automatisch von vorn zu suchen.
+
 ## Einrichtung
 
 1. Verbinde die Hardware (bei kabelgebundenem Betrieb wie oben beschrieben) bzw. versorge den Slave einfach mit Strom (bei ESP-NOW).

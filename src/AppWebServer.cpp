@@ -146,6 +146,31 @@ void WebServerManagerClass::setupRoutes() {
         request->send(response);
     });
 
+    // Diagnostics for wireless Slave discovery: ESP-NOW only works when both sides sit on
+    // the same channel, and the Master simply inherits whatever channel its router put it
+    // on - so this is the first thing to check when a Slave isn't found.
+    server.on("/api/espnow_status", HTTP_GET, [](AsyncWebServerRequest *request){
+        JsonDocument doc;
+        doc["channel"] = WiFi.channel();
+        doc["rssi"] = WiFi.RSSI();
+        doc["ssid"] = WiFi.SSID();
+        doc["mode"] = (int)WiFi.getMode();
+        doc["mac"] = WiFi.macAddress();
+        EspNowBusClass* bus = SlaveManager.getEspBus();
+        if (bus) {
+            doc["rxPackets"] = bus->getPacketsReceived();
+            doc["lastSender"] = bus->getLastSenderId();
+            doc["lastCommand"] = bus->getLastCommand();
+            doc["pongs"] = bus->getPongsReceived();
+            doc["dropIncomplete"] = bus->getDroppedIncomplete();
+            doc["dropNoCallback"] = bus->getDroppedNoCallback();
+            doc["dropForeign"] = bus->getDroppedForeign();
+        }
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
     server.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *request){
         if (WiFi.status() == WL_CONNECTED) {
             String json = "{\"ssid\":\"" + WiFi.SSID() + "\",\"ip\":\"" + WiFi.localIP().toString() + "\"}";
@@ -271,6 +296,21 @@ void WebServerManagerClass::setupRoutes() {
     });
     server.addHandler(slaveConfigHandler);
     
+    AsyncCallbackJsonWebHandler* slaveStatusLedHandler = new AsyncCallbackJsonWebHandler("/api/slaves/statusled", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject jsonObj = json.as<JsonObject>();
+        if (jsonObj["id"].isNull()) {
+            request->send(400, "text/plain", "Missing id");
+            return;
+        }
+        uint8_t id = jsonObj["id"].as<uint8_t>();
+        bool on = jsonObj["on"] | true;
+        uint32_t color = jsonObj["color"] | 0x00FF00;
+        uint8_t bri = jsonObj["bri"] | 40;
+        SlaveManager.setSlaveStatusLed(id, on, color, bri);
+        request->send(200, "text/plain", "OK");
+    });
+    server.addHandler(slaveStatusLedHandler);
+
     AsyncCallbackJsonWebHandler* slaveUpdateHandler = new AsyncCallbackJsonWebHandler("/api/slaves/update", [](AsyncWebServerRequest *request, JsonVariant &json) {
         String url = "";
         JsonObject jsonObj = json.as<JsonObject>();

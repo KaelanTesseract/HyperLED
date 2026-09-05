@@ -31,7 +31,11 @@ void EspNowBusClass::begin(wifi_mode_t mode, bool autoHop) {
     if (WiFi.getMode() != mode && WiFi.getMode() != WIFI_AP_STA) {
         WiFi.mode(mode);
     }
-    // WiFi.setSleep(WIFI_PS_NONE); // Disabled because it causes RF noise that breaks UART
+    // Modem sleep off: as a station the Master would otherwise power its receiver down between
+    // beacons and miss Slave replies that arrive in those gaps. This was previously disabled over
+    // concerns about RF noise on the UART link - the wired Slave was re-checked with it enabled
+    // and kept working, so the concern does not hold for this hardware.
+    WiFi.setSleep(WIFI_PS_NONE);
     
     // Init ESP-NOW
     if (esp_now_init() != ESP_OK) {
@@ -57,15 +61,29 @@ void EspNowBusClass::begin(wifi_mode_t mode, bool autoHop) {
 }
 
 void EspNowBusClass::loop() {
-    if (_autoHop && !_locked) {
-        // If we haven't received a PING in 500ms, switch channel
-        if (millis() - _lastPingReceived > 500) {
-            _currentChannel++;
-            if (_currentChannel > 13) _currentChannel = 1;
-            
-            esp_wifi_set_channel(_currentChannel, WIFI_SECOND_CHAN_NONE);
-            _lastPingReceived = millis(); // Reset timer for next hop
+    if (!_autoHop) return;
+
+    if (_locked) {
+        // Locking onto the Master's channel is not permanent: if the Master reboots and
+        // rejoins its router on a different channel, a permanently locked Slave would keep
+        // listening on the old one and never be seen again until someone power-cycles it.
+        // The Master pings every 250ms, so several seconds of silence means the channel is
+        // stale - go back to scanning.
+        if (millis() - _lastPingReceived > 5000) {
+            Serial.println("EspNowBus: lost the Master, scanning channels again");
+            _locked = false;
+            _lastPingReceived = millis();
         }
+        return;
+    }
+
+    // If we haven't received a PING in 500ms, switch channel
+    if (millis() - _lastPingReceived > 500) {
+        _currentChannel++;
+        if (_currentChannel > 13) _currentChannel = 1;
+
+        esp_wifi_set_channel(_currentChannel, WIFI_SECOND_CHAN_NONE);
+        _lastPingReceived = millis(); // Reset timer for next hop
     }
 }
 
@@ -76,14 +94,16 @@ bool EspNowBusClass::sendPacket(uint8_t targetId, uint8_t senderId, uint8_t comm
     }
     if (length <= 240) {
         // Fits in a single packet
-        uint16_t packetLen = 4 + length;
-        _txBuffer[0] = targetId;
-        _txBuffer[1] = senderId;
-        _txBuffer[2] = command;
-        _txBuffer[3] = (uint8_t)length; // max 240, fits in 1 byte for espnow wrappers
+        uint16_t packetLen = HYPERBUS_ESPNOW_HEADER + length;
+        _txBuffer[0] = HYPERBUS_ESPNOW_MAGIC0;
+        _txBuffer[1] = HYPERBUS_ESPNOW_MAGIC1;
+        _txBuffer[2] = targetId;
+        _txBuffer[3] = senderId;
+        _txBuffer[4] = command;
+        _txBuffer[5] = (uint8_t)length; // max 240, fits in 1 byte for espnow wrappers
 
         if (length > 0 && payload != nullptr) {
-            memcpy(&_txBuffer[4], payload, length);
+            memcpy(&_txBuffer[HYPERBUS_ESPNOW_HEADER], payload, length);
         }
 
         esp_err_t result = esp_now_send(targetMac, _txBuffer, packetLen);
@@ -95,15 +115,17 @@ bool EspNowBusClass::sendPacket(uint8_t targetId, uint8_t senderId, uint8_t comm
             uint16_t chunkSize = length - offset;
             if (chunkSize > 240) chunkSize = 240;
 
-            uint16_t packetLen = 6 + chunkSize; // target, sender, cmd, len, offsetL, offsetH
-            _txBuffer[0] = targetId;
-            _txBuffer[1] = senderId;
-            _txBuffer[2] = CMD_SET_LEDS_CHUNK;
-            _txBuffer[3] = (uint8_t)(chunkSize + 2);
-            _txBuffer[4] = offset & 0xFF;
-            _txBuffer[5] = (offset >> 8) & 0xFF;
+            uint16_t packetLen = HYPERBUS_ESPNOW_HEADER + 2 + chunkSize; // + offsetL, offsetH
+            _txBuffer[0] = HYPERBUS_ESPNOW_MAGIC0;
+            _txBuffer[1] = HYPERBUS_ESPNOW_MAGIC1;
+            _txBuffer[2] = targetId;
+            _txBuffer[3] = senderId;
+            _txBuffer[4] = CMD_SET_LEDS_CHUNK;
+            _txBuffer[5] = (uint8_t)(chunkSize + 2); // payload length includes the offset field
+            _txBuffer[6] = offset & 0xFF;
+            _txBuffer[7] = (offset >> 8) & 0xFF;
 
-            memcpy(&_txBuffer[6], &payload[offset], chunkSize);
+            memcpy(&_txBuffer[HYPERBUS_ESPNOW_HEADER + 2], &payload[offset], chunkSize);
 
             esp_now_send(targetMac, _txBuffer, packetLen);
 
@@ -118,13 +140,28 @@ bool EspNowBusClass::sendPacket(uint8_t targetId, uint8_t senderId, uint8_t comm
 }
 
 void EspNowBusClass::onDataRecv(const esp_now_recv_info_t * esp_now_info, const uint8_t *incomingData, int len) {
-    if (!_instance || !_instance->_callback || len < 4) return;
+    if (!_instance || len < HYPERBUS_ESPNOW_HEADER) return;
+    if (incomingData[0] != HYPERBUS_ESPNOW_MAGIC0 || incomingData[1] != HYPERBUS_ESPNOW_MAGIC1) {
+        // Not ours - some other ESP-NOW device sharing the channel. See HyperBus.h.
+        _instance->_droppedForeign++;
+        return;
+    }
+    if (!_instance->_callback) { _instance->_droppedNoCallback++; return; }
     
     HyperBusPacket packet;
-    packet.targetId = incomingData[0];
-    packet.senderId = incomingData[1];
-    packet.command = incomingData[2];
-    uint8_t payloadLen = incomingData[3];
+    packet.targetId = incomingData[2];
+    packet.senderId = incomingData[3];
+    packet.command = incomingData[4];
+    uint8_t payloadLen = incomingData[5];
+
+    _instance->_packetsReceived++;
+    if (packet.command == CMD_PONG) _instance->_pongsReceived++;
+    // Only remember packets that are not our own broadcast PING echo, otherwise the far rarer
+    // interesting packets are immediately overwritten by the 4/s ping traffic.
+    if (packet.command != CMD_PING) {
+        _instance->_lastSenderId = packet.senderId;
+        _instance->_lastCommand = packet.command;
+    }
     
     // Register sender MAC for Unicast if we haven't already
     if (packet.senderId != HYPERBUS_MASTER_ID || _instance->_peerMacs.empty()) {
@@ -145,14 +182,14 @@ void EspNowBusClass::onDataRecv(const esp_now_recv_info_t * esp_now_info, const 
         }
     }
     
-    if (len < 4 + payloadLen) return; // Incomplete
+    if (len < HYPERBUS_ESPNOW_HEADER + payloadLen) { _instance->_droppedIncomplete++; return; } // Incomplete
     
     packet.length = payloadLen;
     packet.isValid = true;
     packet.isWireless = true;
     
     if (payloadLen > 0) {
-        packet.payload = (uint8_t*)&incomingData[4];
+        packet.payload = (uint8_t*)&incomingData[HYPERBUS_ESPNOW_HEADER];
     } else {
         packet.payload = nullptr;
     }

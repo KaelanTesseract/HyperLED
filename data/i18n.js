@@ -74,6 +74,8 @@ const translations = {
         "slaves_title": "Gefundene Slaves",
         "btn_search_slaves": "Slaves suchen",
         "slaves_no_found": "Keine Slaves gefunden. UART-Verbindung prüfen.",
+        "slave_led_title": "Onboard-LED des Slaves",
+        "slave_led_hint": "Gilt nur für den Normalbetrieb. Probleme (nicht eingerichtet, Verbindung verloren) zeigt der Slave immer an - auch wenn die LED hier ausgeschaltet ist.",
         
         "wlan_connected": "Verbunden mit",
         "wlan_ip": "IP-Adresse:",
@@ -376,6 +378,8 @@ const translations = {
         "slaves_title": "Discovered Slaves",
         "btn_search_slaves": "Search Slaves",
         "slaves_no_found": "No slaves found. Check UART connection.",
+        "slave_led_title": "Slave's onboard LED",
+        "slave_led_hint": "Applies to normal operation only. Problems (not configured, connection lost) are always shown by the slave - even when the LED is switched off here.",
         
         "wlan_connected": "Connected to",
         "wlan_ip": "IP Address:",
@@ -672,6 +676,8 @@ const translations = {
         "slaves_title": "Найденные устройства",
         "btn_search_slaves": "Поиск устройств",
         "slaves_no_found": "Устройства не найдены. Проверьте UART соединение.",
+        "slave_led_title": "Встроенный светодиод слейва",
+        "slave_led_hint": "Действует только в обычном режиме. О проблемах (не настроен, потеряна связь) слейв сообщает всегда - даже если светодиод здесь выключен.",
         "wlan_connected": "Подключено к",
         "wlan_ip": "IP-адрес:",
         "btn_scan_networks": "Поиск сетей",
