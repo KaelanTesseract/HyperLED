@@ -34,6 +34,7 @@ const translations = {
         "hub75_sd_generic": "Generic (Standard, meiste Panels)",
         "hub75_size_hint": "Panel-Größe wird über \"2D Matrix Setup\" unten als Breite/Höhe eingestellt (z.B. 64x64). Sehr große Panels benötigen unter Umständen mehr RAM als verfügbar ist - die Firmware verweigert die Initialisierung dann sicher, statt abzustürzen.",
         "hub75_pinout_title": "Pinbelegung (fest, nicht änderbar)",
+        "slave_config_pending": "Konfiguration wird gesendet - warte auf Bestätigung des Slaves ...",
         "dyn_slave_hub75_hint": "Die Pinbelegung des HUB75-Panels ist auf dem Slave fest verdrahtet und wird nicht hier eingestellt. Sehr große Panels benötigen unter Umständen mehr RAM als verfügbar ist - die Firmware verweigert die Initialisierung dann sicher, statt abzustürzen.",
         
         "abl_title": "Stromversorgung (ABL)",
@@ -338,6 +339,7 @@ const translations = {
         "hub75_sd_generic": "Generic (default, most panels)",
         "hub75_size_hint": "Panel size is set via \"2D Matrix Setup\" below as width/height (e.g. 64x64). Very large panels may need more RAM than is available - the firmware will then safely refuse to initialize instead of crashing.",
         "hub75_pinout_title": "Pinout (fixed, not configurable)",
+        "slave_config_pending": "Configuration sent - waiting for the slave to confirm ...",
         "dyn_slave_hub75_hint": "The HUB75 panel's pinout is hardwired on the slave and cannot be changed here. Very large panels may need more RAM than is available - the firmware will then safely refuse to initialize instead of crashing.",
         
         "abl_title": "Power Supply (ABL)",
@@ -641,6 +643,7 @@ const translations = {
         "hub75_sd_generic": "Generic (стандарт, большинство панелей)",
         "hub75_size_hint": "Размер панели задаётся ниже в разделе \"2D Matrix Setup\" (ширина/высота), например 64x64. Очень большим панелям может не хватить доступной ОЗУ - в этом случае прошивка безопасно откажется от инициализации вместо сбоя.",
         "hub75_pinout_title": "Распиновка (фиксированная, не настраивается)",
+        "slave_config_pending": "Конфигурация отправлена - ожидание подтверждения от слейва ...",
         "dyn_slave_hub75_hint": "Распиновка HUB75-панели на слейве жёстко задана и не настраивается здесь. Очень большим панелям может не хватить доступной ОЗУ - в этом случае прошивка безопасно откажется от инициализации вместо сбоя.",
         "abl_title": "Блок питания (ABL)",
         "abl_enable": "Автоматический ограничитель яркости",

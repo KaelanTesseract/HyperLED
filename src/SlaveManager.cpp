@@ -61,6 +61,8 @@ void SlaveManagerClass::loop() {
         lastValidUartPkt = millis();
     }
     
+    retryPendingConfigs();
+
     // PING frequently so slaves scanning channels can find us quickly
     if (now - _lastPingTime > 250) {
         _lastPingTime = now;
@@ -139,6 +141,8 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                 sanitizeForJson(sName);
             }
             
+            confirmPendingConfig(packet.senderId, count);
+
             bool found = false;
             for (auto& s : _discoveredSlaves) {
                 if (s.currentId == packet.senderId) {
@@ -205,15 +209,76 @@ void SlaveManagerClass::configureSlave(uint8_t currentId, uint8_t newId, uint8_t
 
     BusInterface* targetBus = getBusForSlave(currentId, _discoveredSlaves, _uartBus, _espBus);
     targetBus->sendPacket(currentId, HYPERBUS_MASTER_ID, CMD_SET_CONFIG, payload, len);
+
+    // Remember it until the Slave confirms. The discovery list is deliberately NOT updated to the
+    // new ID here: doing that on send alone is what made a lost packet invisible, since the Master
+    // then looked as if the change had taken effect. confirmPendingConfig() updates it once the
+    // Slave reports the new ID and pixel count in its PONG.
+    PendingConfig pending;
+    pending.addressedId = currentId;
+    pending.expectedId = newId;
+    pending.expectedCount = count;
+    pending.name = name;
+    pending.payload.assign(payload, payload + len);
+    pending.attempts = 1;
+    pending.lastSent = millis();
+
+    // Replace any earlier unconfirmed config for the same Slave - only the newest one matters.
+    for (auto it = _pendingConfigs.begin(); it != _pendingConfigs.end(); ) {
+        if (it->addressedId == currentId || it->expectedId == newId) it = _pendingConfigs.erase(it);
+        else ++it;
+    }
+    _pendingConfigs.push_back(pending);
+
     free(payload);
-    
-    // Update ID in the discovery list instead of erasing, so we remember if it's wireless!
-    for (auto& s : _discoveredSlaves) {
-        if (s.currentId == currentId) {
-            s.currentId = newId;
-            s.name = name;
-            break;
+}
+
+bool SlaveManagerClass::isConfigPending(uint8_t slaveId) const {
+    for (const auto& p : _pendingConfigs) {
+        if (p.addressedId == slaveId || p.expectedId == slaveId) return true;
+    }
+    return false;
+}
+
+void SlaveManagerClass::retryPendingConfigs() {
+    unsigned long now = millis();
+    for (auto it = _pendingConfigs.begin(); it != _pendingConfigs.end(); ) {
+        if (now - it->lastSent < CONFIG_RETRY_MS) { ++it; continue; }
+
+        if (it->attempts >= CONFIG_MAX_ATTEMPTS) {
+            Serial.printf("SlaveManager: slave %u never confirmed its new configuration after %u attempts - giving up\n",
+                          it->addressedId, it->attempts);
+            it = _pendingConfigs.erase(it);
+            continue;
         }
+
+        BusInterface* targetBus = getBusForSlave(it->addressedId, _discoveredSlaves, _uartBus, _espBus);
+        targetBus->sendPacket(it->addressedId, HYPERBUS_MASTER_ID, CMD_SET_CONFIG,
+                              it->payload.data(), (uint16_t)it->payload.size());
+        it->attempts++;
+        it->lastSent = now;
+        ++it;
+    }
+}
+
+void SlaveManagerClass::confirmPendingConfig(uint8_t senderId, uint16_t ledCount) {
+    for (auto it = _pendingConfigs.begin(); it != _pendingConfigs.end(); ++it) {
+        // The pixel count is checked as well as the ID: a Slave keeping its ID across a
+        // reconfiguration would otherwise confirm the change with a PONG it had already sent
+        // before receiving it.
+        if (senderId != it->expectedId || ledCount != it->expectedCount) continue;
+
+        for (auto& s : _discoveredSlaves) {
+            if (s.currentId == it->addressedId) {
+                s.currentId = it->expectedId;
+                s.name = it->name;
+                break;
+            }
+        }
+        Serial.printf("SlaveManager: slave %u confirmed its configuration after %u attempt(s)\n",
+                      senderId, it->attempts);
+        _pendingConfigs.erase(it);
+        return;
     }
 }
 
@@ -271,7 +336,15 @@ void SlaveManagerClass::triggerSlaveUpdate(uint8_t slaveId, const String& ssid, 
 
 void SlaveManagerClass::sendLEDData(uint8_t slaveId, const uint8_t* rgbData, uint16_t length) {
     if (millis() < _pauseLedsUntil) return;
-    
+
+    // Drop frames the link cannot carry (see MIN_LED_FRAME_INTERVAL_MS). Skipping a frame is
+    // invisible; flooding the transport is not, because it starves the discovery traffic that
+    // shares it.
+    unsigned long now = millis();
+    auto lastSent = _lastLedSend.find(slaveId);
+    if (lastSent != _lastLedSend.end() && now - lastSent->second < MIN_LED_FRAME_INTERVAL_MS) return;
+    _lastLedSend[slaveId] = now;
+
     if (slaveId == HYPERBUS_BROADCAST_ID) {
         _uartBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_SET_LEDS, rgbData, length);
         _espBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_SET_LEDS, rgbData, length);

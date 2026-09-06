@@ -1887,6 +1887,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Set correct type if it was already configured
                     // (Requires backend to send type, but for now defaults to current master type or user selects)
                     // We can just trigger onchange to update pin2/HUB75 group visibility
+                    if (slave.configPending) {
+                        const pending = document.createElement('p');
+                        pending.style.cssText = 'font-size: 12px; color: var(--primary); margin: 8px 0 0 0;';
+                        pending.innerText = t('slave_config_pending');
+                        card.appendChild(pending);
+                    }
                     renderHub75Pinout(`slaveHub75Pinout_${slave.id}`);
                     document.getElementById(`slaveType_${slave.id}`).dispatchEvent(new Event('change'));
                 });

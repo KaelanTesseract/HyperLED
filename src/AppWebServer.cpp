@@ -262,6 +262,7 @@ void WebServerManagerClass::setupRoutes() {
             obj["version"] = s.version;
             obj["isWireless"] = s.isWireless;
             obj["lastSeenAge"] = millis() - s.lastSeen;
+            obj["configPending"] = SlaveManager.isConfigPending(s.currentId);
         }
         String json;
         serializeJson(doc, json);
