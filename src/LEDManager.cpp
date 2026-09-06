@@ -933,7 +933,10 @@ private:
 };
 
 void LEDManagerClass::renderWithEngine(Segment& seg, uint8_t ablCap, uint8_t effectOverride) {
-    EffectState st;
+    // Deliberately a reference to the segment's own state, not a local: the engine keeps its
+    // per-pixel buffers in here, and rebuilding them every frame would reset every effect that
+    // depends on what the previous frame drew.
+    EffectState& st = seg.renderState;
     st.effect = (effectOverride == 255) ? seg.effect : effectOverride;
     // The engine scales colours by brightness alone, so the ABL cap is folded in here - the same
     // (brightness * ablCap) / 255 the effects used to compute for themselves.
@@ -999,16 +1002,7 @@ void LEDManagerClass::loop() {
                 // Write back per-frame animation state so it persists across ticks
                 // instead of being reset every frame (unifiedSeg is a throwaway copy).
                 _segments[0].effectStep = unifiedSeg.effectStep;
-                _segments[0].twinkleState = std::move(unifiedSeg.twinkleState);
-                _segments[0].fireHeat = std::move(unifiedSeg.fireHeat);
-                _segments[0].sinelonState = std::move(unifiedSeg.sinelonState);
-                _segments[0].confettiState = std::move(unifiedSeg.confettiState);
-                _segments[0].confettiHue = std::move(unifiedSeg.confettiHue);
-                _segments[0].juggleState = std::move(unifiedSeg.juggleState);
-                _segments[0].rippleState = std::move(unifiedSeg.rippleState);
-                _segments[0].fireworksState = std::move(unifiedSeg.fireworksState);
-                _segments[0].starfieldState = std::move(unifiedSeg.starfieldState);
-                _segments[0].ballsState = std::move(unifiedSeg.ballsState);
+                _segments[0].renderState = std::move(unifiedSeg.renderState);
                 // Carries back any image widget pixel data effectText lazily loaded
                 // from LittleFS this tick, so it isn't re-read from disk every frame.
                 _segments[0].textWidgets = std::move(unifiedSeg.textWidgets);

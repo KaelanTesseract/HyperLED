@@ -19,6 +19,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include "EffectEngine.h"
 #include <vector>
 #include "BusWrapper.h"
 #include <Preferences.h>
@@ -131,18 +132,11 @@ struct Segment {
     // back to "Uhr / Text" restores the previous layout).
     std::vector<TextWidget> textWidgets;
 
-    // Per-pixel animation state for effects that need memory across frames
-    // (lazily sized to the segment's pixel count on first use by that effect).
-    std::vector<uint8_t> twinkleState;
-    std::vector<uint8_t> fireHeat; // reused by both 1D Fire (count-sized) and Fire 2D (width*height-sized)
-    std::vector<uint8_t> sinelonState;
-    std::vector<uint8_t> confettiState;
-    std::vector<uint8_t> confettiHue;
-    std::vector<uint8_t> juggleState; // 3 bytes (r,g,b) per pixel
-    std::vector<uint8_t> rippleState; // 3 bytes (x, y, radius) per ripple
-    std::vector<uint8_t> fireworksState; // 6 bytes (x, y, peakY, hue, timer, state) per rocket
-    std::vector<uint8_t> starfieldState; // 3 bytes (dx, dy, radius) per star
-    std::vector<uint8_t> ballsState;     // 5 bytes (x, y, vx, vy, hue) per ball
+    // Render state for the shared EffectEngine, including the per-pixel buffers effects like
+    // Fire carry from one frame to the next. It has to live on the segment: a state created
+    // fresh for each frame restarts those simulations every time, which showed up as Fire
+    // lighting only the handful of pixels it had just sparked.
+    EffectState renderState;
 };
 
 class LEDManagerClass {
