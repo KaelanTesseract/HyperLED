@@ -55,10 +55,13 @@ public:
     // Hands effect parameters to a Slave that renders locally, instead of streaming pixels.
     // Only actually transmits when something changed or the periodic refresh is due, so this is
     // safe to call every frame.
+    // windowTotal > 0 puts the Slave into sync mode: it renders the effect across windowTotal
+    // pixels and shows only the slice at windowOffset, so one effect runs unbroken across the
+    // Master and every Slave instead of restarting in each segment.
     void sendSegmentConfig(uint8_t slaveId, uint8_t effect, uint8_t brightness, uint8_t speed,
                            uint8_t intensity, uint8_t palette, bool isOn, uint32_t color,
                            uint32_t color2, bool color2Enabled, bool whiteOnly, uint8_t cct,
-                           uint16_t effectStep);
+                           uint16_t effectStep, uint16_t windowOffset = 0, uint16_t windowTotal = 0);
     // Whether this Slave's firmware can render effects on its own. Older Slaves keep receiving
     // streamed pixel data, so a mixed set of firmware versions stays functional.
     bool slaveRendersLocally(uint8_t slaveId) const;

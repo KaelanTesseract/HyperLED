@@ -361,7 +361,8 @@ void SlaveManagerClass::sendSegmentConfig(uint8_t slaveId, uint8_t effect, uint8
                                           uint8_t speed, uint8_t intensity, uint8_t palette,
                                           bool isOn, uint32_t color, uint32_t color2,
                                           bool color2Enabled, bool whiteOnly, uint8_t cct,
-                                          uint16_t effectStep) {
+                                          uint16_t effectStep, uint16_t windowOffset,
+                                          uint16_t windowTotal) {
     if (millis() < _pauseLedsUntil) return;
 
     uint8_t payload[HYPERBUS_SEGMENT_PAYLOAD_LEN] = {0};
@@ -380,13 +381,21 @@ void SlaveManagerClass::sendSegmentConfig(uint8_t slaveId, uint8_t effect, uint8
     payload[12] = cct;
     payload[13] = effectStep & 0xFF;
     payload[14] = (effectStep >> 8) & 0xFF;
+    payload[15] = windowOffset & 0xFF;
+    payload[16] = (windowOffset >> 8) & 0xFF;
+    payload[17] = windowTotal & 0xFF;
+    payload[18] = (windowTotal >> 8) & 0xFF;
 
     SentSegment& sent = _sentSegments[slaveId];
     unsigned long now = millis();
     // The step counter is deliberately excluded from the comparison: it changes every frame, so
     // including it would defeat the whole point and resend the parameters continuously.
-    bool changed = !sent.valid || memcmp(sent.payload, payload, 13) != 0;
-    if (!changed && now - sent.lastSent < SEGMENT_REFRESH_MS) return;
+    bool changed = !sent.valid || memcmp(sent.payload, payload, 13) != 0
+                   || memcmp(&sent.payload[15], &payload[15], 4) != 0;
+    // In sync mode the step counter has to travel every frame, otherwise the Master and the Slave
+    // advance the same effect on their own clocks and the pattern tears at the segment boundary -
+    // exactly what sync is meant to prevent. It is 19 bytes, so the traffic is negligible.
+    if (windowTotal == 0 && !changed && now - sent.lastSent < SEGMENT_REFRESH_MS) return;
 
     memcpy(sent.payload, payload, HYPERBUS_SEGMENT_PAYLOAD_LEN);
     sent.lastSent = now;

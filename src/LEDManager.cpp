@@ -1064,13 +1064,21 @@ void LEDManagerClass::loop() {
                     // size cannot be fed frame by frame - 64x64 alone is 4096 pixels - so the
                     // parameters go over instead and the Slave renders. Effects the Slave has no
                     // way to produce (image data, clock and weather) still stream as pixels.
-                    if (EffectEngine::canRender(seg.effect) &&
+                    // With sync on, every segment shows one continuous effect spanning the whole
+                    // chain, so the Slave gets the leading segment's parameters plus the window it
+                    // occupies - it renders the full-length effect and displays only its slice.
+                    // Without sync each segment is independent and the Slave renders its own.
+                    const Segment& src = _syncActive ? _segments[0] : seg;
+                    uint16_t winOffset = _syncActive ? seg.start : 0;
+                    uint16_t winTotal = _syncActive ? totalCount : 0;
+
+                    if (EffectEngine::canRender(src.effect) &&
                         SlaveManager.slaveRendersLocally(seg.slaveId)) {
-                        SlaveManager.sendSegmentConfig(seg.slaveId, seg.effect, seg.brightness,
-                                                       seg.speed, seg.intensity, seg.palette,
-                                                       seg.isOn, getEffectiveColor(seg), seg.color2,
-                                                       seg.color2Enabled, seg.whiteOnly, seg.cct,
-                                                       seg.effectStep);
+                        SlaveManager.sendSegmentConfig(seg.slaveId, src.effect, src.brightness,
+                                                       src.speed, src.intensity, src.palette,
+                                                       src.isOn, getEffectiveColor(src), src.color2,
+                                                       src.color2Enabled, src.whiteOnly, src.cct,
+                                                       src.effectStep, winOffset, winTotal);
                         continue;
                     }
                     uint16_t ledsToSend = seg.stop - seg.start;
