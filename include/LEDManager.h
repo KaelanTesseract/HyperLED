@@ -295,13 +295,6 @@ private:
     void applySettings();
 
     // Effects
-    void effectTwinkle(Segment& seg, uint8_t ablCap);
-    void effectMeteor(Segment& seg, uint8_t ablCap);
-    void effectSinelon(Segment& seg, uint8_t ablCap);
-    void effectConfetti(Segment& seg, uint8_t ablCap);
-    void effectJuggle(Segment& seg, uint8_t ablCap);
-    void effectBpm(Segment& seg, uint8_t ablCap);
-    void effectPacifica(Segment& seg, uint8_t ablCap);
     // "Bild" - deliberately does nothing, so a still image streamed in via
     // /api/matrix stays on screen instead of being overwritten by the next tick.
     void effectImage(Segment& seg, uint8_t ablCap);
@@ -310,12 +303,8 @@ private:
     void effectText(Segment& seg, uint8_t ablCap);
 
     // HUB75 showcase effects (see EFFECT_HUB75_SHOWCASE_START above).
-    void effectFireworks(Segment& seg, uint8_t ablCap);
-    void effectStarfield(Segment& seg, uint8_t ablCap);
-    void effectBouncingBalls(Segment& seg, uint8_t ablCap);
 
     uint8_t getGlobalAblCap();
-    uint32_t Wheel(byte WheelPos);
 
     // Palettes: seg.palette == 0 means "Solid" (use seg.color as-is). Any other
     // palette id returns a color interpolated from that palette's stops, sampled
