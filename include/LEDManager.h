@@ -277,10 +277,6 @@ private:
     bool _savePending = false;
     unsigned long _saveTimer = 0;
 
-    // Matrix Rain: per-column falling-head position (negative = not yet visible),
-    // lazily (re)sized to the canvas width. Matrix config is global, not per-segment.
-    std::vector<int16_t> _matrixRainHeads;
-
     // Live preview shadow buffer (RGB triplets, Master's own matrix only - see
     // getMatrixPreviewJson above). Lazily (re)sized on write.
     std::vector<uint8_t> _matrixPreviewBuf;
@@ -299,16 +295,12 @@ private:
     void applySettings();
 
     // Effects
-    void effectFire(Segment& seg, uint8_t ablCap);
     void effectTwinkle(Segment& seg, uint8_t ablCap);
     void effectMeteor(Segment& seg, uint8_t ablCap);
-    void effectMatrixRain(Segment& seg, uint8_t ablCap);
     void effectSinelon(Segment& seg, uint8_t ablCap);
     void effectConfetti(Segment& seg, uint8_t ablCap);
     void effectJuggle(Segment& seg, uint8_t ablCap);
     void effectBpm(Segment& seg, uint8_t ablCap);
-    void effectRipple(Segment& seg, uint8_t ablCap);
-    void effectFire2D(Segment& seg, uint8_t ablCap);
     void effectPacifica(Segment& seg, uint8_t ablCap);
     // "Bild" - deliberately does nothing, so a still image streamed in via
     // /api/matrix stays on screen instead of being overwritten by the next tick.

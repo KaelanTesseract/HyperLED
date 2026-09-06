@@ -992,16 +992,12 @@ void LEDManagerClass::loop() {
                     // Shared implementation - identical to what a Slave renders locally.
                     renderWithEngine(unifiedSeg, ablCap);
                 } else switch (unifiedSeg.effect) {
-                    case 4: effectFire(unifiedSeg, ablCap); break;
                     case 7: effectTwinkle(unifiedSeg, ablCap); break;
                     case 8: effectMeteor(unifiedSeg, ablCap); break;
-                    case 9: effectMatrixRain(unifiedSeg, ablCap); break;
                     case 14: effectSinelon(unifiedSeg, ablCap); break;
                     case 15: effectConfetti(unifiedSeg, ablCap); break;
                     case 16: effectJuggle(unifiedSeg, ablCap); break;
                     case 17: effectBpm(unifiedSeg, ablCap); break;
-                    case 22: effectRipple(unifiedSeg, ablCap); break;
-                    case 23: effectFire2D(unifiedSeg, ablCap); break;
                     case 24: effectPacifica(unifiedSeg, ablCap); break;
                     case 25: effectImage(unifiedSeg, ablCap); break;
                     case 26: effectFireworks(unifiedSeg, ablCap); break;
@@ -1036,7 +1032,7 @@ void LEDManagerClass::loop() {
             // Leaving that work undone is the point of local rendering; it keeps the Master free
             // for the web interface and for managing the other Slaves.
             if (seg.isSlave && seg.slaveId != 254 &&
-                hyperBusEffectRendersOnSlave(seg.effect) &&
+                EffectEngine::canRender(seg.effect) &&
                 SlaveManager.slaveRendersLocally(seg.slaveId)) {
                 continue;
             }
@@ -1057,16 +1053,12 @@ void LEDManagerClass::loop() {
                         // Shared implementation - identical to what a Slave renders locally.
                         renderWithEngine(seg, ablCap);
                     } else switch (seg.effect) {
-                        case 4: effectFire(seg, ablCap); break;
                         case 7: effectTwinkle(seg, ablCap); break;
                         case 8: effectMeteor(seg, ablCap); break;
-                        case 9: effectMatrixRain(seg, ablCap); break;
                         case 14: effectSinelon(seg, ablCap); break;
                         case 15: effectConfetti(seg, ablCap); break;
                         case 16: effectJuggle(seg, ablCap); break;
                         case 17: effectBpm(seg, ablCap); break;
-                        case 22: effectRipple(seg, ablCap); break;
-                        case 23: effectFire2D(seg, ablCap); break;
                         case 24: effectPacifica(seg, ablCap); break;
                         case 25: effectImage(seg, ablCap); break;
                         case 26: effectFireworks(seg, ablCap); break;
@@ -1098,7 +1090,7 @@ void LEDManagerClass::loop() {
                     // size cannot be fed frame by frame - 64x64 alone is 4096 pixels - so the
                     // parameters go over instead and the Slave renders. Effects the Slave has no
                     // way to produce (image data, clock and weather) still stream as pixels.
-                    if (hyperBusEffectRendersOnSlave(seg.effect) &&
+                    if (EffectEngine::canRender(seg.effect) &&
                         SlaveManager.slaveRendersLocally(seg.slaveId)) {
                         SlaveManager.sendSegmentConfig(seg.slaveId, seg.effect, seg.brightness,
                                                        seg.speed, seg.intensity, seg.palette,
@@ -1196,67 +1188,6 @@ uint8_t LEDManagerClass::getGlobalAblCap() {
 
 // --- New Advanced Effects ---
 
-void LEDManagerClass::effectFire(Segment& seg, uint8_t ablCap) {
-    // Classic "Fire2012" simulation (cool down -> heat drifts/diffuses upward ->
-    // random sparks at the base -> map heat to color) instead of independent
-    // per-pixel random flicker, so flames actually appear to rise and flow.
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    uint16_t count = seg.stop - seg.start;
-    if (count == 0) return;
-
-    if (seg.fireHeat.size() != count) {
-        seg.fireHeat.assign(count, 0);
-    }
-
-    // intensity controls cooling rate: higher intensity -> cools faster -> shorter, choppier flames
-    const uint8_t cooling = 20 + (seg.intensity * 80) / 255;
-    const uint8_t sparking = 120;
-
-    // Step 1: cool down every cell a little
-    for (uint16_t i = 0; i < count; i++) {
-        uint8_t cooldown = random(0, ((cooling * 10) / count) + 2);
-        seg.fireHeat[i] = (seg.fireHeat[i] > cooldown) ? seg.fireHeat[i] - cooldown : 0;
-    }
-
-    // Step 2: heat drifts up and diffuses
-    for (uint16_t i = count - 1; i >= 2; i--) {
-        seg.fireHeat[i] = (seg.fireHeat[i - 1] + seg.fireHeat[i - 2] + seg.fireHeat[i - 2]) / 3;
-    }
-
-    // Step 3: randomly ignite new sparks near the base (seg.start end)
-    if (random(0, 255) < sparking) {
-        uint16_t sparkRange = count < 7 ? count : 7;
-        uint16_t y = random(0, sparkRange);
-        uint16_t add = random(160, 255);
-        seg.fireHeat[y] = (seg.fireHeat[y] + add > 255) ? 255 : seg.fireHeat[y] + add;
-    }
-
-    // Step 4: map heat to color and draw. Palette 0 ("Solid") uses the classic
-    // black->red->yellow->white fire ramp; any other palette recolors the flame
-    // (e.g. the "Ocean" palette turns this into a rising bubble/water look).
-    for (uint16_t i = 0; i < count; i++) {
-        uint8_t heat = seg.fireHeat[i];
-        uint8_t r, g, b;
-        if (seg.palette == 0) {
-            uint8_t t192 = (heat * 191) / 255;
-            uint8_t heatramp = (t192 & 0x3F) << 2;
-            if (t192 > 128) { r = 255; g = 255; b = heatramp; }
-            else if (t192 > 64) { r = 255; g = heatramp; b = 0; }
-            else { r = heatramp; g = 0; b = 0; }
-        } else {
-            uint32_t c = getPaletteColor(seg.palette, heat);
-            r = (c >> 16) & 0xFF;
-            g = (c >> 8) & 0xFF;
-            b = c & 0xFF;
-        }
-
-        r = (r * currentBri) / 255;
-        g = (g * currentBri) / 255;
-        b = (b * currentBri) / 255;
-        setSegmentPixelColor(seg, seg.start + i, r, g, b, 0);
-    }
-}
-
 void LEDManagerClass::effectTwinkle(Segment& seg, uint8_t ablCap) {
     // Confetti-style twinkle: sparkles fade in instantly and fade out smoothly over
     // several frames (per-pixel brightness state), and each pixel position samples
@@ -1318,57 +1249,6 @@ void LEDManagerClass::effectMeteor(Segment& seg, uint8_t ablCap) {
                 setSegmentPixelColor(seg, pixel, fadeR, fadeG, fadeB, 0);
             }
         }
-    }
-    seg.effectStep++;
-}
-
-void LEDManagerClass::effectMatrixRain(Segment& seg, uint8_t ablCap) {
-    // 2D Matrix Effect! Each column has its own persistent falling "head" with a
-    // fading trail behind it, so drops actually fall instead of re-randomizing
-    // their column every frame. Columns span the whole virtual canvas, so drops
-    // fall continuously through Master and Slave panels stacked vertically.
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    if (!_isMatrix) {
-        renderWithEngine(seg, ablCap, 3); // Fallback to Chase if not configured as matrix
-        return;
-    }
-    uint16_t cw = getCanvasWidth();
-    uint16_t ch = getCanvasHeight();
-
-    if (_matrixRainHeads.size() != cw) {
-        _matrixRainHeads.assign(cw, 0);
-        for (uint16_t x = 0; x < cw; x++) {
-            // Stagger starts: some columns begin mid-fall, others not yet visible.
-            _matrixRainHeads[x] = -(int16_t)random(0, ch * 2);
-        }
-    }
-
-    for (uint16_t y = 0; y < ch; y++) {
-        for (uint16_t x = 0; x < cw; x++) {
-            setCanvasPixelColor(x, y, 0, 0, 0, 0);
-        }
-    }
-
-    uint32_t effColor = getEffectiveColor(seg);
-    uint8_t r = (((effColor >> 16) & 0xFF) * currentBri) / 255;
-    uint8_t g = (((effColor >> 8) & 0xFF) * currentBri) / 255;
-    uint8_t b = ((effColor & 0xFF) * currentBri) / 255;
-
-    const int16_t trailLen = 6;
-    for (uint16_t x = 0; x < cw; x++) {
-        int16_t head = _matrixRainHeads[x];
-        for (int16_t t = 0; t < trailLen; t++) {
-            int16_t y = head - t;
-            if (y >= 0 && y < (int16_t)ch) {
-                uint8_t fade = trailLen - t; // brightest at the head, fading upward
-                setCanvasPixelColor(x, y, (r * fade) / trailLen, (g * fade) / trailLen, (b * fade) / trailLen, 0);
-            }
-        }
-        head++;
-        if (head - trailLen > (int16_t)ch) {
-            head = -(int16_t)random(0, ch); // restart, staggered
-        }
-        _matrixRainHeads[x] = head;
     }
     seg.effectStep++;
 }
@@ -1519,142 +1399,6 @@ void LEDManagerClass::effectBpm(Segment& seg, uint8_t ablCap) {
         setSegmentPixelColor(seg, seg.start + i, r, g, b, 0);
     }
     seg.effectStep += 2;
-}
-
-void LEDManagerClass::effectRipple(Segment& seg, uint8_t ablCap) {
-    // Circular waves expand outward from random points and fade as they grow.
-    // Runs across the whole virtual canvas, so a ripple can spread from one panel
-    // onto its neighbors. Falls back to Bounce (its closest 1D relative) when no
-    // matrix is configured. Ripple origin/radius are packed into a byte each, so
-    // canvases wider/taller than 255px will clip - a rare, acceptable edge case.
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    if (!_isMatrix) {
-        renderWithEngine(seg, ablCap, 12); // Bounce
-        return;
-    }
-    uint16_t cw = getCanvasWidth();
-    uint16_t ch = getCanvasHeight();
-
-    const uint8_t numRipples = 3;
-    if (seg.rippleState.size() != (size_t)numRipples * 3) {
-        seg.rippleState.assign((size_t)numRipples * 3, 0); // x, y, radius per ripple; radius 0 = inactive
-    }
-
-    for (uint16_t y = 0; y < ch; y++) {
-        for (uint16_t x = 0; x < cw; x++) {
-            setCanvasPixelColor(x, y, 0, 0, 0, 0);
-        }
-    }
-
-    uint16_t maxRadius = (cw > ch ? cw : ch);
-    uint32_t effColor = getEffectiveColor(seg);
-    uint8_t baseR = (effColor >> 16) & 0xFF;
-    uint8_t baseG = (effColor >> 8) & 0xFF;
-    uint8_t baseB = effColor & 0xFF;
-
-    for (uint8_t rp = 0; rp < numRipples; rp++) {
-        uint8_t base = rp * 3;
-        uint8_t rx = seg.rippleState[base];
-        uint8_t ry = seg.rippleState[base + 1];
-        uint8_t radius = seg.rippleState[base + 2];
-
-        if (radius == 0) {
-            // intensity controls how often a new ripple starts (roughly 2%-18% chance/frame)
-            if (random(0, 100) < (2 + seg.intensity / 16)) {
-                seg.rippleState[base] = (uint8_t)random(0, cw > 255 ? 255 : cw);
-                seg.rippleState[base + 1] = (uint8_t)random(0, ch > 255 ? 255 : ch);
-                seg.rippleState[base + 2] = 1;
-            }
-            continue;
-        }
-
-        for (uint16_t y = 0; y < ch; y++) {
-            for (uint16_t x = 0; x < cw; x++) {
-                int16_t dx = (int16_t)x - rx;
-                int16_t dy = (int16_t)y - ry;
-                uint16_t distSq = (uint16_t)(dx * dx + dy * dy);
-                uint16_t rSq = (uint16_t)radius * radius;
-                uint16_t rPrevSq = radius > 1 ? (uint16_t)(radius - 1) * (radius - 1) : 0;
-                if (distSq <= rSq && distSq > rPrevSq) {
-                    uint8_t fade = 255 - (uint16_t)(radius * 255 / maxRadius);
-                    setCanvasPixelColor(x, y, (baseR * currentBri / 255 * fade) / 255,
-                                            (baseG * currentBri / 255 * fade) / 255,
-                                            (baseB * currentBri / 255 * fade) / 255, 0);
-                }
-            }
-        }
-
-        radius++;
-        seg.rippleState[base + 2] = (radius >= maxRadius) ? 0 : radius;
-    }
-    seg.effectStep++;
-}
-
-void LEDManagerClass::effectFire2D(Segment& seg, uint8_t ablCap) {
-    // 2D Fire2012: heat rises up each column across the whole virtual canvas (not
-    // just one panel), so flames can burn continuously from a Slave panel up into
-    // the Master's own matrix (or vice versa). Falls back to 1D Fire when no
-    // matrix is configured (reuses the same fireHeat buffer either way).
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    if (!_isMatrix) {
-        effectFire(seg, ablCap);
-        return;
-    }
-    uint16_t cw = getCanvasWidth();
-    uint16_t ch = getCanvasHeight();
-
-    size_t total = (size_t)cw * ch;
-    if (seg.fireHeat.size() != total) {
-        seg.fireHeat.assign(total, 0);
-    }
-
-    const uint8_t cooling = 20 + (seg.intensity * 80) / 255;
-
-    // Step 1: cool every cell a little
-    for (size_t i = 0; i < total; i++) {
-        uint8_t cooldown = random(0, ((cooling * 10) / cw) + 2);
-        seg.fireHeat[i] = (seg.fireHeat[i] > cooldown) ? seg.fireHeat[i] - cooldown : 0;
-    }
-
-    // Step 2: heat rises within each column (y = 0 is the base/heat source row)
-    for (uint16_t x = 0; x < cw; x++) {
-        for (uint16_t y = ch - 1; y >= 2; y--) {
-            size_t idx = (size_t)y * cw + x;
-            size_t idxBelow1 = (size_t)(y - 1) * cw + x;
-            size_t idxBelow2 = (size_t)(y - 2) * cw + x;
-            seg.fireHeat[idx] = (seg.fireHeat[idxBelow1] + seg.fireHeat[idxBelow2] + seg.fireHeat[idxBelow2]) / 3;
-        }
-    }
-
-    // Step 3: random sparks along the base row
-    for (uint16_t x = 0; x < cw; x++) {
-        if (random(0, 255) < 120) {
-            uint16_t add = random(160, 255);
-            seg.fireHeat[x] = (seg.fireHeat[x] + add > 255) ? 255 : seg.fireHeat[x] + add;
-        }
-    }
-
-    // Step 4: map heat to color and draw
-    for (uint16_t y = 0; y < ch; y++) {
-        for (uint16_t x = 0; x < cw; x++) {
-            uint8_t heat = seg.fireHeat[(size_t)y * cw + x];
-            uint8_t r, g, b;
-            if (seg.palette == 0) {
-                uint8_t t192 = (heat * 191) / 255;
-                uint8_t heatramp = (t192 & 0x3F) << 2;
-                if (t192 > 128) { r = 255; g = 255; b = heatramp; }
-                else if (t192 > 64) { r = 255; g = heatramp; b = 0; }
-                else { r = heatramp; g = 0; b = 0; }
-            } else {
-                uint32_t c = getPaletteColor(seg.palette, heat);
-                r = (c >> 16) & 0xFF; g = (c >> 8) & 0xFF; b = c & 0xFF;
-            }
-            r = (r * currentBri) / 255;
-            g = (g * currentBri) / 255;
-            b = (b * currentBri) / 255;
-            setCanvasPixelColor(x, y, r, g, b, 0);
-        }
-    }
 }
 
 void LEDManagerClass::effectPacifica(Segment& seg, uint8_t ablCap) {
