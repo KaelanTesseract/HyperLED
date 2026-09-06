@@ -1072,9 +1072,15 @@ void LEDManagerClass::loop() {
                     uint16_t winOffset = _syncActive ? seg.start : 0;
                     uint16_t winTotal = _syncActive ? totalCount : 0;
 
+                    // Dim by the same ABL cap the Master applies to its own pixels. Streaming did
+                    // this implicitly - the pixels were already scaled before they went out - so
+                    // sending the raw brightness instead made a Slave brighter than the Master and
+                    // put a visible step at the segment boundary.
+                    uint8_t srcBri = (uint8_t)(((uint16_t)src.brightness * ablCap) / 255);
+
                     if (EffectEngine::canRender(src.effect) &&
                         SlaveManager.slaveRendersLocally(seg.slaveId)) {
-                        SlaveManager.sendSegmentConfig(seg.slaveId, src.effect, src.brightness,
+                        SlaveManager.sendSegmentConfig(seg.slaveId, src.effect, srcBri,
                                                        src.speed, src.intensity, src.palette,
                                                        src.isOn, getEffectiveColor(src), src.color2,
                                                        src.color2Enabled, src.whiteOnly, src.cct,
