@@ -986,6 +986,17 @@ void LEDManagerClass::loop() {
         }
     } else {
         for (auto& seg : _segments) {
+            // Skip segments a Slave draws for itself. Computing those pixels here would be pure
+            // waste - nothing reads them, since only the effect parameters get sent - and for a
+            // panel-sized segment it is a lot of waste: a 64x64 panel is 4096 pixels per frame.
+            // Leaving that work undone is the point of local rendering; it keeps the Master free
+            // for the web interface and for managing the other Slaves.
+            if (seg.isSlave && seg.slaveId != 254 &&
+                hyperBusEffectRendersOnSlave(seg.effect) &&
+                SlaveManager.slaveRendersLocally(seg.slaveId)) {
+                continue;
+            }
+
             unsigned int delayMs = 500 - (seg.speed * 490 / 255);
             if (seg.effect == 0) delayMs = 100;
 
@@ -1049,6 +1060,19 @@ void LEDManagerClass::loop() {
 
             for (const auto& seg : _segments) {
                 if (seg.isSlave && seg.slaveId != 254 && seg.stop > seg.start) {
+                    // Hand the effect to the Slave when it can draw it itself. A panel of any real
+                    // size cannot be fed frame by frame - 64x64 alone is 4096 pixels - so the
+                    // parameters go over instead and the Slave renders. Effects the Slave has no
+                    // way to produce (image data, clock and weather) still stream as pixels.
+                    if (hyperBusEffectRendersOnSlave(seg.effect) &&
+                        SlaveManager.slaveRendersLocally(seg.slaveId)) {
+                        SlaveManager.sendSegmentConfig(seg.slaveId, seg.effect, seg.brightness,
+                                                       seg.speed, seg.intensity, seg.palette,
+                                                       seg.isOn, getEffectiveColor(seg), seg.color2,
+                                                       seg.color2Enabled, seg.whiteOnly, seg.cct,
+                                                       seg.effectStep);
+                        continue;
+                    }
                     uint16_t ledsToSend = seg.stop - seg.start;
                     if (totalCount >= seg.stop) {
                         SlaveManager.sendLEDData(seg.slaveId, &buffer[seg.start * 5], ledsToSend * 5);

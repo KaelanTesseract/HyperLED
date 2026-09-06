@@ -32,6 +32,8 @@ struct DiscoveredSlave {
     String version;
     unsigned long lastSeen;
     bool isWireless;
+    // Set from the reported firmware version - see slaveRendersLocally().
+    bool rendersLocally = false;
 };
 
 class SlaveManagerClass {
@@ -49,6 +51,17 @@ public:
     void setSlaveStatusLed(uint8_t slaveId, bool on, uint32_t color, uint8_t brightness);
     void triggerSlaveUpdate(uint8_t slaveId, const String& ssid, const String& pass, const String& url);
     void sendLEDData(uint8_t slaveId, const uint8_t* rgbData, uint16_t length);
+
+    // Hands effect parameters to a Slave that renders locally, instead of streaming pixels.
+    // Only actually transmits when something changed or the periodic refresh is due, so this is
+    // safe to call every frame.
+    void sendSegmentConfig(uint8_t slaveId, uint8_t effect, uint8_t brightness, uint8_t speed,
+                           uint8_t intensity, uint8_t palette, bool isOn, uint32_t color,
+                           uint32_t color2, bool color2Enabled, bool whiteOnly, uint8_t cct,
+                           uint16_t effectStep);
+    // Whether this Slave's firmware can render effects on its own. Older Slaves keep receiving
+    // streamed pixel data, so a mixed set of firmware versions stays functional.
+    bool slaveRendersLocally(uint8_t slaveId) const;
 
     // For the ESP-NOW diagnostics on /api/espnow_status.
     EspNowBusClass* getEspBus() { return _espBus; }
@@ -92,6 +105,17 @@ private:
     // carry more than that anyway at 115200 baud.
     static const unsigned long MIN_LED_FRAME_INTERVAL_MS = 33;
     std::map<uint8_t, unsigned long> _lastLedSend;
+
+    // Last effect parameters sent to each Slave, so unchanged ones are not resent every frame.
+    // The refresh interval exists so a Slave that rebooted picks its effect back up on its own
+    // rather than sitting dark until the user touches a control.
+    struct SentSegment {
+        uint8_t payload[HYPERBUS_SEGMENT_PAYLOAD_LEN];
+        unsigned long lastSent;
+        bool valid = false;
+    };
+    static const unsigned long SEGMENT_REFRESH_MS = 2000;
+    std::map<uint8_t, SentSegment> _sentSegments;
     
     void handlePacket(const HyperBusPacket& packet);
     static void staticHandlePacket(const HyperBusPacket& packet);

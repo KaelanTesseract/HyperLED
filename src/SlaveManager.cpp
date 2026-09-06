@@ -105,6 +105,8 @@ void SlaveManagerClass::loop() {
     }
 }
 
+static bool versionRendersLocally(const String& version);
+
 // A corrupted/garbled PONG (e.g. from a protocol-version mismatch or a noisy wire) can contain raw
 // control bytes. ArduinoJson does not escape those, which produces invalid JSON on /api/slaves and
 // breaks the whole Slaves page in the browser - so replace anything non-printable before it's stored.
@@ -149,6 +151,7 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                     s.ledCount = count;
                     s.name = sName;
                     s.version = sVersion;
+                    s.rendersLocally = versionRendersLocally(sVersion);
                     s.lastSeen = millis();
                     s.isWireless = packet.isWireless;
                     found = true;
@@ -162,6 +165,7 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                 ds.ledCount = count;
                 ds.name = sName;
                 ds.version = sVersion;
+                ds.rendersLocally = versionRendersLocally(sVersion);
                 ds.lastSeen = millis();
                 ds.isWireless = packet.isWireless;
                 _discoveredSlaves.push_back(ds);
@@ -332,6 +336,65 @@ void SlaveManagerClass::triggerSlaveUpdate(uint8_t slaveId, const String& ssid, 
         BusInterface* targetBus = getBusForSlave(slaveId, _discoveredSlaves, _uartBus, _espBus);
         targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_TRIGGER_UPDATE, (const uint8_t*)json.c_str(), json.length());
     }
+}
+
+// Local rendering arrived in Slave firmware 0.2.0. Anything older only understands streamed
+// pixels, and must keep getting them - a mixed set of firmware versions has to stay functional.
+static bool versionRendersLocally(const String& version) {
+    int firstDot = version.indexOf('.');
+    if (firstDot < 0) return false;
+    int secondDot = version.indexOf('.', firstDot + 1);
+    long major = version.substring(0, firstDot).toInt();
+    long minor = (secondDot > firstDot) ? version.substring(firstDot + 1, secondDot).toInt()
+                                        : version.substring(firstDot + 1).toInt();
+    return (major > 0) || (major == 0 && minor >= 2);
+}
+
+bool SlaveManagerClass::slaveRendersLocally(uint8_t slaveId) const {
+    for (const auto& s : _discoveredSlaves) {
+        if (s.currentId == slaveId) return s.rendersLocally;
+    }
+    return false;
+}
+
+void SlaveManagerClass::sendSegmentConfig(uint8_t slaveId, uint8_t effect, uint8_t brightness,
+                                          uint8_t speed, uint8_t intensity, uint8_t palette,
+                                          bool isOn, uint32_t color, uint32_t color2,
+                                          bool color2Enabled, bool whiteOnly, uint8_t cct,
+                                          uint16_t effectStep) {
+    if (millis() < _pauseLedsUntil) return;
+
+    uint8_t payload[HYPERBUS_SEGMENT_PAYLOAD_LEN] = {0};
+    payload[0] = effect;
+    payload[1] = brightness;
+    payload[2] = speed;
+    payload[3] = intensity;
+    payload[4] = palette;
+    payload[5] = (isOn ? 0x01 : 0) | (color2Enabled ? 0x02 : 0) | (whiteOnly ? 0x04 : 0);
+    payload[6] = (color >> 16) & 0xFF;
+    payload[7] = (color >> 8) & 0xFF;
+    payload[8] = color & 0xFF;
+    payload[9] = (color2 >> 16) & 0xFF;
+    payload[10] = (color2 >> 8) & 0xFF;
+    payload[11] = color2 & 0xFF;
+    payload[12] = cct;
+    payload[13] = effectStep & 0xFF;
+    payload[14] = (effectStep >> 8) & 0xFF;
+
+    SentSegment& sent = _sentSegments[slaveId];
+    unsigned long now = millis();
+    // The step counter is deliberately excluded from the comparison: it changes every frame, so
+    // including it would defeat the whole point and resend the parameters continuously.
+    bool changed = !sent.valid || memcmp(sent.payload, payload, 13) != 0;
+    if (!changed && now - sent.lastSent < SEGMENT_REFRESH_MS) return;
+
+    memcpy(sent.payload, payload, HYPERBUS_SEGMENT_PAYLOAD_LEN);
+    sent.lastSent = now;
+    sent.valid = true;
+
+    BusInterface* targetBus = getBusForSlave(slaveId, _discoveredSlaves, _uartBus, _espBus);
+    targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_SEGMENT, payload,
+                          HYPERBUS_SEGMENT_PAYLOAD_LEN);
 }
 
 void SlaveManagerClass::sendLEDData(uint8_t slaveId, const uint8_t* rgbData, uint16_t length) {
