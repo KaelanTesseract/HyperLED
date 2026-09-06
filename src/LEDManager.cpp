@@ -17,6 +17,7 @@
  * limitations under the Licence.
  */
 #include "LEDManager.h"
+#include "EffectEngine.h"
 #include "SlaveManager.h"
 #include "Font5x7.h"
 #include "Font3x5.h"
@@ -900,6 +901,59 @@ void LEDManagerClass::recalculateSegments() {
 
 // --- Effects Engine ---
 
+// Routes EffectEngine output into this Master's own bus. Effects live in the shared
+// EffectEngine (include/EffectEngine.h) so the Master and a locally-rendering Slave run exactly
+// the same code and cannot drift apart; this adapter is the only Master-specific part.
+class MasterEffectSink : public IEffectSink {
+public:
+    MasterEffectSink(LEDManagerClass* mgr, IBus* bus, Segment& seg, bool isMatrix,
+                     uint16_t canvasW, uint16_t canvasH)
+        : _mgr(mgr), _bus(bus), _seg(seg), _isMatrix(isMatrix), _cw(canvasW), _ch(canvasH) {}
+
+    void setPixel(uint16_t index, uint8_t r, uint8_t g, uint8_t b, uint8_t w, uint8_t w2) override {
+        // Writes straight to the bus rather than through setSegmentPixelColor(), because the
+        // engine has already applied the white-only/CCT conversion itself.
+        if (_bus) _bus->SetPixelColor(_seg.start + index, r, g, b, w, w2);
+    }
+    uint16_t pixelCount() const override { return _seg.stop - _seg.start; }
+    // 2D effects run across the whole virtual canvas (this Master's matrix plus any Slave
+    // panels), which is what makes a wave pattern flow across panel boundaries.
+    uint16_t matrixWidth() const override { return _isMatrix ? _cw : 0; }
+    uint16_t matrixHeight() const override { return _isMatrix ? _ch : 0; }
+    void setPixelXY(uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b) override {
+        _mgr->setCanvasPixelColor(x, y, r, g, b, 0);
+    }
+
+private:
+    LEDManagerClass* _mgr;
+    IBus* _bus;
+    Segment& _seg;
+    bool _isMatrix;
+    uint16_t _cw, _ch;
+};
+
+void LEDManagerClass::renderWithEngine(Segment& seg, uint8_t ablCap, uint8_t effectOverride) {
+    EffectState st;
+    st.effect = (effectOverride == 255) ? seg.effect : effectOverride;
+    // The engine scales colours by brightness alone, so the ABL cap is folded in here - the same
+    // (brightness * ablCap) / 255 the effects used to compute for themselves.
+    st.brightness = (uint8_t)(((uint16_t)seg.brightness * ablCap) / 255);
+    st.speed = seg.speed;
+    st.intensity = seg.intensity;
+    st.palette = seg.palette;
+    st.isOn = true; // the caller already handled the off case
+    st.color = getEffectiveColor(seg);
+    st.color2 = seg.color2;
+    st.color2Enabled = seg.color2Enabled;
+    st.whiteOnly = seg.whiteOnly;
+    st.cct = seg.cct;
+    st.effectStep = seg.effectStep;
+
+    MasterEffectSink sink(this, _bus, seg, _isMatrix, getCanvasWidth(), getCanvasHeight());
+    EffectEngine::draw(st, sink);
+    seg.effectStep = st.effectStep; // the engine owns the animation state while it draws
+}
+
 void LEDManagerClass::loop() {
     if (_bus == nullptr) return;
 
@@ -934,28 +988,18 @@ void LEDManagerClass::loop() {
                     setSegmentPixelColor(unifiedSeg, i, 0, 0, 0, 0);
                 }
             } else {
-                switch (unifiedSeg.effect) {
-                    case 0: effectSolid(unifiedSeg, ablCap); break;
-                    case 1: effectBreathe(unifiedSeg, ablCap); break;
-                    case 2: effectRainbow(unifiedSeg, ablCap); break;
-                    case 3: effectChase(unifiedSeg, ablCap); break;
+                if (EffectEngine::canRender(unifiedSeg.effect)) {
+                    // Shared implementation - identical to what a Slave renders locally.
+                    renderWithEngine(unifiedSeg, ablCap);
+                } else switch (unifiedSeg.effect) {
                     case 4: effectFire(unifiedSeg, ablCap); break;
-                    case 5: effectColorWipe(unifiedSeg, ablCap); break;
-                    case 6: effectScanner(unifiedSeg, ablCap); break;
                     case 7: effectTwinkle(unifiedSeg, ablCap); break;
                     case 8: effectMeteor(unifiedSeg, ablCap); break;
                     case 9: effectMatrixRain(unifiedSeg, ablCap); break;
-                    case 11: effectStrobe(unifiedSeg, ablCap); break;
-                    case 12: effectBounce(unifiedSeg, ablCap); break;
-                    case 13: effectPaletteRainbow(unifiedSeg, ablCap); break;
                     case 14: effectSinelon(unifiedSeg, ablCap); break;
                     case 15: effectConfetti(unifiedSeg, ablCap); break;
                     case 16: effectJuggle(unifiedSeg, ablCap); break;
                     case 17: effectBpm(unifiedSeg, ablCap); break;
-                    case 18: effectTheaterChaseRainbow(unifiedSeg, ablCap); break;
-                    case 19: effectRunningLights(unifiedSeg, ablCap); break;
-                    case 20: effectColorWaves(unifiedSeg, ablCap); break;
-                    case 21: effectPlasma(unifiedSeg, ablCap); break;
                     case 22: effectRipple(unifiedSeg, ablCap); break;
                     case 23: effectFire2D(unifiedSeg, ablCap); break;
                     case 24: effectPacifica(unifiedSeg, ablCap); break;
@@ -964,7 +1008,7 @@ void LEDManagerClass::loop() {
                     case 27: effectStarfield(unifiedSeg, ablCap); break;
                     case 28: effectBouncingBalls(unifiedSeg, ablCap); break;
                     case 29: effectText(unifiedSeg, ablCap); break;
-                    default: effectSolid(unifiedSeg, ablCap); break;
+                    default: renderWithEngine(unifiedSeg, ablCap); break;
                 }
                 // Write back per-frame animation state so it persists across ticks
                 // instead of being reset every frame (unifiedSeg is a throwaway copy).
@@ -1009,28 +1053,18 @@ void LEDManagerClass::loop() {
                         setSegmentPixelColor(seg, i, 0, 0, 0, 0);
                     }
                 } else {
-                    switch (seg.effect) {
-                        case 0: effectSolid(seg, ablCap); break;
-                        case 1: effectBreathe(seg, ablCap); break;
-                        case 2: effectRainbow(seg, ablCap); break;
-                        case 3: effectChase(seg, ablCap); break;
+                    if (EffectEngine::canRender(seg.effect)) {
+                        // Shared implementation - identical to what a Slave renders locally.
+                        renderWithEngine(seg, ablCap);
+                    } else switch (seg.effect) {
                         case 4: effectFire(seg, ablCap); break;
-                        case 5: effectColorWipe(seg, ablCap); break;
-                        case 6: effectScanner(seg, ablCap); break;
                         case 7: effectTwinkle(seg, ablCap); break;
                         case 8: effectMeteor(seg, ablCap); break;
                         case 9: effectMatrixRain(seg, ablCap); break;
-                        case 11: effectStrobe(seg, ablCap); break;
-                        case 12: effectBounce(seg, ablCap); break;
-                        case 13: effectPaletteRainbow(seg, ablCap); break;
                         case 14: effectSinelon(seg, ablCap); break;
                         case 15: effectConfetti(seg, ablCap); break;
                         case 16: effectJuggle(seg, ablCap); break;
                         case 17: effectBpm(seg, ablCap); break;
-                        case 18: effectTheaterChaseRainbow(seg, ablCap); break;
-                        case 19: effectRunningLights(seg, ablCap); break;
-                        case 20: effectColorWaves(seg, ablCap); break;
-                        case 21: effectPlasma(seg, ablCap); break;
                         case 22: effectRipple(seg, ablCap); break;
                         case 23: effectFire2D(seg, ablCap); break;
                         case 24: effectPacifica(seg, ablCap); break;
@@ -1039,7 +1073,7 @@ void LEDManagerClass::loop() {
                         case 27: effectStarfield(seg, ablCap); break;
                         case 28: effectBouncingBalls(seg, ablCap); break;
                         case 29: effectText(seg, ablCap); break;
-                        default: effectSolid(seg, ablCap); break;
+                        default: renderWithEngine(seg, ablCap); break;
                     }
                 }
             }
@@ -1083,73 +1117,6 @@ void LEDManagerClass::loop() {
 
         _bus->Show();
     }
-}
-
-void LEDManagerClass::effectSolid(Segment& seg, uint8_t ablCap) {
-    uint32_t effColor = getEffectiveColor(seg);
-    uint8_t r = (effColor >> 16) & 0xFF;
-    uint8_t g = (effColor >> 8) & 0xFF;
-    uint8_t b = effColor & 0xFF;
-    
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    r = (r * currentBri) / 255;
-    g = (g * currentBri) / 255;
-    b = (b * currentBri) / 255;
-
-    for (uint16_t i = seg.start; i < seg.stop; i++) {
-        setSegmentPixelColor(seg, i, r, g, b, 0);
-    }
-}
-
-void LEDManagerClass::effectBreathe(Segment& seg, uint8_t ablCap) {
-    float breath = (exp(sin(millis() / 2000.0 * PI)) - 0.36787944) * 108.0;
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    
-    uint32_t effColor = getEffectiveColor(seg);
-    uint8_t r = (((effColor >> 16) & 0xFF) * breath * currentBri) / 65025;
-    uint8_t g = (((effColor >> 8) & 0xFF) * breath * currentBri) / 65025;
-    uint8_t b = ((effColor & 0xFF) * breath * currentBri) / 65025;
-
-    for (uint16_t i = seg.start; i < seg.stop; i++) {
-        setSegmentPixelColor(seg, i, r, g, b, 0);
-    }
-}
-
-void LEDManagerClass::effectRainbow(Segment& seg, uint8_t ablCap) {
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    uint16_t count = seg.stop - seg.start;
-    if (count == 0) return;
-    
-    for (uint16_t i = seg.start; i < seg.stop; i++) {
-        uint32_t c = Wheel((((i - seg.start) * 256 / count) + seg.effectStep) & 255);
-        uint8_t r = (((c >> 16) & 0xFF) * currentBri) / 255;
-        uint8_t g = (((c >> 8) & 0xFF) * currentBri) / 255;
-        uint8_t b = ((c & 0xFF) * currentBri) / 255;
-        setSegmentPixelColor(seg, i, r, g, b, 0);
-    }
-    seg.effectStep += 5;
-}
-
-void LEDManagerClass::effectChase(Segment& seg, uint8_t ablCap) {
-    // Alternates between the primary color and color2 (instead of color-to-black)
-    // for a classic two-color theater chase.
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    uint32_t effColor = getEffectiveColor(seg);
-    uint8_t baseR = (((effColor >> 16) & 0xFF) * currentBri) / 255;
-    uint8_t baseG = (((effColor >> 8) & 0xFF) * currentBri) / 255;
-    uint8_t baseB = ((effColor & 0xFF) * currentBri) / 255;
-    uint8_t alt2R = seg.color2Enabled ? (((seg.color2 >> 16) & 0xFF) * currentBri) / 255 : 0;
-    uint8_t alt2G = seg.color2Enabled ? (((seg.color2 >> 8) & 0xFF) * currentBri) / 255 : 0;
-    uint8_t alt2B = seg.color2Enabled ? ((seg.color2 & 0xFF) * currentBri) / 255 : 0;
-
-    for (uint16_t i = seg.start; i < seg.stop; i++) {
-        if (((i - seg.start) + seg.effectStep) % 3 == 0) {
-            setSegmentPixelColor(seg, i, baseR, baseG, baseB, 0);
-        } else {
-            setSegmentPixelColor(seg, i, alt2R, alt2G, alt2B, 0);
-        }
-    }
-    seg.effectStep++;
 }
 
 uint32_t LEDManagerClass::Wheel(byte WheelPos) {
@@ -1290,66 +1257,6 @@ void LEDManagerClass::effectFire(Segment& seg, uint8_t ablCap) {
     }
 }
 
-void LEDManagerClass::effectColorWipe(Segment& seg, uint8_t ablCap) {
-    // Wipes between the primary color and color2 (instead of color-to-black).
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    uint16_t count = seg.stop - seg.start;
-    if (count == 0) return;
-
-    uint32_t effColor = getEffectiveColor(seg);
-    uint8_t r = (((effColor >> 16) & 0xFF) * currentBri) / 255;
-    uint8_t g = (((effColor >> 8) & 0xFF) * currentBri) / 255;
-    uint8_t b = ((effColor & 0xFF) * currentBri) / 255;
-    uint8_t r2 = seg.color2Enabled ? (((seg.color2 >> 16) & 0xFF) * currentBri) / 255 : 0;
-    uint8_t g2 = seg.color2Enabled ? (((seg.color2 >> 8) & 0xFF) * currentBri) / 255 : 0;
-    uint8_t b2 = seg.color2Enabled ? ((seg.color2 & 0xFF) * currentBri) / 255 : 0;
-
-    uint16_t pos = seg.effectStep % (count * 2);
-
-    for (uint16_t i = seg.start; i < seg.stop; i++) {
-        uint16_t relPos = i - seg.start;
-        if (pos < count) {
-            // Wiping on
-            if (relPos <= pos) setSegmentPixelColor(seg, i, r, g, b, 0);
-            else setSegmentPixelColor(seg, i, r2, g2, b2, 0);
-        } else {
-            // Wiping off
-            if (relPos <= (pos - count)) setSegmentPixelColor(seg, i, r2, g2, b2, 0);
-            else setSegmentPixelColor(seg, i, r, g, b, 0);
-        }
-    }
-    seg.effectStep++;
-}
-
-void LEDManagerClass::effectScanner(Segment& seg, uint8_t ablCap) {
-    // Classic Cylon/Larson scanner - same bouncing-dot-with-fade-trail motion as
-    // Bounce, just with a shorter, sharper trail for a tighter "scanner eye" look.
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    uint16_t count = seg.stop - seg.start;
-    if (count < 2) return;
-
-    uint32_t effColor = getEffectiveColor(seg);
-    uint8_t r = (((effColor >> 16) & 0xFF) * currentBri) / 255;
-    uint8_t g = (((effColor >> 8) & 0xFF) * currentBri) / 255;
-    uint8_t b = ((effColor & 0xFF) * currentBri) / 255;
-
-    uint16_t span = count * 2 - 2;
-    uint16_t raw = seg.effectStep % span;
-    uint16_t pos = raw >= count ? span - raw : raw; // triangle wave: 0 -> count-1 -> 0
-
-    for (uint16_t i = seg.start; i < seg.stop; i++) {
-        uint16_t relPos = i - seg.start;
-        uint16_t dist = relPos > pos ? relPos - pos : pos - relPos;
-        if (dist < 2) {
-            uint8_t fade = 2 - dist; // short, sharp trail (Bounce uses a longer one)
-            setSegmentPixelColor(seg, i, (r * fade) / 2, (g * fade) / 2, (b * fade) / 2, 0);
-        } else {
-            setSegmentPixelColor(seg, i, 0, 0, 0, 0);
-        }
-    }
-    seg.effectStep++;
-}
-
 void LEDManagerClass::effectTwinkle(Segment& seg, uint8_t ablCap) {
     // Confetti-style twinkle: sparkles fade in instantly and fade out smoothly over
     // several frames (per-pixel brightness state), and each pixel position samples
@@ -1422,7 +1329,7 @@ void LEDManagerClass::effectMatrixRain(Segment& seg, uint8_t ablCap) {
     // fall continuously through Master and Slave panels stacked vertically.
     uint16_t currentBri = (seg.brightness * ablCap) / 255;
     if (!_isMatrix) {
-        effectChase(seg, ablCap); // Fallback if not configured as matrix
+        renderWithEngine(seg, ablCap, 3); // Fallback to Chase if not configured as matrix
         return;
     }
     uint16_t cw = getCanvasWidth();
@@ -1464,67 +1371,6 @@ void LEDManagerClass::effectMatrixRain(Segment& seg, uint8_t ablCap) {
         _matrixRainHeads[x] = head;
     }
     seg.effectStep++;
-}
-
-void LEDManagerClass::effectStrobe(Segment& seg, uint8_t ablCap) {
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    uint32_t effColor = getEffectiveColor(seg);
-    uint8_t r = 0, g = 0, b = 0;
-    if ((seg.effectStep % 4) == 0) { // short flash, mostly off
-        r = (((effColor >> 16) & 0xFF) * currentBri) / 255;
-        g = (((effColor >> 8) & 0xFF) * currentBri) / 255;
-        b = ((effColor & 0xFF) * currentBri) / 255;
-    }
-    for (uint16_t i = seg.start; i < seg.stop; i++) {
-        setSegmentPixelColor(seg, i, r, g, b, 0);
-    }
-    seg.effectStep++;
-}
-
-void LEDManagerClass::effectBounce(Segment& seg, uint8_t ablCap) {
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    uint16_t count = seg.stop - seg.start;
-    if (count < 2) return;
-
-    uint32_t effColor = getEffectiveColor(seg);
-    uint8_t r = (((effColor >> 16) & 0xFF) * currentBri) / 255;
-    uint8_t g = (((effColor >> 8) & 0xFF) * currentBri) / 255;
-    uint8_t b = ((effColor & 0xFF) * currentBri) / 255;
-
-    uint16_t span = count * 2 - 2;
-    uint16_t raw = seg.effectStep % span;
-    uint16_t pos = raw >= count ? span - raw : raw; // triangle wave: 0 -> count-1 -> 0
-
-    uint16_t trailLen = 2 + seg.intensity / 32; // intensity controls trail length (2-9 pixels)
-    for (uint16_t i = seg.start; i < seg.stop; i++) {
-        uint16_t relPos = i - seg.start;
-        uint16_t dist = relPos > pos ? relPos - pos : pos - relPos;
-        if (dist < trailLen) {
-            uint8_t fade = (uint8_t)(trailLen - dist); // fading trail on both sides of the moving dot
-            setSegmentPixelColor(seg, i, (r * fade) / trailLen, (g * fade) / trailLen, (b * fade) / trailLen, 0);
-        } else {
-            setSegmentPixelColor(seg, i, 0, 0, 0, 0);
-        }
-    }
-    seg.effectStep++;
-}
-
-void LEDManagerClass::effectPaletteRainbow(Segment& seg, uint8_t ablCap) {
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    uint16_t count = seg.stop - seg.start;
-    if (count == 0) return;
-
-    for (uint16_t i = seg.start; i < seg.stop; i++) {
-        uint8_t pos = (((i - seg.start) * 256 / count) + seg.effectStep) & 255;
-        // Same per-pixel gradient spread as Rainbow, but sampled from the segment's
-        // own palette instead of the fixed HSV wheel (falls back to Wheel() for palette 0).
-        uint32_t c = (seg.palette == 0) ? Wheel(pos) : getPaletteColor(seg.palette, pos);
-        uint8_t r = (((c >> 16) & 0xFF) * currentBri) / 255;
-        uint8_t g = (((c >> 8) & 0xFF) * currentBri) / 255;
-        uint8_t b = ((c & 0xFF) * currentBri) / 255;
-        setSegmentPixelColor(seg, i, r, g, b, 0);
-    }
-    seg.effectStep += 5;
 }
 
 // Cheap 0-255 triangle wave, used as a lightweight sine substitute for smooth
@@ -1675,99 +1521,6 @@ void LEDManagerClass::effectBpm(Segment& seg, uint8_t ablCap) {
     seg.effectStep += 2;
 }
 
-void LEDManagerClass::effectTheaterChaseRainbow(Segment& seg, uint8_t ablCap) {
-    // Theater Chase, but each moving group of lit pixels gets its own rainbow color.
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    for (uint16_t i = seg.start; i < seg.stop; i++) {
-        uint16_t relPos = i - seg.start;
-        if ((relPos + seg.effectStep) % 3 == 0) {
-            uint32_t c = Wheel((uint8_t)(((relPos * 4) + seg.effectStep) & 0xFF));
-            uint8_t r = (((c >> 16) & 0xFF) * currentBri) / 255;
-            uint8_t g = (((c >> 8) & 0xFF) * currentBri) / 255;
-            uint8_t b = ((c & 0xFF) * currentBri) / 255;
-            setSegmentPixelColor(seg, i, r, g, b, 0);
-        } else {
-            setSegmentPixelColor(seg, i, 0, 0, 0, 0);
-        }
-    }
-    seg.effectStep++;
-}
-
-void LEDManagerClass::effectRunningLights(Segment& seg, uint8_t ablCap) {
-    // Classic "marquee" look: brightness runs across the segment as a wave.
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    uint16_t count = seg.stop - seg.start;
-    if (count == 0) return;
-
-    uint32_t effColor = getEffectiveColor(seg);
-    uint8_t baseR = (effColor >> 16) & 0xFF;
-    uint8_t baseG = (effColor >> 8) & 0xFF;
-    uint8_t baseB = effColor & 0xFF;
-
-    for (uint16_t i = 0; i < count; i++) {
-        uint8_t wavePos = (uint8_t)((((uint32_t)i * 512 / count) + seg.effectStep) & 0xFF);
-        uint8_t wave = triWave8(wavePos);
-        uint16_t scale = (uint16_t)currentBri * wave / 255;
-        uint8_t r = (uint8_t)((baseR * scale) / 255);
-        uint8_t g = (uint8_t)((baseG * scale) / 255);
-        uint8_t b = (uint8_t)((baseB * scale) / 255);
-        setSegmentPixelColor(seg, seg.start + i, r, g, b, 0);
-    }
-    seg.effectStep += 4;
-}
-
-void LEDManagerClass::effectColorWaves(Segment& seg, uint8_t ablCap) {
-    // Like Palette Rainbow, but the palette sweep is modulated by a second, faster
-    // wobble instead of a single straight sweep - reads as a soft, organic flow.
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    uint16_t count = seg.stop - seg.start;
-    if (count == 0) return;
-
-    for (uint16_t i = 0; i < count; i++) {
-        uint8_t basePos = (uint8_t)((((uint32_t)i * 256 / count) + seg.effectStep / 3) & 0xFF);
-        uint8_t wobble = triWave8((uint8_t)((i * 9 + seg.effectStep) & 0xFF));
-        uint8_t pos = (uint8_t)(basePos + (wobble / 4));
-
-        uint32_t c = (seg.palette == 0) ? Wheel(pos) : getPaletteColor(seg.palette, pos);
-        uint8_t r = (((c >> 16) & 0xFF) * currentBri) / 255;
-        uint8_t g = (((c >> 8) & 0xFF) * currentBri) / 255;
-        uint8_t b = ((c & 0xFF) * currentBri) / 255;
-        setSegmentPixelColor(seg, seg.start + i, r, g, b, 0);
-    }
-    seg.effectStep++;
-}
-
-void LEDManagerClass::effectPlasma(Segment& seg, uint8_t ablCap) {
-    // Classic demo-effect: organic, wobbling color fields from overlapping waves.
-    // Runs across the whole virtual canvas (Master matrix + any Slave panels), so
-    // the wave pattern flows seamlessly across multiple physical panels. Falls
-    // back to Color Waves (its closest 1D relative) when no matrix is configured.
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
-    if (!_isMatrix) {
-        effectColorWaves(seg, ablCap);
-        return;
-    }
-    uint16_t cw = getCanvasWidth();
-    uint16_t ch = getCanvasHeight();
-
-    uint8_t scale = 4 + seg.intensity / 16; // intensity controls wave density
-    for (uint16_t y = 0; y < ch; y++) {
-        for (uint16_t x = 0; x < cw; x++) {
-            uint8_t v1 = triWave8((uint8_t)(x * scale + seg.effectStep));
-            uint8_t v2 = triWave8((uint8_t)(y * scale + seg.effectStep * 2));
-            uint8_t v3 = triWave8((uint8_t)((x + y) * (scale / 2) + seg.effectStep / 2));
-            uint8_t pos = (uint8_t)(((uint16_t)v1 + v2 + v3) / 3);
-
-            uint32_t c = (seg.palette == 0) ? Wheel(pos) : getPaletteColor(seg.palette, pos);
-            uint8_t r = (((c >> 16) & 0xFF) * currentBri) / 255;
-            uint8_t g = (((c >> 8) & 0xFF) * currentBri) / 255;
-            uint8_t b = ((c & 0xFF) * currentBri) / 255;
-            setCanvasPixelColor(x, y, r, g, b, 0);
-        }
-    }
-    seg.effectStep++;
-}
-
 void LEDManagerClass::effectRipple(Segment& seg, uint8_t ablCap) {
     // Circular waves expand outward from random points and fade as they grow.
     // Runs across the whole virtual canvas, so a ripple can spread from one panel
@@ -1776,7 +1529,7 @@ void LEDManagerClass::effectRipple(Segment& seg, uint8_t ablCap) {
     // canvases wider/taller than 255px will clip - a rare, acceptable edge case.
     uint16_t currentBri = (seg.brightness * ablCap) / 255;
     if (!_isMatrix) {
-        effectBounce(seg, ablCap);
+        renderWithEngine(seg, ablCap, 12); // Bounce
         return;
     }
     uint16_t cw = getCanvasWidth();
@@ -1910,7 +1663,7 @@ void LEDManagerClass::effectPacifica(Segment& seg, uint8_t ablCap) {
     // since a rainbow fallback would defeat the point of an ocean effect.
     uint16_t currentBri = (seg.brightness * ablCap) / 255;
     if (!_isMatrix) {
-        effectColorWaves(seg, ablCap);
+        renderWithEngine(seg, ablCap, 20); // Color Waves
         return;
     }
 

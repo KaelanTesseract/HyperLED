@@ -228,6 +228,11 @@ public:
     // panels configured this collapses to exactly the old Master-only matrix.
     void setCanvasPanels(JsonArray panels);
     void getCanvasPanelsJson(JsonArray array) const;
+    // Draws one frame of a segment through the shared EffectEngine. effectOverride renders a
+    // different effect than the segment's own, which is how 2D effects reach their 1D fallback
+    // when no matrix is configured.
+    void renderWithEngine(Segment& seg, uint8_t ablCap, uint8_t effectOverride = 255);
+
     uint16_t getCanvasWidth() const;
     uint16_t getCanvasHeight() const;
     void setCanvasPixelColor(uint16_t cx, uint16_t cy, uint8_t r, uint8_t g, uint8_t b, uint8_t w = 0);
@@ -294,27 +299,14 @@ private:
     void applySettings();
 
     // Effects
-    void effectSolid(Segment& seg, uint8_t ablCap);
-    void effectBreathe(Segment& seg, uint8_t ablCap);
-    void effectRainbow(Segment& seg, uint8_t ablCap);
-    void effectChase(Segment& seg, uint8_t ablCap);
     void effectFire(Segment& seg, uint8_t ablCap);
-    void effectColorWipe(Segment& seg, uint8_t ablCap);
-    void effectScanner(Segment& seg, uint8_t ablCap);
     void effectTwinkle(Segment& seg, uint8_t ablCap);
     void effectMeteor(Segment& seg, uint8_t ablCap);
     void effectMatrixRain(Segment& seg, uint8_t ablCap);
-    void effectStrobe(Segment& seg, uint8_t ablCap);
-    void effectBounce(Segment& seg, uint8_t ablCap);
-    void effectPaletteRainbow(Segment& seg, uint8_t ablCap);
     void effectSinelon(Segment& seg, uint8_t ablCap);
     void effectConfetti(Segment& seg, uint8_t ablCap);
     void effectJuggle(Segment& seg, uint8_t ablCap);
     void effectBpm(Segment& seg, uint8_t ablCap);
-    void effectTheaterChaseRainbow(Segment& seg, uint8_t ablCap);
-    void effectRunningLights(Segment& seg, uint8_t ablCap);
-    void effectColorWaves(Segment& seg, uint8_t ablCap);
-    void effectPlasma(Segment& seg, uint8_t ablCap);
     void effectRipple(Segment& seg, uint8_t ablCap);
     void effectFire2D(Segment& seg, uint8_t ablCap);
     void effectPacifica(Segment& seg, uint8_t ablCap);
