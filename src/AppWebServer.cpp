@@ -184,7 +184,14 @@ void WebServerManagerClass::setupRoutes() {
     });
 
     server.on("/api/info", HTTP_GET, [](AsyncWebServerRequest *request){
-        String json = "{\"version\":\"" + String(HYPERLED_VERSION) + "\"}";
+        // Heap figures included on purpose: the large uploads (image widgets, OTA) are the
+        // operations most likely to run the device out of memory, and without a number to look
+        // at that can only be guessed from crashes.
+        String json = "{\"version\":\"" + String(HYPERLED_VERSION) + "\"";
+        json += ",\"heapFree\":" + String((unsigned)ESP.getFreeHeap());
+        json += ",\"heapMinFree\":" + String((unsigned)ESP.getMinFreeHeap());
+        json += ",\"heapLargestBlock\":" + String((unsigned)ESP.getMaxAllocHeap());
+        json += "}";
         request->send(200, "application/json", json);
     });
 
@@ -396,17 +403,21 @@ void WebServerManagerClass::setupRoutes() {
                 request->send(200, "application/json", "[]");
                 return;
             }
-            // Streamed rather than assembled in memory: a 64x64 panel is 4096 values, tens of
-            // kilobytes of JSON that would otherwise be held all at once.
-            AsyncResponseStream *response = request->beginResponseStream("application/json");
-            response->print('[');
+            // Built in one string with the space reserved up front, NOT through an
+            // AsyncResponseStream. That class reads its buffer back one character at a time, and
+            // each read shifts the whole remainder down - quadratic work that took seconds for a
+            // 4096-pixel panel and tripped the task watchdog into rebooting the device.
+            String json;
+            json.reserve((size_t)count * 9 + 2);
+            json += '[';
             for (uint16_t i = 0; i < count; i++) {
-                if (i) response->print(',');
+                if (i) json += ',';
                 const uint8_t* px = &buf[(size_t)(start + i) * 5];
                 uint32_t rgb = ((uint32_t)px[0] << 16) | ((uint32_t)px[1] << 8) | px[2];
-                response->print(rgb);
+                json += rgb;
             }
-            response->print(']');
+            json += ']';
+            AsyncWebServerResponse* response = request->beginResponse(200, "application/json", json);
             response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
             request->send(response);
             return;
