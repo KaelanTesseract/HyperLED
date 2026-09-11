@@ -185,7 +185,10 @@ public:
     void getTextWidgetsJson(uint8_t segId, JsonArray array) const;
     void setTextWidgetImage(uint8_t segId, uint8_t widgetId, uint8_t w, uint8_t h, const std::vector<uint8_t>& rgbData);
     uint8_t getNextWidgetId() const;
-    void setSync(bool sync) { _syncActive = sync; }
+    // Persisted like every other setting: sync survived nothing before, so a power cycle left
+    // the segments on their stored effect but no longer running as one chain, and a reloaded web
+    // page showed the checkbox cleared even while sync was still on.
+    void setSync(bool sync);
     bool getSync() const { return _syncActive; }
     void triggerSave() {
         _savePending = true;

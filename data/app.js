@@ -2252,6 +2252,12 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(res => res.json())
             .then(data => {
                 if (isInteracting) return;
+                // Restore the sync checkbox from the device. It is a stored setting there, so a
+                // reloaded page must not come up unticked while sync is actually running.
+                if (typeof data.sync === 'boolean') {
+                    const syncBox = document.getElementById('syncSegments');
+                    if (syncBox) syncBox.checked = data.sync;
+                }
                 if (data.seg && Array.isArray(data.seg)) {
                     segments = data.seg;
                     if (currentSegmentId >= segments.length) currentSegmentId = 0;

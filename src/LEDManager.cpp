@@ -118,6 +118,7 @@ void LEDManagerClass::loadSettings() {
     _matrixHeight = prefs.getUShort("matH", 16);
     _matrixLayout = prefs.getUChar("matL", 0);
     _hub75ShiftDriver = prefs.getUChar("h75sd", 0);
+    _syncActive = prefs.getBool("sync", false);
     
     String segJson = prefs.getString("segments", "");
     String canvasJson = prefs.getString("canvas", "");
@@ -250,6 +251,7 @@ void LEDManagerClass::saveSettings() {
     prefs.putUShort("matH", _matrixHeight);
     prefs.putUChar("matL", _matrixLayout);
     prefs.putUChar("h75sd", _hub75ShiftDriver);
+    prefs.putBool("sync", _syncActive);
     
     JsonDocument doc;
     JsonArray arr = doc.to<JsonArray>();
@@ -646,6 +648,12 @@ void LEDManagerClass::setPower(uint8_t segId, bool on) {
         _segments[segId].isOn = on;
         triggerSave();
     }
+}
+
+void LEDManagerClass::setSync(bool sync) {
+    if (_syncActive == sync) return;
+    _syncActive = sync;
+    triggerSave();
 }
 
 void LEDManagerClass::setBrightness(uint8_t segId, uint8_t bri) {

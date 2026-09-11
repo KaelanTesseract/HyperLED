@@ -136,6 +136,9 @@ void WebServerManagerClass::setupRoutes() {
     // --- State API ---
     server.on("/api/state", HTTP_GET, [](AsyncWebServerRequest *request){
         JsonDocument doc;
+        // The UI restores its sync checkbox from this: without it a reloaded page always came
+        // up unticked, no matter what the device was actually doing.
+        doc["sync"] = LEDManager.getSync();
         JsonArray segArr = doc["seg"].to<JsonArray>();
         LEDManager.getSegmentsJson(segArr);
         
