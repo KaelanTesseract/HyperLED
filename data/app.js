@@ -1884,9 +1884,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     `;
                     slavesList.appendChild(card);
 
-                    // Set correct type if it was already configured
-                    // (Requires backend to send type, but for now defaults to current master type or user selects)
-                    // We can just trigger onchange to update pin2/HUB75 group visibility
+                    // Show what the Slave reports it is actually configured as (firmware 0.2.1+).
+                    // Without this the form fell back to its default LED type, and saving any
+                    // other change on this card pushed that default back over a real HUB75
+                    // configuration. Applied before the change event so the right fields show.
+                    if (typeof slave.ledType === 'number') {
+                        const typeEl = document.getElementById(`slaveType_${slave.id}`);
+                        if (typeEl) typeEl.value = String(slave.ledType);
+                        const wEl = document.getElementById(`slaveMatW_${slave.id}`);
+                        const hEl = document.getElementById(`slaveMatH_${slave.id}`);
+                        const sdEl = document.getElementById(`slaveShiftDriver_${slave.id}`);
+                        if (wEl && slave.matrixWidth) wEl.value = slave.matrixWidth;
+                        if (hEl && slave.matrixHeight) hEl.value = slave.matrixHeight;
+                        if (sdEl && typeof slave.hub75ShiftDriver === 'number') sdEl.value = String(slave.hub75ShiftDriver);
+                    }
                     if (slave.configPending) {
                         const pending = document.createElement('p');
                         pending.style.cssText = 'font-size: 12px; color: var(--primary); margin: 8px 0 0 0;';

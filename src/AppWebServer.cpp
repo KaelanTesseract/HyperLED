@@ -266,6 +266,14 @@ void WebServerManagerClass::setupRoutes() {
             obj["isWireless"] = s.isWireless;
             obj["lastSeenAge"] = millis() - s.lastSeen;
             obj["configPending"] = SlaveManager.isConfigPending(s.currentId);
+            // Only present once the Slave has reported it (firmware 0.2.1+). The UI leaves its
+            // fields alone when it is missing rather than showing a default it would then save.
+            if (s.ledType != 255) {
+                obj["ledType"] = s.ledType;
+                obj["matrixWidth"] = s.matrixWidth;
+                obj["matrixHeight"] = s.matrixHeight;
+                obj["hub75ShiftDriver"] = s.hub75ShiftDriver;
+            }
         }
         String json;
         serializeJson(doc, json);

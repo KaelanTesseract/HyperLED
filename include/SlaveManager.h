@@ -34,6 +34,13 @@ struct DiscoveredSlave {
     bool isWireless;
     // Set from the reported firmware version - see slaveRendersLocally().
     bool rendersLocally = false;
+    // What the Slave reports about its own output. Only a Slave knows this - the Master stores
+    // nothing about it - so without it the UI cannot show an existing configuration and would
+    // overwrite it with its defaults on the next save. 255 means the Slave did not report.
+    uint8_t ledType = 255;
+    uint16_t matrixWidth = 0;
+    uint16_t matrixHeight = 0;
+    uint8_t hub75ShiftDriver = 0;
 };
 
 class SlaveManagerClass {
