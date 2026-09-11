@@ -109,6 +109,12 @@ struct Segment {
     uint16_t effectStep;
     unsigned long lastUpdate;
 
+    // Whether this segment joins the synchronised group when sync is on. Segments that opt out
+    // keep running their own effect, so a clock on a panel can sit next to a strip that is part
+    // of a scanner sweeping across the rest of the chain. Defaults to true, which is how sync
+    // behaved before it could be chosen per segment.
+    bool syncEnabled = true;
+
     // Slave support
     bool isSlave = false;
     uint8_t slaveId = 0;
@@ -271,6 +277,11 @@ private:
     uint8_t _matrixLayout = 0; // 0 = Zick-Zack/Serpentine, 1 = Zeilenweise
 
     bool _syncActive = false;
+    // Which segment leads the sync group this frame and what span it covers. Recomputed each
+    // loop() because segments, and their membership, can change at any time.
+    int _syncLeader = -1;
+    uint16_t _syncStart = 0;
+    uint16_t _syncStop = 0;
     bool _savePending = false;
     unsigned long _saveTimer = 0;
 

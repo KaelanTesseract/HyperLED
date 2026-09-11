@@ -202,6 +202,7 @@ void LEDManagerClass::loadSettings() {
                 seg.isSlave = s["isSlave"] | false;
                 seg.slaveId = s["slaveId"] | 0;
         seg.sharesPower = s["sharesPower"] | false;
+                seg.syncEnabled = s["syncEnabled"] | true;
                 
                 if (!seg.isSlave) {
                     if (seg.start < _numIcs && seg.stop <= _numIcs && seg.start < seg.stop) {
@@ -298,6 +299,7 @@ void LEDManagerClass::saveSettings() {
             s["slaveId"] = seg.slaveId;
             s["sharesPower"] = seg.sharesPower;
         }
+        s["syncEnabled"] = seg.syncEnabled;
     }
     String segJson;
     serializeJson(doc, segJson);
@@ -762,6 +764,7 @@ void LEDManagerClass::setSegmentsFromJson(JsonArray segmentsArray) {
         seg.isSlave = s["isSlave"] | false;
         seg.slaveId = s["slaveId"] | 0;
         seg.sharesPower = s["sharesPower"] | false;
+        seg.syncEnabled = s["syncEnabled"] | true;
 
         if (!seg.isSlave) {
             if (seg.start >= _numIcs && _numIcs > 0) seg.start = _numIcs - 1;
@@ -836,6 +839,7 @@ void LEDManagerClass::getSegmentsJson(JsonArray array) const {
             s["slaveId"] = seg.slaveId;
             s["sharesPower"] = seg.sharesPower;
         }
+        s["syncEnabled"] = seg.syncEnabled;
     }
 }
 
@@ -977,21 +981,43 @@ void LEDManagerClass::loop() {
     bool shouldShow = false;
     uint8_t ablCap = getGlobalAblCap();
 
-    if (_syncActive && !_segments.empty()) {
-        Segment unifiedSeg = _segments[0];
-        unifiedSeg.start = 0;
-        
-        uint16_t tCount = _count;
-        for (const auto& s : _segments) {
-            if (s.stop > tCount) tCount = s.stop;
+    // Sync applies to a chosen group of segments rather than to all of them. The first segment
+    // that opted in leads: its effect and colours drive the whole group, which spans from the
+    // lowest start to the highest stop of its members. Segments that opted out are rendered
+    // individually below, on top of the group, so they keep their own effect even when they sit
+    // inside the group's span.
+    _syncLeader = -1;
+    _syncStart = 0;
+    _syncStop = 0;
+    if (_syncActive) {
+        for (size_t i = 0; i < _segments.size(); i++) {
+            if (!_segments[i].syncEnabled) continue;
+            if (_syncLeader < 0) {
+                _syncLeader = (int)i;
+                _syncStart = _segments[i].start;
+                _syncStop = _segments[i].stop;
+            } else {
+                if (_segments[i].start < _syncStart) _syncStart = _segments[i].start;
+                if (_segments[i].stop > _syncStop) _syncStop = _segments[i].stop;
+            }
         }
-        unifiedSeg.stop = tCount;
+        // The Master's own pixels always belong to the span when it leads, so an effect covers
+        // the strip even if the leading segment is shorter than the hardware.
+        if (_syncLeader >= 0 && !_segments[_syncLeader].isSlave && _syncStop < _count) {
+            _syncStop = _count;
+        }
+    }
+
+    if (_syncLeader >= 0) {
+        Segment unifiedSeg = _segments[_syncLeader];
+        unifiedSeg.start = _syncStart;
+        unifiedSeg.stop = _syncStop;
         
         unsigned int delayMs = 500 - (unifiedSeg.speed * 490 / 255);
         if (unifiedSeg.effect == 0) delayMs = 100;
         
-        if (now - _segments[0].lastUpdate > delayMs) {
-            _segments[0].lastUpdate = now;
+        if (now - _segments[_syncLeader].lastUpdate > delayMs) {
+            _segments[_syncLeader].lastUpdate = now;
             shouldShow = true;
 
             if (!unifiedSeg.isOn) {
@@ -1009,15 +1035,20 @@ void LEDManagerClass::loop() {
                 }
                 // Write back per-frame animation state so it persists across ticks
                 // instead of being reset every frame (unifiedSeg is a throwaway copy).
-                _segments[0].effectStep = unifiedSeg.effectStep;
-                _segments[0].renderState = std::move(unifiedSeg.renderState);
+                _segments[_syncLeader].effectStep = unifiedSeg.effectStep;
+                _segments[_syncLeader].renderState = std::move(unifiedSeg.renderState);
                 // Carries back any image widget pixel data effectText lazily loaded
                 // from LittleFS this tick, so it isn't re-read from disk every frame.
-                _segments[0].textWidgets = std::move(unifiedSeg.textWidgets);
+                _segments[_syncLeader].textWidgets = std::move(unifiedSeg.textWidgets);
             }
         }
-    } else {
+    }
+
+    {
         for (auto& seg : _segments) {
+            // Members of the sync group were drawn as one above.
+            if (_syncLeader >= 0 && seg.syncEnabled) continue;
+
             // Skip segments a Slave draws for itself. Computing those pixels here would be pure
             // waste - nothing reads them, since only the effect parameters get sent - and for a
             // panel-sized segment it is a lot of waste: a 64x64 panel is 4096 pixels per frame.
@@ -1076,9 +1107,14 @@ void LEDManagerClass::loop() {
                     // chain, so the Slave gets the leading segment's parameters plus the window it
                     // occupies - it renders the full-length effect and displays only its slice.
                     // Without sync each segment is independent and the Slave renders its own.
-                    const Segment& src = _syncActive ? _segments[0] : seg;
-                    uint16_t winOffset = _syncActive ? seg.start : 0;
-                    uint16_t winTotal = _syncActive ? totalCount : 0;
+                    // Only a member of the sync group gets the group's effect and its slice of
+                    // the span; anything else is driven by its own segment as usual. Offsets are
+                    // relative to the group's start, so a group that does not begin at pixel 0
+                    // still renders as one continuous run.
+                    bool inSyncGroup = (_syncLeader >= 0) && seg.syncEnabled;
+                    const Segment& src = inSyncGroup ? _segments[_syncLeader] : seg;
+                    uint16_t winOffset = inSyncGroup ? (uint16_t)(seg.start - _syncStart) : 0;
+                    uint16_t winTotal = inSyncGroup ? (uint16_t)(_syncStop - _syncStart) : 0;
 
                     // Dim by the same ABL cap the Master applies to its own pixels. Streaming did
                     // this implicitly - the pixels were already scaled before they went out - so

@@ -114,6 +114,21 @@ private:
     // responding. 30 frames/s is past the point of being visible on LEDs, and the UART link cannot
     // carry more than that anyway at 115200 baud.
     static const unsigned long MIN_LED_FRAME_INTERVAL_MS = 33;
+    // Large streamed segments need a slower rate still. A 64x64 panel is 20KB per frame, which is
+    // 86 ESP-NOW packets - at 30 frames/s that is thousands of packets per second and the link
+    // collapses. The interval therefore scales with the payload, aiming at roughly 90 packets/s,
+    // which measurement showed the radio carries comfortably. This is what makes the clock and
+    // text effects usable on a panel: they cannot be rendered on the Slave (they need the time,
+    // weather and uploaded images the Master holds) so they must stream, and a clock does not
+    // care about frame rate.
+    static const unsigned long TARGET_PACKETS_PER_SEC = 90;
+    static const uint16_t BYTES_PER_PACKET = 240;
+    static unsigned long frameIntervalFor(uint16_t length) {
+        unsigned long packets = (length + BYTES_PER_PACKET - 1) / BYTES_PER_PACKET;
+        if (packets == 0) packets = 1;
+        unsigned long interval = (packets * 1000UL) / TARGET_PACKETS_PER_SEC;
+        return interval > MIN_LED_FRAME_INTERVAL_MS ? interval : MIN_LED_FRAME_INTERVAL_MS;
+    }
     std::map<uint8_t, unsigned long> _lastLedSend;
 
     // Last effect parameters sent to each Slave, so unchanged ones are not resent every frame.

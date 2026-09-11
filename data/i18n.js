@@ -113,6 +113,7 @@ const translations = {
         "seg_name": "Name",
         "seg_start": "Start",
         "seg_stop": "Stop",
+        "seg_sync_member": "Beim Synchronisieren mitlaufen",
         "seg_shares": "Zieht Strom vom Master (ABL Limitierung)",
 
         "tab_presets": "Presets",
@@ -418,6 +419,7 @@ const translations = {
         "seg_name": "Name",
         "seg_start": "Start",
         "seg_stop": "Stop",
+        "seg_sync_member": "Include when synchronising",
         "seg_shares": "Draws power from Master (ABL Limitation)",
 
         "tab_presets": "Presets",
@@ -714,6 +716,7 @@ const translations = {
         "seg_name": "Имя",
         "seg_start": "Начало",
         "seg_stop": "Конец",
+        "seg_sync_member": "Участвовать в синхронизации",
         "seg_shares": "Питается от Мастера (Ограничение ABL)",
 
         "tab_presets": "Пресеты",

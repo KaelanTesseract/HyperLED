@@ -454,7 +454,7 @@ void SlaveManagerClass::sendLEDData(uint8_t slaveId, const uint8_t* rgbData, uin
     // shares it.
     unsigned long now = millis();
     auto lastSent = _lastLedSend.find(slaveId);
-    if (lastSent != _lastLedSend.end() && now - lastSent->second < MIN_LED_FRAME_INTERVAL_MS) return;
+    if (lastSent != _lastLedSend.end() && now - lastSent->second < frameIntervalFor(length)) return;
     _lastLedSend[slaveId] = now;
 
     if (slaveId == HYPERBUS_BROADCAST_ID) {

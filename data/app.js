@@ -1046,6 +1046,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     </label>
                 </div>
                 ` : '') + `
+                <div style="flex: 100%; margin-top: 4px; margin-bottom: 5px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); cursor: pointer;">
+                        <input type="checkbox" class="seg-sync" data-idx="${idx}" ${seg.syncEnabled !== false ? 'checked' : ''} style="transform: scale(1.2);">
+                        ${t('seg_sync_member')}
+                    </label>
+                </div>
             `;
             segmentsListContainer.appendChild(div);
         });
@@ -1096,6 +1102,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.seg-shares-power').forEach(i => i.addEventListener('change', e => {
             segments[e.target.dataset.idx].sharesPower = e.target.checked;
             updateAblUI();
+        }));
+        // Which segments join the synchronised group. Unticked segments keep their own effect
+        // even while sync is on, so a clock on a panel can sit beside a strip running a sweep.
+        document.querySelectorAll('.seg-sync').forEach(i => i.addEventListener('change', e => {
+            segments[e.target.dataset.idx].syncEnabled = e.target.checked;
         }));
         document.querySelectorAll('.btn-del-seg').forEach(btn => btn.addEventListener('click', e => {
             segments.splice(e.target.dataset.idx, 1);
