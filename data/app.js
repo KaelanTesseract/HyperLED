@@ -31,6 +31,26 @@ document.addEventListener('DOMContentLoaded', () => {
         "Fireworks", "Starfield", "Bouncing Balls", "Uhr / Text"
     ];
     const EFFECT_TEXT_ID = 29;
+
+    // The panel behind the selected segment, when that segment is driven by a HUB75 Slave.
+    // Returns its pixel size, which the matrix editor and the effect list both need: a panel on a
+    // Slave is just as much a matrix as one wired to the Master, and until now only the Master's
+    // own configuration was ever consulted.
+    function activeSegmentPanel() {
+        // Guarded: this runs once before the segment list exists (the effect buttons are built
+        // first), and a missing list simply means "no panel selected".
+        try {
+            const seg = segments[currentSegmentId];
+            if (!seg || !seg.isSlave) return null;
+            const list = (window.hardwareLimits && window.hardwareLimits.slaves) || [];
+            const info = list.find(x => x.id === seg.slaveId);
+            if (!info || info.ledType !== 60) return null;
+            if (!info.matrixWidth || !info.matrixHeight) return null;
+            return { w: info.matrixWidth, h: info.matrixHeight };
+        } catch (e) {
+            return null;
+        }
+    }
     // Effects at/after this index only make sense (and are only shown as
     // selectable) once the LED type is set to HUB75 - see EFFECT_HUB75_SHOWCASE_START
     // in LEDManager.h.
@@ -53,8 +73,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // HUB75 showcase effects only make visual sense (and are only selectable) on
     // an actual HUB75 scan-matrix panel - hide those buttons for every other LED type.
+    let lastMasterLedType = 0;
     function updateEffectVisibility(ledTypeValue) {
-        const isHub75 = parseInt(ledTypeValue) === 60;
+        if (ledTypeValue !== undefined) lastMasterLedType = parseInt(ledTypeValue) || 0;
+        // A HUB75 panel on a Slave counts too - otherwise the clock, text and showcase effects
+        // stayed hidden for exactly the hardware they were written for.
+        const isHub75 = lastMasterLedType === 60 || !!activeSegmentPanel();
         effectBtns.forEach(btn => {
             if (parseInt(btn.dataset.id) >= EFFECT_HUB75_SHOWCASE_START) {
                 btn.style.display = isHub75 ? '' : 'none';
@@ -1761,6 +1785,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateStateFromSegment() {
+        // Which effects are offered depends on the selected segment: a HUB75 panel on a Slave
+        // unlocks the clock, text and showcase effects even when the Master drives a plain strip.
+        if (typeof updateEffectVisibility === 'function') updateEffectVisibility();
         if (segments.length > 0 && currentSegmentId < segments.length) {
                         let s = segments[currentSegmentId];
             state.on = s.on;
@@ -2638,6 +2665,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let matrixPreviewTimer = null;
 
     function editorDims() {
+        // A Slave panel brings its own size; only fall back to the Master matrix fields when the
+        // selected segment is not one.
+        const panel = activeSegmentPanel();
+        if (panel) return panel;
         return { w: parseInt(matrixWidth.value) || 16, h: parseInt(matrixHeight.value) || 16 };
     }
 
@@ -2664,8 +2695,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function drawEmptyPreview() {
+        // The live feed only covers the Master's own matrix. For a Slave panel we still need
+        // something in the right proportions to drag widgets onto, so draw the grid itself.
+        const { w, h } = editorDims();
+        const cell = previewCellSize(w, h);
+        matrixPreviewCanvas.width = w * cell;
+        matrixPreviewCanvas.height = h * cell;
+        const ctx = matrixPreviewCanvas.getContext('2d');
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, matrixPreviewCanvas.width, matrixPreviewCanvas.height);
+        if (cell >= 4) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= w; x++) {
+                ctx.beginPath(); ctx.moveTo(x * cell, 0); ctx.lineTo(x * cell, h * cell); ctx.stroke();
+            }
+            for (let y = 0; y <= h; y++) {
+                ctx.beginPath(); ctx.moveTo(0, y * cell); ctx.lineTo(w * cell, y * cell); ctx.stroke();
+            }
+        }
+        if (widgetOverlayCanvas && widgetOverlayCanvas.style.display !== 'none') {
+            drawWidgetOverlay(currentWidgets());
+        }
+    }
+
     function fetchMatrixPreview() {
         if (!matrixPreviewCanvas) return;
+        if (activeSegmentPanel()) { drawEmptyPreview(); return; }
         fetch('/api/matrix_preview')
             .then(res => res.json())
             .then(renderMatrixPreview)
