@@ -169,6 +169,10 @@ void WebServerManagerClass::setupRoutes() {
             doc["dropNoCallback"] = bus->getDroppedNoCallback();
             doc["dropForeign"] = bus->getDroppedForeign();
         }
+        {
+            doc["ledPackets"] = SlaveManager.getLedPacketsSent();
+            doc["ledFrames"] = SlaveManager.getLedFramesSent();
+        }
         String json;
         serializeJson(doc, json);
         request->send(200, "application/json", json);

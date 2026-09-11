@@ -75,6 +75,11 @@ public:
     // Pixel size of the HUB75 panel this Slave reported, if it is one. Lets a 2D effect draw into
     // the Slave's own panel instead of the shared canvas.
     bool getSlavePanelSize(uint8_t slaveId, uint16_t& w, uint16_t& h) const;
+    // Counters for /api/espnow_status: how many LED packets actually went out, and how many
+    // whole frames they amounted to. The ratio shows whether the delta path is doing its job -
+    // a full 64x64 frame is 87 packets, a clock tick should be a handful.
+    uint32_t getLedPacketsSent() const { return _ledPacketsSent; }
+    uint32_t getLedFramesSent() const { return _ledFramesSent; }
 
     // For the ESP-NOW diagnostics on /api/espnow_status.
     EspNowBusClass* getEspBus() { return _espBus; }
@@ -133,6 +138,35 @@ private:
         return interval > MIN_LED_FRAME_INTERVAL_MS ? interval : MIN_LED_FRAME_INTERVAL_MS;
     }
     std::map<uint8_t, unsigned long> _lastLedSend;
+
+    // Fingerprint of the last frame sent to each Slave. A still picture - an uploaded image, a
+    // clock between ticks - was otherwise retransmitted in full forever: 86 packets per second
+    // for a 64x64 panel, every one of them carrying what the Slave already had. That congestion
+    // is what made an uploaded image take so long to settle, because the packets it cost could
+    // only be made good by the next full frame, which arrived into the same congestion.
+    // An unchanged frame is now repeated only occasionally, which both frees the link and
+    // repairs anything lost earlier.
+    struct SentFrame {
+        uint32_t hash = 0;
+        unsigned long lastSent = 0;
+        bool valid = false;
+    };
+    static const unsigned long LED_REFRESH_MS = 5000;
+    std::map<uint8_t, SentFrame> _lastLedFrame;
+    static uint32_t frameHash(const uint8_t* data, uint16_t length);
+
+    // The last frame actually sent to each Slave, kept so only the parts that changed have to go
+    // out again. A clock on a 64x64 panel alters a few dozen pixels out of 4096, yet the whole
+    // 20KB frame was retransmitted for it - 86 packets where four would do. Sending only the
+    // changed pieces is what keeps a still image stable: the link stays free, so the packets
+    // carrying it stop being lost in the first place.
+    // Chunks are 47 pixels: 235 bytes plus the two offset bytes stays inside the 240-byte limit.
+    static const uint16_t DELTA_PIXELS_PER_CHUNK = 47;
+    std::map<uint8_t, std::vector<uint8_t>> _lastFrameData;
+    uint32_t _ledPacketsSent = 0;
+    uint32_t _ledFramesSent = 0;
+    void sendChangedChunks(uint8_t slaveId, const uint8_t* rgbData, uint16_t length,
+                           std::vector<uint8_t>& prev);
 
     // Last effect parameters sent to each Slave, so unchanged ones are not resent every frame.
     // The refresh interval exists so a Slave that rebooted picks its effect back up on its own
