@@ -243,6 +243,11 @@ public:
     void beginSurface(const Segment& seg);
     void drawSurfacePixel(Segment& seg, uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b, uint8_t w = 0);
 
+    // Live pixels of one segment, straight out of the render buffer. This is what lets the UI
+    // preview a panel driven by a Slave: the Master renders those pixels and streams them on,
+    // but never shows them itself, so they were invisible everywhere.
+    bool getSegmentPixels(uint8_t segId, uint16_t& start, uint16_t& count, const uint8_t*& buf) const;
+
     uint16_t getCanvasWidth() const;
     uint16_t getCanvasHeight() const;
     void setCanvasPixelColor(uint16_t cx, uint16_t cy, uint8_t r, uint8_t g, uint8_t b, uint8_t w = 0);

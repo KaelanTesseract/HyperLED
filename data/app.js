@@ -2685,17 +2685,42 @@ document.addEventListener('DOMContentLoaded', () => {
         return Math.max(2, Math.min(20, Math.floor(280 / Math.max(w, h))));
     }
 
-    function renderMatrixPreview(colors) {
+    // Current limiting can leave the real output at a few percent brightness, which is almost
+    // invisible on screen. The preview is about seeing WHAT is displayed, so it is scaled up to
+    // full range - the colours stay true, only the level is lifted.
+    function brightenForPreview(colors) {
+        let peak = 0;
+        for (const c of colors) {
+            const m = Math.max((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
+            if (m > peak) peak = m;
+        }
+        if (peak === 0 || peak >= 200) return colors;
+        const f = 255 / peak;
+        return colors.map(c => {
+            if (!c) return 0;
+            const r = Math.min(255, Math.round(((c >> 16) & 0xFF) * f));
+            const g = Math.min(255, Math.round(((c >> 8) & 0xFF) * f));
+            const b = Math.min(255, Math.round((c & 0xFF) * f));
+            return (r << 16) | (g << 8) | b;
+        });
+    }
+
+    function renderMatrixPreview(colors, keepBackground) {
         if (!matrixPreviewCanvas || !Array.isArray(colors)) return;
         const { w, h } = editorDims();
         if (colors.length !== w * h) return;
         const cell = previewCellSize(w, h);
-        matrixPreviewCanvas.width = w * cell;
-        matrixPreviewCanvas.height = h * cell;
+        // Resizing clears the canvas, so only do it when not drawing over an existing grid.
+        if (!keepBackground) {
+            matrixPreviewCanvas.width = w * cell;
+            matrixPreviewCanvas.height = h * cell;
+        }
         const ctx = matrixPreviewCanvas.getContext('2d');
         for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
-                ctx.fillStyle = '#' + colors[y * w + x].toString(16).padStart(6, '0');
+                const c = colors[y * w + x];
+                if (keepBackground && c === 0) continue; // leave the grid showing through
+                ctx.fillStyle = '#' + c.toString(16).padStart(6, '0');
                 ctx.fillRect(x * cell, y * cell, cell, cell);
             }
         }
@@ -2729,9 +2754,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    let previewInFlight = false;
     function fetchMatrixPreview() {
         if (!matrixPreviewCanvas) return;
-        if (activeSegmentPanel()) { drawEmptyPreview(); return; }
+        // A 64x64 segment is 4096 values and takes a couple of seconds to fetch - far longer than
+        // the refresh interval. Without this the requests would pile up on the device.
+        if (previewInFlight) return;
+        if (activeSegmentPanel()) {
+            // The Master renders this panel's pixels even though it never displays them, so ask
+            // for that segment. Effects the Slave renders itself leave the buffer dark - the grid
+            // drawn underneath keeps the area usable for placing widgets in that case.
+            previewInFlight = true;
+            fetch('/api/matrix_preview?seg=' + currentSegmentId)
+                .then(res => res.json())
+                .then(colors => {
+                    if (!Array.isArray(colors) || colors.length === 0) { drawEmptyPreview(); return; }
+                    drawEmptyPreview();
+                    renderMatrixPreview(brightenForPreview(colors), true);
+                })
+                .catch(() => drawEmptyPreview())
+                .finally(() => { previewInFlight = false; });
+            return;
+        }
         fetch('/api/matrix_preview')
             .then(res => res.json())
             .then(renderMatrixPreview)

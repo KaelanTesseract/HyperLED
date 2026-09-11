@@ -569,6 +569,16 @@ void LEDManagerClass::getMatrixPreviewJson(JsonArray array) const {
     }
 }
 
+bool LEDManagerClass::getSegmentPixels(uint8_t segId, uint16_t& start, uint16_t& count,
+                                       const uint8_t*& buf) const {
+    if (segId >= _segments.size() || !_bus) return false;
+    buf = _bus->getBuffer();
+    if (!buf) return false;
+    start = _segments[segId].start;
+    count = _segments[segId].stop - _segments[segId].start;
+    return count > 0;
+}
+
 void LEDManagerClass::setCanvasPanels(JsonArray panels) {
     _canvasPanels.clear();
     for (JsonObject p : panels) {

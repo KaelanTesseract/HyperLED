@@ -385,6 +385,33 @@ void WebServerManagerClass::setupRoutes() {
     // Live preview: current pixel colors of the Master's own matrix (whatever
     // effect is driving it), so the WebUI can mirror the panel without a camera.
     server.on("/api/matrix_preview", HTTP_GET, [](AsyncWebServerRequest *request){
+        // With ?seg=N the live pixels of that segment are returned instead of the Master's own
+        // matrix. That is the only way to see a panel driven by a Slave: the Master renders it
+        // and streams it onward without ever displaying it.
+        if (request->hasParam("seg")) {
+            uint8_t segId = (uint8_t)request->getParam("seg")->value().toInt();
+            uint16_t start = 0, count = 0;
+            const uint8_t* buf = nullptr;
+            if (!LEDManager.getSegmentPixels(segId, start, count, buf)) {
+                request->send(200, "application/json", "[]");
+                return;
+            }
+            // Streamed rather than assembled in memory: a 64x64 panel is 4096 values, tens of
+            // kilobytes of JSON that would otherwise be held all at once.
+            AsyncResponseStream *response = request->beginResponseStream("application/json");
+            response->print('[');
+            for (uint16_t i = 0; i < count; i++) {
+                if (i) response->print(',');
+                const uint8_t* px = &buf[(size_t)(start + i) * 5];
+                uint32_t rgb = ((uint32_t)px[0] << 16) | ((uint32_t)px[1] << 8) | px[2];
+                response->print(rgb);
+            }
+            response->print(']');
+            response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+            request->send(response);
+            return;
+        }
+
         JsonDocument doc;
         JsonArray arr = doc.to<JsonArray>();
         LEDManager.getMatrixPreviewJson(arr);
