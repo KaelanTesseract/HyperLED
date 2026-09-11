@@ -168,6 +168,7 @@ void WebServerManagerClass::setupRoutes() {
             doc["dropIncomplete"] = bus->getDroppedIncomplete();
             doc["dropNoCallback"] = bus->getDroppedNoCallback();
             doc["dropForeign"] = bus->getDroppedForeign();
+            doc["sendErrors"] = bus->getSendErrors();
         }
         {
             doc["ledPackets"] = SlaveManager.getLedPacketsSent();

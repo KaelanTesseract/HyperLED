@@ -107,6 +107,7 @@ bool EspNowBusClass::sendPacket(uint8_t targetId, uint8_t senderId, uint8_t comm
         }
 
         esp_err_t result = esp_now_send(targetMac, _txBuffer, packetLen);
+        if (result != ESP_OK) _sendErrors++;
         return (result == ESP_OK);
     } else if (command == CMD_SET_LEDS) {
         // Chunking for CMD_SET_LEDS
@@ -137,7 +138,11 @@ bool EspNowBusClass::sendPacket(uint8_t targetId, uint8_t senderId, uint8_t comm
             esp_now_send(targetMac, _txBuffer, packetLen);
 
             offset += chunkSize;
-            delayMicroseconds(500); // Give ESP-NOW some breathing room
+            // A packet needs roughly 1-2ms on air. Feeding the queue every 500us pushed frames
+            // in far faster than the radio drained them, and the ones that did not fit were lost
+            // without esp_now_send reporting anything - always the later chunks, so the lower
+            // right of a panel stayed stale while the top left updated normally.
+            delayMicroseconds(2000);
         }
         return true;
     }

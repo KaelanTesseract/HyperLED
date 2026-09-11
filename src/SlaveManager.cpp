@@ -538,6 +538,9 @@ void SlaveManagerClass::sendChangedChunks(uint8_t slaveId, const uint8_t* rgbDat
         memcpy(&payload[2], &rgbData[off], size);
         targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_LEDS_CHUNK, payload, size + 2);
         _ledPacketsSent++;
+        // Same pacing as the full-frame path: without it a burst of chunks outruns the radio and
+        // the tail of the frame is dropped.
+        delayMicroseconds(2000);
     }
 }
 

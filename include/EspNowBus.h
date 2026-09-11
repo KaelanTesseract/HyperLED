@@ -52,6 +52,10 @@ public:
     uint32_t getDroppedIncomplete() const { return _droppedIncomplete; }
     uint32_t getDroppedNoCallback() const { return _droppedNoCallback; }
     uint32_t getDroppedForeign() const { return _droppedForeign; }
+    // Packets esp_now_send() refused, almost always because its queue was full. A burst of
+    // chunks fills that queue far faster than the radio drains it, and every refusal is a block
+    // of pixels that never reaches the panel.
+    uint32_t getSendErrors() const { return _sendErrors; }
 
 private:
     PacketReceivedCallback _callback = nullptr;
@@ -66,6 +70,7 @@ private:
     uint32_t _droppedIncomplete = 0;
     uint32_t _droppedNoCallback = 0;
     uint32_t _droppedForeign = 0;
+    uint32_t _sendErrors = 0;
     
     uint8_t _broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     std::map<uint8_t, std::array<uint8_t, 6>> _peerMacs;
