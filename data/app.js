@@ -309,6 +309,15 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchMqtt();
             fetchStatusLed();
             fetchCanvasPanels();
+            // The dashboard needs to know about the Slaves too, not just the settings tabs that
+            // used to be the only callers: which effects a segment offers depends on whether its
+            // Slave drives a HUB75 panel, and without this that list is empty on the main screen.
+            fetchHardwareLimitsForSegments(() => {
+                if (typeof updateEffectVisibility === 'function') updateEffectVisibility();
+            });
+            setInterval(() => fetchHardwareLimitsForSegments(() => {
+                if (typeof updateEffectVisibility === 'function') updateEffectVisibility();
+            }), 15000);
         }
     });
 
