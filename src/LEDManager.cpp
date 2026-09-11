@@ -1210,6 +1210,37 @@ uint8_t LEDManagerClass::getGlobalAblCap() {
 // tm_wday-indexed (0 = Sunday), used by the "Wochentag" date format below.
 static const char* const WEEKDAY_ABBR[7] = {"SO", "MO", "DI", "MI", "DO", "FR", "SA"};
 
+void LEDManagerClass::beginSurface(const Segment& seg) {
+    _surfaceIsSegment = false;
+    _surfaceW = 0;
+    _surfaceH = 0;
+
+    if (seg.isSlave && seg.slaveId != 254) {
+        uint16_t pw = 0, ph = 0;
+        // Only when the panel actually fits the segment - a mismatch would write past its end.
+        if (SlaveManager.getSlavePanelSize(seg.slaveId, pw, ph) &&
+            (uint32_t)pw * ph <= (uint32_t)(seg.stop - seg.start)) {
+            _surfaceIsSegment = true;
+            _surfaceW = pw;
+            _surfaceH = ph;
+            return;
+        }
+    }
+
+    _surfaceW = getCanvasWidth();
+    _surfaceH = getCanvasHeight();
+}
+
+void LEDManagerClass::drawSurfacePixel(Segment& seg, uint16_t x, uint16_t y,
+                                       uint8_t r, uint8_t g, uint8_t b, uint8_t w) {
+    if (_surfaceIsSegment) {
+        if (x >= _surfaceW || y >= _surfaceH) return;
+        setSegmentPixelColor(seg, seg.start + (uint16_t)((uint32_t)y * _surfaceW + x), r, g, b, w);
+    } else {
+        setCanvasPixelColor(x, y, r, g, b, w);
+    }
+}
+
 void LEDManagerClass::effectImage(Segment& seg, uint8_t ablCap) {
     // Intentionally does nothing: pixels for this segment are written directly by
     // /api/matrix (via setPixelColorXY), and this effect just holds them in place
@@ -1223,14 +1254,17 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap) {
     // own freely-positioned (x,y) using the built-in 5x7 bitmap font (see
     // Font5x7.h). Makes no sense on a plain 1D strip, so it no-ops there (like
     // the other HUB75 showcase effects).
-    if (!_isMatrix) return;
-    uint16_t cw = getCanvasWidth();
-    uint16_t ch = getCanvasHeight();
+    // A HUB75 panel on a Slave is a matrix in its own right, so this effect works there even
+    // when the Master itself drives a plain strip.
+    beginSurface(seg);
+    if (!_surfaceIsSegment && !_isMatrix) return;
+    uint16_t cw = _surfaceW;
+    uint16_t ch = _surfaceH;
     if (cw == 0 || ch == 0) return;
 
     for (uint16_t y = 0; y < ch; y++) {
         for (uint16_t x = 0; x < cw; x++) {
-            setCanvasPixelColor(x, y, 0, 0, 0, 0);
+            drawSurfacePixel(seg, x, y, 0, 0, 0, 0);
         }
     }
 
@@ -1268,7 +1302,7 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap) {
                             for (uint8_t sx = 0; sx < scale; sx++) {
                                 int16_t px = curX + (int16_t)col * scale + sx;
                                 if (px < 0 || px >= (int16_t)cw) continue;
-                                setCanvasPixelColor(px, py, r, g, b, 0);
+                                drawSurfacePixel(seg, px, py, r, g, b, 0);
                             }
                         }
                     }
@@ -1299,7 +1333,7 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap) {
                                 for (uint8_t sx = 0; sx < scale; sx++) {
                                     int16_t px = charX + (int16_t)col * scale + sx;
                                     if (px < 0 || px >= (int16_t)cw) continue;
-                                    setCanvasPixelColor(px, py, r, g, b, 0);
+                                    drawSurfacePixel(seg, px, py, r, g, b, 0);
                                 }
                             }
                         }
@@ -1328,7 +1362,7 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap) {
                 int16_t ix = (int16_t)lroundf(px);
                 int16_t iy = (int16_t)lroundf(py);
                 if (ix < 0 || ix >= (int16_t)cw || iy < 0 || iy >= (int16_t)ch) return;
-                setCanvasPixelColor(ix, iy, r, g, b, 0);
+                drawSurfacePixel(seg, ix, iy, r, g, b, 0);
             };
             auto plotHand = [&](float angleDeg, float len) {
                 float rad = angleDeg * (float)PI / 180.0f;
@@ -1401,7 +1435,7 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap) {
                         for (uint8_t sx = 0; sx < scale; sx++) {
                             int16_t px = tw.x + (int16_t)ix * scale + sx;
                             if (px < 0 || px >= (int16_t)cw) continue;
-                            setCanvasPixelColor(px, py, r, g, b, 0);
+                            drawSurfacePixel(seg, px, py, r, g, b, 0);
                         }
                     }
                 }
@@ -1475,7 +1509,7 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap) {
                         for (uint8_t sx = 0; sx < scale; sx++) {
                             int16_t px = charX + (int16_t)col * scale + sx;
                             if (px < 0 || px >= (int16_t)cw) continue;
-                            setCanvasPixelColor(px, py, r, g, b, 0);
+                            drawSurfacePixel(seg, px, py, r, g, b, 0);
                         }
                     }
                 }

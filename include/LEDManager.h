@@ -236,6 +236,13 @@ public:
     // when no matrix is configured.
     void renderWithEngine(Segment& seg, uint8_t ablCap, uint8_t effectOverride = 255);
 
+    // Where a 2D effect draws for a given segment. A segment fed by a HUB75 Slave draws into
+    // that panel's own pixels; everything else goes onto the shared canvas as before. Without
+    // this, the clock and text effect always landed on the Master's matrix no matter which
+    // segment it was configured on.
+    void beginSurface(const Segment& seg);
+    void drawSurfacePixel(Segment& seg, uint16_t x, uint16_t y, uint8_t r, uint8_t g, uint8_t b, uint8_t w = 0);
+
     uint16_t getCanvasWidth() const;
     uint16_t getCanvasHeight() const;
     void setCanvasPixelColor(uint16_t cx, uint16_t cy, uint8_t r, uint8_t g, uint8_t b, uint8_t w = 0);
@@ -275,6 +282,11 @@ private:
     uint16_t _matrixWidth = 16;
     uint16_t _matrixHeight = 16;
     uint8_t _matrixLayout = 0; // 0 = Zick-Zack/Serpentine, 1 = Zeilenweise
+
+    // Surface selected by beginSurface() for the effect currently being drawn.
+    bool _surfaceIsSegment = false;
+    uint16_t _surfaceW = 0;
+    uint16_t _surfaceH = 0;
 
     bool _syncActive = false;
     // Which segment leads the sync group this frame and what span it covers. Recomputed each

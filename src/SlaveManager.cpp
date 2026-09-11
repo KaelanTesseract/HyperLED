@@ -397,6 +397,17 @@ bool SlaveManagerClass::slaveRendersLocally(uint8_t slaveId) const {
     return false;
 }
 
+bool SlaveManagerClass::getSlavePanelSize(uint8_t slaveId, uint16_t& w, uint16_t& h) const {
+    for (const auto& s : _discoveredSlaves) {
+        if (s.currentId != slaveId) continue;
+        if (s.ledType != TYPE_HUB75) return false;
+        w = s.matrixWidth;
+        h = s.matrixHeight;
+        return w > 0 && h > 0;
+    }
+    return false;
+}
+
 void SlaveManagerClass::sendSegmentConfig(uint8_t slaveId, uint8_t effect, uint8_t brightness,
                                           uint8_t speed, uint8_t intensity, uint8_t palette,
                                           bool isOn, uint32_t color, uint32_t color2,

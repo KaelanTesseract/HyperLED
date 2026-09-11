@@ -72,6 +72,9 @@ public:
     // Whether this Slave's firmware can render effects on its own. Older Slaves keep receiving
     // streamed pixel data, so a mixed set of firmware versions stays functional.
     bool slaveRendersLocally(uint8_t slaveId) const;
+    // Pixel size of the HUB75 panel this Slave reported, if it is one. Lets a 2D effect draw into
+    // the Slave's own panel instead of the shared canvas.
+    bool getSlavePanelSize(uint8_t slaveId, uint16_t& w, uint16_t& h) const;
 
     // For the ESP-NOW diagnostics on /api/espnow_status.
     EspNowBusClass* getEspBus() { return _espBus; }
