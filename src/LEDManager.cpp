@@ -569,6 +569,13 @@ void LEDManagerClass::getMatrixPreviewJson(JsonArray array) const {
     }
 }
 
+uint8_t LEDManagerClass::segmentAblCap(const Segment& seg, uint8_t globalCap) const {
+    // Mirrors the skip in getGlobalAblCap(): a Slave that does not share the Master's supply
+    // contributes nothing to the current estimate, so it must not be limited by it either.
+    if (seg.isSlave && !seg.sharesPower) return 255;
+    return globalCap;
+}
+
 bool LEDManagerClass::getSegmentPixels(uint8_t segId, uint16_t& start, uint16_t& count,
                                        const uint8_t*& buf) const {
     if (segId >= _segments.size() || !_bus) return false;
@@ -962,7 +969,7 @@ void LEDManagerClass::renderWithEngine(Segment& seg, uint8_t ablCap, uint8_t eff
     st.effect = (effectOverride == 255) ? seg.effect : effectOverride;
     // The engine scales colours by brightness alone, so the ABL cap is folded in here - the same
     // (brightness * ablCap) / 255 the effects used to compute for themselves.
-    st.brightness = (uint8_t)(((uint16_t)seg.brightness * ablCap) / 255);
+    st.brightness = (uint8_t)(((uint16_t)seg.brightness * segmentAblCap(seg, ablCap)) / 255);
     st.speed = seg.speed;
     st.intensity = seg.intensity;
     st.palette = seg.palette;
@@ -1130,7 +1137,7 @@ void LEDManagerClass::loop() {
                     // this implicitly - the pixels were already scaled before they went out - so
                     // sending the raw brightness instead made a Slave brighter than the Master and
                     // put a visible step at the segment boundary.
-                    uint8_t srcBri = (uint8_t)(((uint16_t)src.brightness * ablCap) / 255);
+                    uint8_t srcBri = (uint8_t)(((uint16_t)src.brightness * segmentAblCap(seg, ablCap)) / 255);
 
                     if (EffectEngine::canRender(src.effect) &&
                         SlaveManager.slaveRendersLocally(seg.slaveId)) {
@@ -1280,7 +1287,7 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap) {
 
     if (seg.textWidgets.empty()) return;
 
-    uint16_t currentBri = (seg.brightness * ablCap) / 255;
+    uint16_t currentBri = (seg.brightness * segmentAblCap(seg, ablCap)) / 255;
     time_t nowEpoch = time(nullptr);
     struct tm timeinfo;
     localtime_r(&nowEpoch, &timeinfo);

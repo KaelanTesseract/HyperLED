@@ -248,6 +248,13 @@ public:
     // but never shows them itself, so they were invisible everywhere.
     bool getSegmentPixels(uint8_t segId, uint16_t& start, uint16_t& count, const uint8_t*& buf) const;
 
+    // The ABL cap that actually applies to a given segment. getGlobalAblCap() deliberately
+    // leaves out Slave segments that are not on the Master's power budget, so capping them
+    // anyway was inconsistent - and punishing: a panel with its own supply ran at a fraction of
+    // its brightness, which on a 6-bit HUB75 panel left barely a handful of usable steps and made
+    // dimming look like pixels switching off rather than fading.
+    uint8_t segmentAblCap(const Segment& seg, uint8_t globalCap) const;
+
     uint16_t getCanvasWidth() const;
     uint16_t getCanvasHeight() const;
     void setCanvasPixelColor(uint16_t cx, uint16_t cy, uint8_t r, uint8_t g, uint8_t b, uint8_t w = 0);
