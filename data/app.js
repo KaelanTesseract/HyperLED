@@ -654,6 +654,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 let segUpdates = [];
                 for (let i = 0; i < segments.length; i++) {
+                    if (segments[i].syncEnabled === false) continue; // opted out of the group
                     segments[i].on = activeSeg.on;
                     segments[i].bri = activeSeg.bri;
                     segments[i].effect = activeSeg.effect;
@@ -686,6 +687,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 updateUI();
             }
+            renderSegmentsSelector(); // the per-segment boxes appear and disappear with the switch
         });
     }
 
@@ -1635,6 +1637,18 @@ document.addEventListener('DOMContentLoaded', () => {
         function renderSegmentsSelector() {
         if (!segmentSelector) return;
         segmentSelector.innerHTML = '';
+
+        // The per-segment boxes only mean anything while sync is on, so they appear with it. A
+        // short line says what a tick does - on its own a column of checkboxes explains nothing.
+        const syncBox = document.getElementById('syncSegments');
+        const syncOn = !!(syncBox && syncBox.checked);
+        if (syncOn) {
+            const hint = document.createElement('div');
+            hint.style.cssText = 'font-size: 11px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.4;';
+            hint.innerText = t('seg_sync_hint');
+            segmentSelector.appendChild(hint);
+        }
+
         segments.forEach((seg, idx) => {
             const btn = document.createElement('button');
             btn.className = idx === currentSegmentId ? 'effect-btn active' : 'btn btn-primary';
@@ -1708,25 +1722,39 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = document.createElement('div');
             row.style.cssText = 'display: flex; align-items: center; gap: 8px; width: 100%;';
 
-            const syncBox = document.createElement('input');
-            syncBox.type = 'checkbox';
-            syncBox.checked = seg.syncEnabled !== false;
-            syncBox.title = t('seg_sync_member');
-            syncBox.style.cssText = 'transform: scale(1.2); cursor: pointer; flex-shrink: 0; margin: 0;';
-            syncBox.addEventListener('click', (e) => e.stopPropagation());
-            syncBox.addEventListener('change', () => {
-                segments[idx].syncEnabled = syncBox.checked;
-                // Saved straight away, the same way reordering this list is.
-                fetch('/api/segments', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(segments)
-                }).then(() => fetchState()).catch(() => {});
-            });
+            if (syncOn) {
+                const isMember = seg.syncEnabled !== false;
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = isMember;
+                cb.title = t('seg_sync_member');
+                cb.style.cssText = 'transform: scale(1.2); cursor: pointer; flex-shrink: 0; margin: 0;';
+                cb.addEventListener('click', (e) => e.stopPropagation());
+                cb.addEventListener('change', () => {
+                    segments[idx].syncEnabled = cb.checked;
+                    renderSegmentsSelector();
+                    // Saved straight away, the same way reordering this list is.
+                    fetch('/api/segments', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(segments)
+                    }).then(() => fetchState()).catch(() => {});
+                });
+                row.appendChild(cb);
+
+                // A continuous bar down the left of the members makes the group readable at a
+                // glance - which segments run as one chain, and which stand on their own.
+                const bar = document.createElement('div');
+                bar.style.cssText = 'width: 3px; align-self: stretch; flex-shrink: 0; border-radius: 2px; background: '
+                                  + (isMember ? 'var(--primary)' : 'transparent') + ';';
+                row.appendChild(bar);
+
+                if (!isMember) btn.style.opacity = '0.75';
+            }
 
             btn.style.flex = '1';
             btn.style.minWidth = '0';
-            row.appendChild(syncBox);
             row.appendChild(btn);
             segmentSelector.appendChild(row);
         });
@@ -2432,8 +2460,16 @@ document.addEventListener('DOMContentLoaded', () => {
         let segUpdates = [];
         const syncCheckbox = document.getElementById('syncSegments');
         
-        if (syncCheckbox && syncCheckbox.checked) {
+        // A change spreads across the sync group only when the segment being edited belongs to it.
+        // Editing a segment that opted out must stay local - otherwise picking an effect for an
+        // unsynchronised panel would still reset every other segment, which is what happened.
+        const activeSeg = segments[currentSegmentId];
+        const activeIsMember = !activeSeg || activeSeg.syncEnabled !== false;
+        const spread = !!(syncCheckbox && syncCheckbox.checked) && activeIsMember;
+
+        if (spread) {
             for (let i = 0; i < segments.length; i++) {
+                if (segments[i] && segments[i].syncEnabled === false) continue; // opted out
                 segUpdates.push({ id: i, ...updates });
                 // Update local segment representations
                 if (segments[i]) {
@@ -2463,6 +2499,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         const payload = {
+            // Reflects the switch itself, not whether this particular change was spread - editing
+            // an unsynchronised segment must not silently turn sync off for everything else.
             sync: (syncCheckbox && syncCheckbox.checked) ? true : false,
             seg: segUpdates
         };

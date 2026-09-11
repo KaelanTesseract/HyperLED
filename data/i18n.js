@@ -113,6 +113,7 @@ const translations = {
         "seg_name": "Name",
         "seg_start": "Start",
         "seg_stop": "Stop",
+        "seg_sync_hint": "Angehakte Segmente laufen als eine Kette - der Effekt des obersten gilt für alle. Nicht angehakte behalten ihren eigenen Effekt.",
         "seg_sync_member": "Beim Synchronisieren mitlaufen",
         "seg_shares": "Zieht Strom vom Master (ABL Limitierung)",
 
@@ -419,6 +420,7 @@ const translations = {
         "seg_name": "Name",
         "seg_start": "Start",
         "seg_stop": "Stop",
+        "seg_sync_hint": "Ticked segments run as one chain - the topmost one sets the effect for all of them. Unticked segments keep their own.",
         "seg_sync_member": "Include when synchronising",
         "seg_shares": "Draws power from Master (ABL Limitation)",
 
@@ -716,6 +718,7 @@ const translations = {
         "seg_name": "Имя",
         "seg_start": "Начало",
         "seg_stop": "Конец",
+        "seg_sync_hint": "Отмеченные сегменты работают как одна цепочка - эффект верхнего применяется ко всем. Неотмеченные сохраняют свой эффект.",
         "seg_sync_member": "Участвовать в синхронизации",
         "seg_shares": "Питается от Мастера (Ограничение ABL)",
 
