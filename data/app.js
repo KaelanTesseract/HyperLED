@@ -1046,12 +1046,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     </label>
                 </div>
                 ` : '') + `
-                <div style="flex: 100%; margin-top: 4px; margin-bottom: 5px;">
-                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); cursor: pointer;">
-                        <input type="checkbox" class="seg-sync" data-idx="${idx}" ${seg.syncEnabled !== false ? 'checked' : ''} style="transform: scale(1.2);">
-                        ${t('seg_sync_member')}
-                    </label>
-                </div>
             `;
             segmentsListContainer.appendChild(div);
         });
@@ -1102,11 +1096,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.seg-shares-power').forEach(i => i.addEventListener('change', e => {
             segments[e.target.dataset.idx].sharesPower = e.target.checked;
             updateAblUI();
-        }));
-        // Which segments join the synchronised group. Unticked segments keep their own effect
-        // even while sync is on, so a clock on a panel can sit beside a strip running a sweep.
-        document.querySelectorAll('.seg-sync').forEach(i => i.addEventListener('change', e => {
-            segments[e.target.dataset.idx].syncEnabled = e.target.checked;
         }));
         document.querySelectorAll('.btn-del-seg').forEach(btn => btn.addEventListener('click', e => {
             segments.splice(e.target.dataset.idx, 1);
@@ -1712,7 +1701,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateStateFromSegment();
                 renderSegmentsSelector();
             });
-            segmentSelector.appendChild(btn);
+
+            // Sync membership belongs here rather than in the settings: this is the list you look
+            // at while choosing what runs where. Ticked segments form one chain driven by the
+            // first of them; unticked ones keep their own effect even while sync is on.
+            const row = document.createElement('div');
+            row.style.cssText = 'display: flex; align-items: center; gap: 8px; width: 100%;';
+
+            const syncBox = document.createElement('input');
+            syncBox.type = 'checkbox';
+            syncBox.checked = seg.syncEnabled !== false;
+            syncBox.title = t('seg_sync_member');
+            syncBox.style.cssText = 'transform: scale(1.2); cursor: pointer; flex-shrink: 0; margin: 0;';
+            syncBox.addEventListener('click', (e) => e.stopPropagation());
+            syncBox.addEventListener('change', () => {
+                segments[idx].syncEnabled = syncBox.checked;
+                // Saved straight away, the same way reordering this list is.
+                fetch('/api/segments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(segments)
+                }).then(() => fetchState()).catch(() => {});
+            });
+
+            btn.style.flex = '1';
+            btn.style.minWidth = '0';
+            row.appendChild(syncBox);
+            row.appendChild(btn);
+            segmentSelector.appendChild(row);
         });
     }
 
