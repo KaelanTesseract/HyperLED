@@ -59,15 +59,38 @@ uint8_t WeatherManagerClass::weatherCodeToIcon(int code) {
 
 void WeatherManagerClass::begin() {
     loadLocation();
-    if (_hasLocation) fetchWeather();
+    if (_hasLocation) startFetch();
 }
 
 void WeatherManagerClass::loop() {
     if (!_hasLocation) return;
     if (WiFi.status() != WL_CONNECTED) return;
+    if (_fetchRunning) return;
     unsigned long interval = _hasData ? WEATHER_FETCH_INTERVAL_MS : WEATHER_RETRY_INTERVAL_MS;
     if (millis() - _lastAttempt < interval) return;
-    fetchWeather();
+    // Stamped here as well as in fetchWeather(): if the task cannot be created we must not spin
+    // on retrying it every single loop.
+    _lastAttempt = millis();
+    startFetch();
+}
+
+void WeatherManagerClass::startFetch() {
+    if (_fetchRunning) return;
+    _fetchRunning = true;
+    // 12KB of stack: the HTTPS request brings mbedTLS with it, which a default-sized task
+    // cannot hold. Lowest priority - nothing here is urgent, and it must never crowd out the
+    // loop it was moved off in the first place.
+    if (xTaskCreate(fetchTaskEntry, "weather", 12288, this, 1, nullptr) != pdPASS) {
+        Serial.println("WeatherManager: could not start fetch task");
+        _fetchRunning = false;
+    }
+}
+
+void WeatherManagerClass::fetchTaskEntry(void* arg) {
+    WeatherManagerClass* self = static_cast<WeatherManagerClass*>(arg);
+    self->fetchWeather();
+    self->_fetchRunning = false;
+    vTaskDelete(nullptr);
 }
 
 void WeatherManagerClass::loadLocation() {

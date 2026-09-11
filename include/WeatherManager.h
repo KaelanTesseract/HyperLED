@@ -56,6 +56,13 @@ private:
     void loadLocation();
     void saveLocation();
     bool fetchWeather();
+    // The fetch runs in its own task, never from loop(). It talks HTTPS, so a single call can
+    // occupy several seconds - TLS handshake plus a 10s timeout - and during that the Master
+    // sends no pings at all. A Slave gives up after five seconds of silence, so every refresh
+    // interval knocked the Slaves off the Master until they found it again.
+    void startFetch();
+    static void fetchTaskEntry(void* arg);
+    volatile bool _fetchRunning = false;
     static uint8_t weatherCodeToIcon(int code);
 
     String _city;

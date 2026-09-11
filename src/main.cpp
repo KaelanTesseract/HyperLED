@@ -48,18 +48,23 @@ void setup() {
     WeatherManager.begin();
 }
 
+// Reports any manager that holds up the loop. While one does, the Master sends no pings and a
+// Slave declares it lost after five seconds - so a blocking call in here is not a slow frame, it
+// is a dropped Slave. Cheap enough to leave in: two millis() reads per manager.
+#define HYPERLED_LOOP_STEP(call) { unsigned long _t0 = millis(); call; unsigned long _took = millis() - _t0; if (_took > 500) { Serial.print("LOOP STALL: "); Serial.print(#call); Serial.print(" blocked for "); Serial.print(_took); Serial.println("ms"); } }
+
 void loop() {
-    WiFiManager.loop();
-    WebServerManager.loop();
-    MqttManager.loop();
-    ButtonManager.loop();
-    LEDManager.loop();
-    UpdateManager.loop();
-    SlaveManager.loop();
-    PresetManager.loop();
-    ScheduleManager.loop();
-    WeatherManager.loop();
-    StatusLedManager.loop();
+    HYPERLED_LOOP_STEP(WiFiManager.loop());
+    HYPERLED_LOOP_STEP(WebServerManager.loop());
+    HYPERLED_LOOP_STEP(MqttManager.loop());
+    HYPERLED_LOOP_STEP(ButtonManager.loop());
+    HYPERLED_LOOP_STEP(LEDManager.loop());
+    HYPERLED_LOOP_STEP(UpdateManager.loop());
+    HYPERLED_LOOP_STEP(SlaveManager.loop());
+    HYPERLED_LOOP_STEP(PresetManager.loop());
+    HYPERLED_LOOP_STEP(ScheduleManager.loop());
+    HYPERLED_LOOP_STEP(WeatherManager.loop());
+    HYPERLED_LOOP_STEP(StatusLedManager.loop());
 
 #if DEBUG_SERIAL
     static unsigned long lastMemPrint = 0;
