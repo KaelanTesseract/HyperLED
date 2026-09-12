@@ -37,6 +37,12 @@ void EspNowBusClass::begin(wifi_mode_t mode, bool autoHop) {
     // and kept working, so the concern does not hold for this hardware.
     WiFi.setSleep(WIFI_PS_NONE);
     
+    // Must exist before the callback can fire.
+    if (_rxQueue == nullptr) {
+        _rxQueue = xQueueCreate(RX_QUEUE_LEN, sizeof(RxPacket));
+        if (_rxQueue == nullptr) Serial.println("EspNowBus: could not create the receive queue");
+    }
+
     // Init ESP-NOW
     if (esp_now_init() != ESP_OK) {
         Serial.println("ESP-NOW Init Failed");
@@ -61,6 +67,26 @@ void EspNowBusClass::begin(wifi_mode_t mode, bool autoHop) {
 }
 
 void EspNowBusClass::loop() {
+    // Deliver whatever the callback parked for us. Bounded per call so a burst cannot turn into
+    // the very stall this queue exists to avoid.
+    if (_rxQueue != nullptr) {
+        RxPacket rx;
+        for (uint8_t i = 0; i < RX_QUEUE_LEN && xQueueReceive(_rxQueue, &rx, 0) == pdTRUE; i++) {
+            registerPeer(rx.mac, rx.senderId);
+            if (!_callback) continue;
+
+            HyperBusPacket packet;
+            packet.targetId = rx.targetId;
+            packet.senderId = rx.senderId;
+            packet.command = rx.command;
+            packet.length = rx.length;
+            packet.payload = rx.length > 0 ? rx.payload : nullptr;
+            packet.isValid = true;
+            packet.isWireless = true;
+            _callback(packet);
+        }
+    }
+
     if (!_autoHop) return;
 
     if (_locked) {
@@ -175,43 +201,50 @@ void EspNowBusClass::onDataRecv(const esp_now_recv_info_t * esp_now_info, const 
         _instance->_lastCommand = packet.command;
     }
     
-    // Register sender MAC for Unicast if we haven't already
-    if (packet.senderId != HYPERBUS_MASTER_ID || _instance->_peerMacs.empty()) {
-        if (_instance->_peerMacs.find(packet.senderId) == _instance->_peerMacs.end()) {
-            std::array<uint8_t, 6> mac;
-            memcpy(mac.data(), esp_now_info->src_addr, 6);
-            _instance->_peerMacs[packet.senderId] = mac;
-            
-            // Add peer to ESP-NOW
-            if (!esp_now_is_peer_exist(mac.data())) {
-                esp_now_peer_info_t peerInfo;
-                memset(&peerInfo, 0, sizeof(peerInfo));
-                memcpy(peerInfo.peer_addr, mac.data(), 6);
-                peerInfo.channel = 0;
-                peerInfo.encrypt = false;
-                esp_now_add_peer(&peerInfo);
-            }
-        }
-    }
-    
-    if (len < HYPERBUS_ESPNOW_HEADER + payloadLen) { _instance->_droppedIncomplete++; return; } // Incomplete
-    
-    packet.length = payloadLen;
-    packet.isValid = true;
-    packet.isWireless = true;
-    
-    if (payloadLen > 0) {
-        packet.payload = (uint8_t*)&incomingData[HYPERBUS_ESPNOW_HEADER];
-    } else {
-        packet.payload = nullptr;
-    }
-    
+    if (len < HYPERBUS_ESPNOW_HEADER + payloadLen) { _instance->_droppedIncomplete++; return; }
+
+    // Channel locking stays here. It is pure arithmetic on this object, and it has to be exact:
+    // the point is to record when the Master was last actually heard, not when the loop next got
+    // round to noticing.
     if (packet.command == CMD_PING && _instance->_autoHop) {
         _instance->_locked = true;
         _instance->_lastPingReceived = millis();
     }
-    
-    _instance->_callback(packet);
+
+    // Everything else is handed to loop(). incomingData belongs to the Wi-Fi stack and is gone
+    // the moment this returns, so the payload is copied rather than pointed at.
+    if (_instance->_rxQueue == nullptr) return;
+    RxPacket rx;
+    memcpy(rx.mac, esp_now_info->src_addr, 6);
+    rx.targetId = packet.targetId;
+    rx.senderId = packet.senderId;
+    rx.command = packet.command;
+    rx.length = payloadLen;
+    if (payloadLen > 0) memcpy(rx.payload, &incomingData[HYPERBUS_ESPNOW_HEADER], payloadLen);
+
+    if (xQueueSend(_instance->_rxQueue, &rx, 0) != pdTRUE) {
+        _instance->_droppedQueueFull++;
+    }
+}
+
+void EspNowBusClass::registerPeer(const uint8_t* mac, uint8_t senderId) {
+    // Runs on the loop task, so _peerMacs - which sendPacket() reads from the same task - is
+    // never rearranged underneath a lookup.
+    if (senderId == HYPERBUS_MASTER_ID && !_peerMacs.empty()) return;
+    if (_peerMacs.find(senderId) != _peerMacs.end()) return;
+
+    std::array<uint8_t, 6> stored;
+    memcpy(stored.data(), mac, 6);
+    _peerMacs[senderId] = stored;
+
+    if (!esp_now_is_peer_exist(stored.data())) {
+        esp_now_peer_info_t peerInfo;
+        memset(&peerInfo, 0, sizeof(peerInfo));
+        memcpy(peerInfo.peer_addr, stored.data(), 6);
+        peerInfo.channel = 0;
+        peerInfo.encrypt = false;
+        esp_now_add_peer(&peerInfo);
+    }
 }
 
 

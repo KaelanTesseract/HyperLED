@@ -17,6 +17,7 @@
  * limitations under the Licence.
  */
 #include "AppWebServer.h"
+#include "esp_system.h"
 #include <LittleFS.h>
 #include <time.h>
 #include "Config.h"
@@ -196,6 +197,19 @@ void WebServerManagerClass::setupRoutes() {
         json += ",\"heapFree\":" + String((unsigned)ESP.getFreeHeap());
         json += ",\"heapMinFree\":" + String((unsigned)ESP.getMinFreeHeap());
         json += ",\"heapLargestBlock\":" + String((unsigned)ESP.getMaxAllocHeap());
+        // Uptime and reset reason together answer the one question that outside observation
+        // cannot: whether an outage was the link going away or the board restarting under it.
+        // They look identical from the network, and on this hardware they look identical on the
+        // serial port too, because a restart re-enumerates the USB device and the monitor simply
+        // goes quiet.
+        json += ",\"uptime\":" + String((unsigned long)(millis() / 1000));
+        json += ",\"resetReason\":" + String((int)esp_reset_reason());
+        json += ",\"wifiRssi\":" + String((int)WiFi.RSSI());
+        json += ",\"wifiChannel\":" + String((int)WiFi.channel());
+        json += ",\"wifiDisconnects\":" + String((unsigned long)WiFiManager.getDisconnectCount());
+        json += ",\"wifiReconnects\":" + String((unsigned long)WiFiManager.getReconnectCount());
+        json += ",\"wifiLastReason\":" + String((unsigned)WiFiManager.getLastDisconnectReason());
+        json += ",\"wifiOfflineMs\":" + String((unsigned long)WiFiManager.getOfflineMs());
         json += "}";
         request->send(200, "application/json", json);
     });

@@ -23,7 +23,36 @@
 
 WiFiManagerClass WiFiManager;
 
+// Static, because the SDK calls it from the Wi-Fi task. It only records - reconnecting is left
+// to superviseLink() on the main loop, where blocking is safe and the retry can be paced.
+void WiFiManagerClass::onWiFiEvent(arduino_event_id_t event, arduino_event_info_t info) {
+    switch (event) {
+        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+            WiFiManager._disconnectCount++;
+            WiFiManager._lastDisconnectReason = info.wifi_sta_disconnected.reason;
+            WiFiManager._lastDisconnectAt = millis();
+            if (WiFiManager._offlineSince == 0) WiFiManager._offlineSince = millis();
+            Serial.printf("WiFi: link lost (reason %u, %lu so far)\n",
+                          (unsigned)info.wifi_sta_disconnected.reason,
+                          (unsigned long)WiFiManager._disconnectCount);
+            break;
+        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+            WiFiManager._offlineSince = 0;
+            Serial.printf("WiFi: back on %s, channel %d, RSSI %d\n",
+                          WiFi.localIP().toString().c_str(), WiFi.channel(), (int)WiFi.RSSI());
+            break;
+        default:
+            break;
+    }
+}
+
+unsigned long WiFiManagerClass::getOfflineMs() const {
+    if (_offlineSince == 0) return 0;
+    return millis() - _offlineSince;
+}
+
 void WiFiManagerClass::begin() {
+    WiFi.onEvent(WiFiManagerClass::onWiFiEvent);
     Preferences preferences;
     preferences.begin(PREF_NAMESPACE, true);
     _ssid = preferences.getString(PREF_WIFI_SSID, "");
@@ -53,6 +82,8 @@ void WiFiManagerClass::connectSTA() {
 
     if (WiFi.status() == WL_CONNECTED) {
         _isAPMode = false;
+        _wasConnected = true;
+        _offlineSince = 0;
         Serial.println("Connected! IP: " + WiFi.localIP().toString());
         
         if (!MDNS.begin("hyperled")) {
@@ -92,6 +123,8 @@ void WiFiManagerClass::startAP() {
 }
 
 void WiFiManagerClass::loop() {
+    superviseLink();
+
     if (_isAPMode) {
         _dnsServer.processNextRequest();
     }
@@ -111,6 +144,46 @@ void WiFiManagerClass::loop() {
         WiFi.scanNetworks(true, true); // true = async, true = show hidden
         Serial.println("Scan triggered async");
     }
+}
+
+void WiFiManagerClass::superviseLink() {
+    // Only meaningful for a station with credentials. In AP mode there is nothing to supervise,
+    // and during the setup flow a reconnect here would fight with the attempt being tested.
+    if (_isAPMode || _ssid.isEmpty() || _triggerSetupConnect ||
+        _setupState == WIFI_SETUP_CONNECTING) return;
+
+    unsigned long now = millis();
+    if (now - _lastLinkCheck < WIFI_CHECK_INTERVAL_MS) return;
+    _lastLinkCheck = now;
+
+    if (WiFi.status() == WL_CONNECTED) {
+        if (!_wasConnected) {
+            _wasConnected = true;
+            _reconnectCount++;
+            // mDNS and NetBIOS bind to the address the device had when they started, so after a
+            // new lease they answer for one that no longer exists - http://hyperled/ then leads
+            // nowhere even though the controller is back.
+            MDNS.end();
+            if (MDNS.begin("hyperled")) MDNS.addService("http", "tcp", 80);
+            NBNS.begin("hyperled");
+        }
+        return;
+    }
+
+    if (_wasConnected) {
+        _wasConnected = false;
+        if (_offlineSince == 0) _offlineSince = now;
+    }
+
+    // Give the SDK's own retry a chance first - it usually wins - and only then force the issue.
+    // WiFi.begin() while it is already trying would restart that attempt each time and could keep
+    // the link down indefinitely, so this is deliberately slow.
+    if (now - _lastReconnectAttempt < WIFI_RETRY_INTERVAL_MS) return;
+    _lastReconnectAttempt = now;
+
+    Serial.printf("WiFi: still down after %lus, reconnecting\n", getOfflineMs() / 1000);
+    WiFi.disconnect();
+    WiFi.begin(_ssid.c_str(), _password.c_str());
 }
 
 void WiFiManagerClass::startScan() {

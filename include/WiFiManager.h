@@ -57,6 +57,15 @@ public:
     String getSetupIp() const { return _setupIp; }
     void requestRestart(uint32_t delayMs = 500);
 
+    // Link history, so an outage leaves a trace instead of having to be caught in the act.
+    // Without these a dropped Wi-Fi link and a silent reboot look exactly alike from outside:
+    // both show up only as "not reachable for a while, then back".
+    uint32_t getDisconnectCount() const { return _disconnectCount; }
+    uint8_t getLastDisconnectReason() const { return _lastDisconnectReason; }
+    unsigned long getLastDisconnectAt() const { return _lastDisconnectAt; }
+    uint32_t getReconnectCount() const { return _reconnectCount; }
+    unsigned long getOfflineMs() const;
+
 private:
     bool _isAPMode = false;
     bool _triggerScan = false;
@@ -70,6 +79,25 @@ private:
     String _setupPassword;
     String _setupIp;
     unsigned long _restartAt = 0;
+
+    // Wi-Fi supervision. connectSTA() used to run once from begin() and that was the whole of
+    // it: nothing ever looked at the link again. A router reboot, an access point moving the
+    // Slaves' channel, or any ordinary roam therefore took the Master off the network for good,
+    // or for as long as the SDK's own retry happened to take - silently, because nothing printed
+    // and nothing counted it. Over days that is the difference between a controller that stays
+    // up and one that has to be power-cycled.
+    static const unsigned long WIFI_CHECK_INTERVAL_MS = 2000;
+    static const unsigned long WIFI_RETRY_INTERVAL_MS = 15000;
+    unsigned long _lastLinkCheck = 0;
+    unsigned long _lastReconnectAttempt = 0;
+    bool _wasConnected = false;
+    uint32_t _disconnectCount = 0;
+    uint32_t _reconnectCount = 0;
+    uint8_t _lastDisconnectReason = 0;
+    unsigned long _lastDisconnectAt = 0;
+    unsigned long _offlineSince = 0;
+    void superviseLink();
+    static void onWiFiEvent(arduino_event_id_t event, arduino_event_info_t info);
 
     void connectSTA();
     void startAP();

@@ -23,6 +23,8 @@
 #include <vector>
 #include <map>
 #include "HyperBus.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include "EspNowBus.h"
 
 struct DiscoveredSlave {
@@ -112,6 +114,23 @@ private:
     HyperBusClass* _uartBus;
     EspNowBusClass* _espBus;
     std::vector<DiscoveredSlave> _discoveredSlaves;
+
+    // One lock for everything this class owns.
+    //
+    // The web server runs on its own task and reaches in here directly - it copies the slave
+    // list for /api/slaves, and saving a Slave's settings calls configureSlave() straight from
+    // the request handler - while the main loop is adding, removing and sending to those same
+    // Slaves. A vector that grows or shrinks under another task's iterator hands out pointers
+    // into freed memory, and the resulting panic carries no hint of where it came from. The lock
+    // is recursive because these entry points legitimately call one another.
+    SemaphoreHandle_t _lock = nullptr;
+    // Held only for bookkeeping, never across anything slow: the longest thing inside it is a
+    // single ESP-NOW chunk.
+    struct Guard {
+        SemaphoreHandle_t h;
+        explicit Guard(SemaphoreHandle_t s) : h(s) { if (h) xSemaphoreTakeRecursive(h, portMAX_DELAY); }
+        ~Guard() { if (h) xSemaphoreGiveRecursive(h); }
+    };
     unsigned long _lastPingTime = 0;
     unsigned long _pauseLedsUntil = 0;
 

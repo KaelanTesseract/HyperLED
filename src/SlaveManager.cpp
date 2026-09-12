@@ -28,6 +28,7 @@ void SlaveManagerClass::staticHandlePacket(const HyperBusPacket& packet) {
 }
 
 void SlaveManagerClass::begin() {
+    if (_lock == nullptr) _lock = xSemaphoreCreateRecursiveMutex();
     _uartBus = new HyperBusClass(Serial1);
     _uartBus->begin(115200, HYPERBUS_UART_RX, HYPERBUS_UART_TX);
     _uartBus->setCallback(staticHandlePacket);
@@ -39,6 +40,7 @@ void SlaveManagerClass::begin() {
 }
 
 void SlaveManagerClass::loop() {
+    Guard guard(_lock);
     _uartBus->loop();
     _espBus->loop();
     
@@ -126,6 +128,7 @@ static void sanitizeForJson(String& s) {
 }
 
 void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
+    Guard guard(_lock);
     if (packet.command == CMD_PONG) {
         // PONG Payload: [LED Count L] [LED Count H] [Version Length] [Version String...] [Name...]
         if (packet.length >= 3) {
@@ -206,6 +209,7 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
 }
 
 std::vector<DiscoveredSlave> SlaveManagerClass::getDiscoveredSlaves() {
+    Guard guard(_lock);
     std::vector<DiscoveredSlave> sorted = _discoveredSlaves;
     std::sort(sorted.begin(), sorted.end(), [](const DiscoveredSlave& a, const DiscoveredSlave& b) {
         return a.currentId < b.currentId;
@@ -227,6 +231,7 @@ BusInterface* getBusForSlave(uint8_t slaveId, std::vector<DiscoveredSlave>& disc
 }
 
 void SlaveManagerClass::configureSlave(uint8_t currentId, uint8_t newId, uint8_t pin, uint8_t pin2, uint16_t count, uint8_t type, const String& name, uint16_t matrixWidth, uint16_t matrixHeight, uint8_t hub75ShiftDriver) {
+    Guard guard(_lock);
     uint16_t len = 11 + name.length();
     uint8_t* payload = (uint8_t*)malloc(len);
     payload[0] = newId;
@@ -269,6 +274,7 @@ void SlaveManagerClass::configureSlave(uint8_t currentId, uint8_t newId, uint8_t
 }
 
 bool SlaveManagerClass::isConfigPending(uint8_t slaveId) const {
+    Guard guard(_lock);
     for (const auto& p : _pendingConfigs) {
         if (p.addressedId == slaveId || p.expectedId == slaveId) return true;
     }
@@ -318,6 +324,7 @@ void SlaveManagerClass::confirmPendingConfig(uint8_t senderId, uint16_t ledCount
 }
 
 void SlaveManagerClass::setSlaveStatusLed(uint8_t slaveId, bool on, uint32_t color, uint8_t brightness) {
+    Guard guard(_lock);
     uint8_t payload[5];
     payload[0] = on ? 1 : 0;
     payload[1] = (color >> 16) & 0xFF;
@@ -341,6 +348,7 @@ void SlaveManagerClass::setSlaveStatusLed(uint8_t slaveId, bool on, uint32_t col
 }
 
 void SlaveManagerClass::triggerSlaveUpdate(uint8_t slaveId, const String& ssid, const String& pass, const String& url) {
+    Guard guard(_lock);
     JsonDocument doc;
     doc["ssid"] = ssid;
     doc["pass"] = pass;
@@ -396,6 +404,7 @@ static bool versionReportsConfig(const String& version) {
 }
 
 bool SlaveManagerClass::slaveRendersLocally(uint8_t slaveId) const {
+    Guard guard(_lock);
     for (const auto& s : _discoveredSlaves) {
         if (s.currentId == slaveId) return s.rendersLocally;
     }
@@ -403,6 +412,7 @@ bool SlaveManagerClass::slaveRendersLocally(uint8_t slaveId) const {
 }
 
 bool SlaveManagerClass::getSlavePanelSize(uint8_t slaveId, uint16_t& w, uint16_t& h) const {
+    Guard guard(_lock);
     for (const auto& s : _discoveredSlaves) {
         if (s.currentId != slaveId) continue;
         if (s.ledType != TYPE_HUB75) return false;
@@ -419,6 +429,7 @@ void SlaveManagerClass::sendSegmentConfig(uint8_t slaveId, uint8_t effect, uint8
                                           bool color2Enabled, bool whiteOnly, uint8_t cct,
                                           uint16_t effectStep, uint16_t windowOffset,
                                           uint16_t windowTotal) {
+    Guard guard(_lock);
     if (millis() < _pauseLedsUntil) return;
 
     uint8_t payload[HYPERBUS_SEGMENT_PAYLOAD_LEN] = {0};
@@ -463,6 +474,7 @@ void SlaveManagerClass::sendSegmentConfig(uint8_t slaveId, uint8_t effect, uint8
 }
 
 void SlaveManagerClass::sendLEDData(uint8_t slaveId, const uint8_t* rgbData, uint16_t length) {
+    Guard guard(_lock);
     if (millis() < _pauseLedsUntil) return;
 
     // A broadcast has no per-Slave state to diff against, and anything that fits a single packet

@@ -23,6 +23,8 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_now.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 #include "HyperBus.h"
 #include <map>
 #include <array> // For BusInterface and HyperBusPacket
@@ -57,7 +59,33 @@ public:
     // of pixels that never reaches the panel.
     uint32_t getSendErrors() const { return _sendErrors; }
 
+    // Packets the receive callback had to throw away because the queue was full. The loop was
+    // not draining it fast enough - worth knowing, because it looks exactly like radio trouble.
+    uint32_t getDroppedQueueFull() const { return _droppedQueueFull; }
+
 private:
+    // Received packets are parked here and handled from loop(), never in the callback.
+    //
+    // esp_now_register_recv_cb() delivers on the Wi-Fi task, and the callback used to run the
+    // whole protocol from there: SlaveManager::handlePacket() appends to the discovered-slave
+    // list while the main loop walks and erases that same list, and the web server task copies
+    // it to answer /api/slaves. A vector that reallocates under another task's iterator reads
+    // freed memory, which is a panic - sporadic, unattributable, and exactly the kind that shows
+    // up as "it ran fine for a while and then the Slaves were gone". Draining on one task makes
+    // the whole question go away.
+    struct RxPacket {
+        uint8_t mac[6];
+        uint8_t targetId;
+        uint8_t senderId;
+        uint8_t command;
+        uint8_t length;
+        uint8_t payload[240];
+    };
+    static const uint8_t RX_QUEUE_LEN = 16;
+    QueueHandle_t _rxQueue = nullptr;
+    uint32_t _droppedQueueFull = 0;
+    void registerPeer(const uint8_t* mac, uint8_t senderId);
+
     PacketReceivedCallback _callback = nullptr;
     bool _autoHop = false;
     unsigned long _lastPingReceived = 0;
