@@ -1229,19 +1229,39 @@ static const char* const WEEKDAY_ABBR[7] = {"SO", "MO", "DI", "MI", "DO", "FR", 
 
 void LEDManagerClass::beginSurface(const Segment& seg) {
     _surfaceIsSegment = false;
+    _surfaceUnavailable = false;
     _surfaceW = 0;
     _surfaceH = 0;
 
     if (seg.isSlave && seg.slaveId != 254) {
         uint16_t pw = 0, ph = 0;
+        if (SlaveManager.getSlavePanelSize(seg.slaveId, pw, ph)) {
+            _knownPanelSize[seg.slaveId] = std::make_pair(pw, ph);
+        } else {
+            // The Slave is not in the discovery list right now - it went quiet, or is being
+            // rediscovered. Its panel has not changed shape, so use what it last told us rather
+            // than treating the segment as if it had no panel at all.
+            auto known = _knownPanelSize.find(seg.slaveId);
+            if (known != _knownPanelSize.end()) {
+                pw = known->second.first;
+                ph = known->second.second;
+            }
+        }
+
         // Only when the panel actually fits the segment - a mismatch would write past its end.
-        if (SlaveManager.getSlavePanelSize(seg.slaveId, pw, ph) &&
-            (uint32_t)pw * ph <= (uint32_t)(seg.stop - seg.start)) {
+        if (pw > 0 && ph > 0 && (uint32_t)pw * ph <= (uint32_t)(seg.stop - seg.start)) {
             _surfaceIsSegment = true;
             _surfaceW = pw;
             _surfaceH = ph;
             return;
         }
+
+        // A Slave segment must never be drawn anywhere but on that Slave. Falling through to the
+        // Master's canvas here is what put the panel's clock on the Master's own strip whenever
+        // the Slave dropped out for a moment: the pixels were written at canvas coordinates,
+        // which start at zero, so they landed on the first LEDs of the Master.
+        _surfaceUnavailable = true;
+        return;
     }
 
     _surfaceW = getCanvasWidth();
@@ -1250,6 +1270,7 @@ void LEDManagerClass::beginSurface(const Segment& seg) {
 
 void LEDManagerClass::drawSurfacePixel(Segment& seg, uint16_t x, uint16_t y,
                                        uint8_t r, uint8_t g, uint8_t b, uint8_t w) {
+    if (_surfaceUnavailable) return;
     if (_surfaceIsSegment) {
         if (x >= _surfaceW || y >= _surfaceH) return;
         setSegmentPixelColor(seg, seg.start + (uint16_t)((uint32_t)y * _surfaceW + x), r, g, b, w);
@@ -1274,6 +1295,7 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap) {
     // A HUB75 panel on a Slave is a matrix in its own right, so this effect works there even
     // when the Master itself drives a plain strip.
     beginSurface(seg);
+    if (_surfaceUnavailable) return;
     if (!_surfaceIsSegment && !_isMatrix) return;
     uint16_t cw = _surfaceW;
     uint16_t ch = _surfaceH;

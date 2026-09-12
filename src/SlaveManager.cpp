@@ -63,6 +63,11 @@ void SlaveManagerClass::loop() {
     
     retryPendingConfigs();
 
+    // Hand over a little of the queued pixel data. Doing it here rather than where the frame is
+    // produced is the whole point: the loop keeps turning between chunks, so pings still go out
+    // and the web interface still answers while a panel is being filled.
+    pumpLedTx();
+
     // PING frequently so slaves scanning channels can find us quickly
     if (now - _lastPingTime > 250) {
         _lastPingTime = now;
@@ -457,90 +462,111 @@ void SlaveManagerClass::sendSegmentConfig(uint8_t slaveId, uint8_t effect, uint8
                           HYPERBUS_SEGMENT_PAYLOAD_LEN);
 }
 
-uint32_t SlaveManagerClass::frameHash(const uint8_t* data, uint16_t length) {
-    // FNV-1a over the frame: one pass, and precise enough to tell a changed picture from an
-    // unchanged one. A collision would delay a frame by the refresh interval, nothing worse.
-    uint32_t h = 2166136261u;
-    for (uint16_t i = 0; i < length; i++) {
-        h ^= data[i];
-        h *= 16777619u;
-    }
-    return h;
-}
-
 void SlaveManagerClass::sendLEDData(uint8_t slaveId, const uint8_t* rgbData, uint16_t length) {
     if (millis() < _pauseLedsUntil) return;
 
-    unsigned long now = millis();
-    uint32_t hash = frameHash(rgbData, length);
-    SentFrame& last = _lastLedFrame[slaveId];
-    bool changed = !last.valid || last.hash != hash;
-
-    if (!changed) {
-        // Nothing new to show. Repeat it only now and then, which keeps a still image on screen
-        // even if a packet went missing, without holding the link busy in the meantime.
-        if (now - last.lastSent < LED_REFRESH_MS) return;
-    } else if (last.valid && now - last.lastSent < frameIntervalFor(length)) {
-        // Changed, but too soon for this payload size. Dropping a frame is invisible; flooding
-        // the transport is not, because it starves the discovery traffic that shares it.
-        return;
-    }
-
-    last.hash = hash;
-    last.lastSent = now;
-    last.valid = true;
-
+    // A broadcast has no per-Slave state to diff against, and anything that fits a single packet
+    // is not worth the machinery. Both are cheap enough to send on the spot.
     if (slaveId == HYPERBUS_BROADCAST_ID) {
         _uartBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_SET_LEDS, rgbData, length);
         _espBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_SET_LEDS, rgbData, length);
         return;
     }
-
-    // Anything that still fits one packet is not worth diffing.
     if (length <= 240) {
         BusInterface* targetBus = getBusForSlave(slaveId, _discoveredSlaves, _uartBus, _espBus);
         targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_LEDS, rgbData, length);
-        return;
-    }
-
-    std::vector<uint8_t>& prev = _lastFrameData[slaveId];
-    if (prev.size() != length || !changed) {
-        // First frame for this Slave, a size change, or the periodic repeat of a still image:
-        // send it whole so the Slave is known to be in step.
-        prev.assign(rgbData, rgbData + length);
-        BusInterface* targetBus = getBusForSlave(slaveId, _discoveredSlaves, _uartBus, _espBus);
-        targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_LEDS, rgbData, length);
+        _ledPacketsSent++;
         _ledFramesSent++;
-        _ledPacketsSent += (length + 239) / 240;
         return;
     }
 
-    sendChangedChunks(slaveId, rgbData, length, prev);
-    _ledFramesSent++;
+    // Comparing a 20KB frame is cheap, but not free, and the effect engine produces frames far
+    // faster than anything can show them.
+    unsigned long now = millis();
+    auto seen = _lastLedSend.find(slaveId);
+    if (seen != _lastLedSend.end() && now - seen->second < MIN_LED_FRAME_INTERVAL_MS) return;
+    _lastLedSend[slaveId] = now;
+
+    queueFrame(slaveId, rgbData, length);
 }
 
-void SlaveManagerClass::sendChangedChunks(uint8_t slaveId, const uint8_t* rgbData, uint16_t length,
-                                          std::vector<uint8_t>& prev) {
-    BusInterface* targetBus = getBusForSlave(slaveId, _discoveredSlaves, _uartBus, _espBus);
-    const uint16_t chunkBytes = DELTA_PIXELS_PER_CHUNK * HYPERBUS_LED_BYTES_PER_PIXEL;
-    uint8_t payload[2 + DELTA_PIXELS_PER_CHUNK * HYPERBUS_LED_BYTES_PER_PIXEL];
+void SlaveManagerClass::queueFrame(uint8_t slaveId, const uint8_t* rgbData, uint16_t length) {
+    LedTx& tx = _ledTx[slaveId];
+    unsigned long now = millis();
 
-    for (uint16_t off = 0; off < length; off += chunkBytes) {
-        uint16_t size = length - off;
-        if (size > chunkBytes) size = chunkBytes;
-        if (memcmp(&prev[off], &rgbData[off], size) == 0) continue; // unchanged, Slave has it
+    if (tx.data.size() != length) {
+        tx.data.assign(rgbData, rgbData + length);
+        tx.chunks = (length + LED_CHUNK_BYTES - 1) / LED_CHUNK_BYTES;
+        tx.dirty.assign((tx.chunks + 7) / 8, 0xFF); // nothing is known to be over there yet
+        tx.cursor = 0;
+        tx.repairSlice = 0;
+        tx.lastRepair = now;
+        _ledFramesSent++;
+        return;
+    }
 
-        memcpy(&prev[off], &rgbData[off], size);
+    // Mark only what actually moved. A clock on a 64x64 panel changes a few dozen pixels out of
+    // 4096, so this is almost always two or three chunks.
+    bool any = false;
+    for (uint16_t c = 0; c < tx.chunks; c++) {
+        uint32_t off = (uint32_t)c * LED_CHUNK_BYTES;
+        uint16_t size = (uint16_t)((length - off) < LED_CHUNK_BYTES ? (length - off) : LED_CHUNK_BYTES);
+        if (memcmp(&tx.data[off], &rgbData[off], size) == 0) continue;
+        memcpy(&tx.data[off], &rgbData[off], size);
+        tx.dirty[c >> 3] |= (uint8_t)(1 << (c & 7));
+        any = true;
+    }
+    if (any) _ledFramesSent++;
 
-        uint16_t pixelOffset = off / HYPERBUS_LED_BYTES_PER_PIXEL;
-        payload[0] = pixelOffset & 0xFF;
-        payload[1] = (pixelOffset >> 8) & 0xFF;
-        memcpy(&payload[2], &rgbData[off], size);
-        targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_LEDS_CHUNK, payload, size + 2);
-        _ledPacketsSent++;
-        // Same pacing as the full-frame path: without it a burst of chunks outruns the radio and
-        // the tail of the frame is dropped.
-        delayMicroseconds(2000);
+    // Rolling repair: re-offer one slice of the panel per interval, so a chunk lost to
+    // interference is restored within a few seconds without ever resending the whole frame.
+    if (now - tx.lastRepair >= LED_REPAIR_INTERVAL_MS) {
+        tx.lastRepair = now;
+        uint16_t from = (uint32_t)tx.chunks * tx.repairSlice / LED_REPAIR_SLICES;
+        uint16_t to = (uint32_t)tx.chunks * (tx.repairSlice + 1) / LED_REPAIR_SLICES;
+        for (uint16_t c = from; c < to; c++) tx.dirty[c >> 3] |= (uint8_t)(1 << (c & 7));
+        tx.repairSlice = (uint8_t)((tx.repairSlice + 1) % LED_REPAIR_SLICES);
+    }
+}
+
+void SlaveManagerClass::pumpLedTx() {
+    if (_ledTx.empty()) return;
+    if (millis() < _pauseLedsUntil) return;
+
+    unsigned long t0 = micros();
+    uint8_t payload[2 + LED_CHUNK_BYTES];
+
+    for (auto& entry : _ledTx) {
+        LedTx& tx = entry.second;
+        if (tx.chunks == 0) continue;
+
+        BusInterface* targetBus = getBusForSlave(entry.first, _discoveredSlaves, _uartBus, _espBus);
+        uint16_t examined = 0;
+        while (examined < tx.chunks) {
+            // Leaving the loop on the budget rather than on a chunk count keeps the cost the same
+            // whether the link is quick or congested.
+            if (micros() - t0 >= LED_TX_BUDGET_US) return;
+
+            uint16_t c = tx.cursor;
+            tx.cursor = (uint16_t)((tx.cursor + 1) % tx.chunks);
+            examined++;
+
+            uint8_t mask = (uint8_t)(1 << (c & 7));
+            if (!(tx.dirty[c >> 3] & mask)) continue;
+            tx.dirty[c >> 3] &= (uint8_t)~mask;
+
+            uint32_t off = (uint32_t)c * LED_CHUNK_BYTES;
+            uint32_t remaining = tx.data.size() - off;
+            uint16_t size = (uint16_t)(remaining < LED_CHUNK_BYTES ? remaining : LED_CHUNK_BYTES);
+
+            uint16_t pixelOffset = (uint16_t)(off / HYPERBUS_LED_BYTES_PER_PIXEL);
+            payload[0] = (uint8_t)(pixelOffset & 0xFF);
+            payload[1] = (uint8_t)((pixelOffset >> 8) & 0xFF);
+            memcpy(&payload[2], &tx.data[off], size);
+            targetBus->sendPacket(entry.first, HYPERBUS_MASTER_ID, CMD_SET_LEDS_CHUNK,
+                                  payload, size + 2);
+            _ledPacketsSent++;
+        }
     }
 }
 

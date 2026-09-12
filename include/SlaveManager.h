@@ -121,52 +121,54 @@ private:
     // declared the Master lost and rescanned - while the Master's own web interface stopped
     // responding. 30 frames/s is past the point of being visible on LEDs, and the UART link cannot
     // carry more than that anyway at 115200 baud.
+    // This now caps how often a frame is examined, not how much goes on the air - the pump below
+    // decides that, and it does so by time rather than by frame. 30 frames/s is past the point of
+    // being visible on LEDs, and the UART link cannot carry more than that anyway at 115200 baud,
+    // so looking more often than this only burns cycles on a comparison that will find nothing.
     static const unsigned long MIN_LED_FRAME_INTERVAL_MS = 33;
-    // Large streamed segments need a slower rate still. A 64x64 panel is 20KB per frame, which is
-    // 86 ESP-NOW packets - at 30 frames/s that is thousands of packets per second and the link
-    // collapses. The interval therefore scales with the payload, aiming at roughly 90 packets/s,
-    // which measurement showed the radio carries comfortably. This is what makes the clock and
-    // text effects usable on a panel: they cannot be rendered on the Slave (they need the time,
-    // weather and uploaded images the Master holds) so they must stream, and a clock does not
-    // care about frame rate.
-    static const unsigned long TARGET_PACKETS_PER_SEC = 90;
-    static const uint16_t BYTES_PER_PACKET = 240;
-    static unsigned long frameIntervalFor(uint16_t length) {
-        unsigned long packets = (length + BYTES_PER_PACKET - 1) / BYTES_PER_PACKET;
-        if (packets == 0) packets = 1;
-        unsigned long interval = (packets * 1000UL) / TARGET_PACKETS_PER_SEC;
-        return interval > MIN_LED_FRAME_INTERVAL_MS ? interval : MIN_LED_FRAME_INTERVAL_MS;
-    }
     std::map<uint8_t, unsigned long> _lastLedSend;
 
-    // Fingerprint of the last frame sent to each Slave. A still picture - an uploaded image, a
-    // clock between ticks - was otherwise retransmitted in full forever: 86 packets per second
-    // for a 64x64 panel, every one of them carrying what the Slave already had. That congestion
-    // is what made an uploaded image take so long to settle, because the packets it cost could
-    // only be made good by the next full frame, which arrived into the same congestion.
-    // An unchanged frame is now repeated only occasionally, which both frees the link and
-    // repairs anything lost earlier.
-    struct SentFrame {
-        uint32_t hash = 0;
-        unsigned long lastSent = 0;
-        bool valid = false;
-    };
-    static const unsigned long LED_REFRESH_MS = 5000;
-    std::map<uint8_t, SentFrame> _lastLedFrame;
-    static uint32_t frameHash(const uint8_t* data, uint16_t length);
-
-    // The last frame actually sent to each Slave, kept so only the parts that changed have to go
-    // out again. A clock on a 64x64 panel alters a few dozen pixels out of 4096, yet the whole
-    // 20KB frame was retransmitted for it - 86 packets where four would do. Sending only the
-    // changed pieces is what keeps a still image stable: the link stays free, so the packets
-    // carrying it stop being lost in the first place.
+    // Pixel data for a Slave is queued here and sent a little at a time from loop(), never in
+    // one burst. Sending it in one go is what cost the Slaves their connection: a 64x64 panel is
+    // 20KB, which splits into 86 packets, and each one takes about 20ms to get onto the air. The
+    // whole frame therefore held LEDManager.loop() for 1.8 seconds - measured - and for that time
+    // the Master sent no pings, answered no HTTP and did nothing else at all. The Slaves, which
+    // expect a ping several times a second, concluded the Master was gone.
+    //
     // Chunks are 47 pixels: 235 bytes plus the two offset bytes stays inside the 240-byte limit.
     static const uint16_t DELTA_PIXELS_PER_CHUNK = 47;
-    std::map<uint8_t, std::vector<uint8_t>> _lastFrameData;
+    static const uint16_t LED_CHUNK_BYTES = DELTA_PIXELS_PER_CHUNK * HYPERBUS_LED_BYTES_PER_PIXEL;
+
+    // How long a single pump may spend sending. One chunk can overrun this - a send that blocks
+    // cannot be cut short - so the real guarantee is one chunk per pump at worst, which is two
+    // orders of magnitude below the stall it replaces.
+    static const unsigned long LED_TX_BUDGET_US = 4000;
+
+    // A Slave can miss a packet, and nothing in the protocol tells us so. The cure is to resend
+    // what it already has from time to time - but resending the whole frame every few seconds is
+    // how a still picture kept the link saturated forever. Only a slice is refreshed per
+    // interval, so the panel is covered completely every LED_REPAIR_SLICES intervals at a small
+    // fraction of the airtime.
+    static const unsigned long LED_REPAIR_INTERVAL_MS = 2000;
+    static const uint8_t LED_REPAIR_SLICES = 8;
+
+    struct LedTx {
+        std::vector<uint8_t> data;      // what the Slave should be showing
+        std::vector<uint8_t> dirty;     // one bit per chunk: not known to be on the Slave yet
+        uint16_t chunks = 0;
+        uint16_t cursor = 0;            // next chunk to look at, so no region starves
+        uint8_t repairSlice = 0;
+        unsigned long lastRepair = 0;
+    };
+    std::map<uint8_t, LedTx> _ledTx;
+
     uint32_t _ledPacketsSent = 0;
     uint32_t _ledFramesSent = 0;
-    void sendChangedChunks(uint8_t slaveId, const uint8_t* rgbData, uint16_t length,
-                           std::vector<uint8_t>& prev);
+
+    // Queues a frame: works out which chunks differ from what the Slave has and marks them.
+    void queueFrame(uint8_t slaveId, const uint8_t* rgbData, uint16_t length);
+    // Sends marked chunks until the budget runs out. Called every loop().
+    void pumpLedTx();
 
     // Last effect parameters sent to each Slave, so unchanged ones are not resent every frame.
     // The refresh interval exists so a Slave that rebooted picks its effect back up on its own

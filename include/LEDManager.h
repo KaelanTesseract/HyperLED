@@ -21,6 +21,8 @@
 #include <Arduino.h>
 #include "EffectEngine.h"
 #include <vector>
+#include <map>
+#include <utility>
 #include "BusWrapper.h"
 #include <Preferences.h>
 #include "Config.h"
@@ -299,6 +301,13 @@ private:
     bool _surfaceIsSegment = false;
     uint16_t _surfaceW = 0;
     uint16_t _surfaceH = 0;
+    // Set when a Slave segment was asked for but its panel size is not known. Drawing must then
+    // be skipped entirely rather than falling back to the Master's own canvas - see beginSurface().
+    bool _surfaceUnavailable = false;
+    // Last panel size reported by each Slave. A Slave that goes briefly quiet drops out of the
+    // discovery list, and without this its panel would be treated as unknown for as long as it
+    // takes to find it again.
+    std::map<uint8_t, std::pair<uint16_t, uint16_t>> _knownPanelSize;
 
     bool _syncActive = false;
     // Which segment leads the sync group this frame and what span it covers. Recomputed each
