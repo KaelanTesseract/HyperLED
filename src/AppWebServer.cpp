@@ -18,6 +18,7 @@
  */
 #include "AppWebServer.h"
 #include "esp_system.h"
+#include "LoopWatch.h"
 #include <LittleFS.h>
 #include <time.h>
 #include "Config.h"
@@ -210,6 +211,14 @@ void WebServerManagerClass::setupRoutes() {
         json += ",\"wifiReconnects\":" + String((unsigned long)WiFiManager.getReconnectCount());
         json += ",\"wifiLastReason\":" + String((unsigned)WiFiManager.getLastDisconnectReason());
         json += ",\"wifiOfflineMs\":" + String((unsigned long)WiFiManager.getOfflineMs());
+        // What the run before this one was doing when it ended. A hang leaves nothing behind on
+        // its own - this is written to RTC memory as the loop goes, so it survives the reset.
+        if (LoopWatch.hasPrevious()) {
+            json += ",\"prevStep\":\"" + String(LoopWatch.previousStepName()) + "\"";
+            json += ",\"prevUptime\":" + String((unsigned long)LoopWatch.previousUptime());
+            json += ",\"prevMidStep\":" + String(LoopWatch.previousWasMidStep() ? 1 : 0);
+            json += ",\"prevIterations\":" + String((unsigned long)LoopWatch.previousIterations());
+        }
         json += "}";
         request->send(200, "application/json", json);
     });

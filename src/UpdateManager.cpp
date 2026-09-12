@@ -17,6 +17,7 @@
  * limitations under the Licence.
  */
 #include "UpdateManager.h"
+#include "esp_task_wdt.h"
 
 UpdateManagerClass UpdateManager;
 
@@ -105,6 +106,10 @@ bool UpdateManagerClass::downloadAndFlash(String url, int command, int startProg
                             written += c;
                             _progress = startProgress + (written * (endProgress - startProgress) / totalLength);
                         }
+                        // Downloading a firmware image legitimately keeps this task busy for
+                        // minutes, far past the loop watchdog's patience. Without this the update
+                        // would be cut short by a reboot every time.
+                        esp_task_wdt_reset();
                         delay(1);
                     }
                     
