@@ -128,6 +128,25 @@ private:
     // restart demonstrably brings the Slaves back, where repeated re-association did not.
     static const unsigned long LINK_DEAD_RESTART_MS = 240000;
 
+    // The other half of the problem, and the one that was left without any escalation at all:
+    // not associated and unable to get back. Observed in the field as reason 15 - the WPA2
+    // four-way handshake timing out - repeating every 2.1 seconds for over half an hour and more
+    // than a thousand attempts. The station never recovered on its own.
+    //
+    // The retry storm is itself destructive: every attempt moves the radio to another channel,
+    // and ESP-NOW rides on that channel, so the Slaves could not settle anywhere and lost the
+    // Master entirely. Hence the SDK's own auto-reconnect is turned off and retries are paced
+    // from here, leaving the radio parked in between so the LEDs keep working while the web
+    // interface is unreachable.
+    static const unsigned long STA_RADIO_RESET_MS = 60000;
+    static const unsigned long STA_DEAD_RESTART_MS = 180000;
+    // A rebooting controller cannot serve the Slaves either, so it is only worth doing while
+    // there is reason to think it helps. If several reboots in a row fail to get us associated,
+    // the access point is simply not available and we settle into slow retries instead.
+    static const uint32_t STA_MAX_RESTART_STREAK = 3;
+
+    bool _radioResetDone = false;
+
     void startLinkProbe();
 
     esp_ping_handle_t _pingHandle = nullptr;

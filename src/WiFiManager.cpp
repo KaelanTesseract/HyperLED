@@ -23,6 +23,25 @@
 
 WiFiManagerClass WiFiManager;
 
+// Survives a restart, so a reboot loop against an access point that is simply gone can be
+// recognised and stopped. RTC_NOINIT_ATTR is deliberately not cleared on a warm boot.
+#define WIFI_STREAK_MAGIC 0x48594657u  // "HYFW"
+static RTC_NOINIT_ATTR uint32_t g_staStreakMagic;
+static RTC_NOINIT_ATTR uint32_t g_staRestartStreak;
+
+static uint32_t staRestartStreak() {
+    if (g_staStreakMagic != WIFI_STREAK_MAGIC) {
+        g_staStreakMagic = WIFI_STREAK_MAGIC;
+        g_staRestartStreak = 0;
+    }
+    return g_staRestartStreak;
+}
+
+static void setStaRestartStreak(uint32_t v) {
+    g_staStreakMagic = WIFI_STREAK_MAGIC;
+    g_staRestartStreak = v;
+}
+
 // Static, because the SDK calls it from the Wi-Fi task. It only records - reconnecting is left
 // to superviseLink() on the main loop, where blocking is safe and the retry can be paced.
 void WiFiManagerClass::onWiFiEvent(arduino_event_id_t event, arduino_event_info_t info) {
@@ -70,6 +89,10 @@ void WiFiManagerClass::begin() {
 void WiFiManagerClass::connectSTA() {
     Serial.println("Attempting to connect to STA: " + _ssid);
     WiFi.mode(WIFI_STA);
+    // Retries are paced by superviseLink() instead. Left to itself the SDK retries every two
+    // seconds, and since each attempt moves the radio to another channel, that storm is what
+    // takes ESP-NOW - and with it the Slaves - down alongside the web interface.
+    WiFi.setAutoReconnect(false);
     WiFi.begin(_ssid.c_str(), _password.c_str());
 
     int attempts = 0;
@@ -226,6 +249,10 @@ void WiFiManagerClass::superviseLink() {
             _wasConnected = true;
             _reconnectCount++;
             _lastProbeOk = now;
+            _radioResetDone = false;
+            // Associated again, so whatever was tried last time worked: let the reboot budget
+            // refill for the next occasion.
+            setStaRestartStreak(0);
             // mDNS and NetBIOS bind to the address the device had when they started, so after a
             // new lease they answer for one that no longer exists - http://hyperled/ then leads
             // nowhere even though the controller is back.
@@ -272,14 +299,44 @@ void WiFiManagerClass::superviseLink() {
         if (_offlineSince == 0) _offlineSince = now;
     }
 
-    // Give the SDK's own retry a chance first - it usually wins - and only then force the issue.
-    // WiFi.begin() while it is already trying would restart that attempt each time and could keep
-    // the link down indefinitely, so this is deliberately slow.
+    unsigned long downMs = getOfflineMs();
+
+    // Second escalation: reboot. A restart rebuilds the whole Wi-Fi stack, which is the only
+    // thing observed to clear a station stuck failing the four-way handshake - it retried for
+    // over half an hour and a thousand attempts without ever getting through.
+    if (downMs >= STA_DEAD_RESTART_MS) {
+        uint32_t streak = staRestartStreak();
+        if (streak < STA_MAX_RESTART_STREAK) {
+            setStaRestartStreak(streak + 1);
+            Serial.printf("WiFi: cannot associate after %lus (last reason %u), restarting (%lu)\n",
+                          downMs / 1000, (unsigned)_lastDisconnectReason,
+                          (unsigned long)(streak + 1));
+            Serial.flush();
+            ESP.restart();
+        }
+        // Budget spent: the access point is not there. Keep trying, quietly and slowly, and
+        // leave the radio alone in between so ESP-NOW carries on serving the Slaves.
+    }
+
+    // First escalation: rebuild the radio without rebooting. Cheaper than a restart and it
+    // clears most stuck driver states on its own.
+    if (!_radioResetDone && downMs >= STA_RADIO_RESET_MS) {
+        _radioResetDone = true;
+        Serial.println("WiFi: still down, resetting the radio");
+        WiFi.disconnect(true, false);
+        WiFi.mode(WIFI_OFF);
+        WiFi.mode(WIFI_STA);
+        WiFi.setAutoReconnect(false);
+        WiFi.begin(_ssid.c_str(), _password.c_str());
+        _lastReconnectAttempt = now;
+        return;
+    }
+
     if (now - _lastReconnectAttempt < WIFI_RETRY_INTERVAL_MS) return;
     _lastReconnectAttempt = now;
 
-    Serial.printf("WiFi: still down after %lus, reconnecting\n", getOfflineMs() / 1000);
-    WiFi.disconnect();
+    Serial.printf("WiFi: still down after %lus (reason %u), retrying\n",
+                  downMs / 1000, (unsigned)_lastDisconnectReason);
     WiFi.begin(_ssid.c_str(), _password.c_str());
 }
 
