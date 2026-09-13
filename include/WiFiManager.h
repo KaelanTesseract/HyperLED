@@ -118,15 +118,19 @@ private:
     // gateway every half minute, and a link that stops answering is treated as down no matter
     // what the driver says.
     static const unsigned long LINK_PROBE_INTERVAL_MS = 30000;
-    static const uint8_t LINK_PROBE_FAILURES_BEFORE_RECONNECT = 3;
-    // Re-associating is not free: it briefly takes the station off its channel, and the Slaves
-    // lose the Master while it does. Once a minute is often enough to recover a link that can be
-    // recovered, and rare enough not to wreck the LED sync if a probe ever fails spuriously.
-    static const unsigned long LINK_REASSOCIATE_INTERVAL_MS = 60000;
-    // If re-associating does not bring it back either, restart. Crude, but a controller meant to
-    // run unattended for days is better off rebooting than sitting there unreachable - and a
-    // restart demonstrably brings the Slaves back, where repeated re-association did not.
-    static const unsigned long LINK_DEAD_RESTART_MS = 240000;
+    // Ten minutes of a gateway that will not answer before anything is done about it.
+    //
+    // This used to force a re-association after ninety seconds, and that was a bad trade in both
+    // directions. The probe produces false alarms - "ping_sock: send error" means the probe could
+    // not be transmitted, which says nothing about the link - and the cure was worse than the
+    // disease: tearing down an association and immediately rebuilding it is exactly what makes an
+    // access point fail the WPA2 four-way handshake, because it still holds the old session. The
+    // reason-15 storms that looked like the underlying fault were traced to this very code.
+    //
+    // So there is no re-association any more. If the link is genuinely, persistently dead the
+    // only action is a restart, which leaves the access point a clean association to accept
+    // rather than a half-torn-down one to argue with.
+    static const unsigned long LINK_DEAD_RESTART_MS = 600000;
 
     // The other half of the problem, and the one that was left without any escalation at all:
     // not associated and unable to get back. Observed in the field as reason 15 - the WPA2
@@ -138,14 +142,13 @@ private:
     // Master entirely. Hence the SDK's own auto-reconnect is turned off and retries are paced
     // from here, leaving the radio parked in between so the LEDs keep working while the web
     // interface is unreachable.
-    static const unsigned long STA_RADIO_RESET_MS = 60000;
     static const unsigned long STA_DEAD_RESTART_MS = 180000;
     // A rebooting controller cannot serve the Slaves either, so it is only worth doing while
     // there is reason to think it helps. If several reboots in a row fail to get us associated,
     // the access point is simply not available and we settle into slow retries instead.
     static const uint32_t STA_MAX_RESTART_STREAK = 3;
 
-    bool _radioResetDone = false;
+
 
     void startLinkProbe();
 

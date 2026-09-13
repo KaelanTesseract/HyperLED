@@ -83,6 +83,7 @@ void EspNowBusClass::loop() {
             packet.payload = rx.length > 0 ? rx.payload : nullptr;
             packet.isValid = true;
             packet.isWireless = true;
+            _delivered++;
             _callback(packet);
         }
     }

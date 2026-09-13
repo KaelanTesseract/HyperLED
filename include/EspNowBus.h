@@ -62,6 +62,10 @@ public:
     // Packets the receive callback had to throw away because the queue was full. The loop was
     // not draining it fast enough - worth knowing, because it looks exactly like radio trouble.
     uint32_t getDroppedQueueFull() const { return _droppedQueueFull; }
+    // Packets actually handed to the protocol. Received-but-not-delivered is the gap that
+    // matters: the Master was counting thousands of PONGs while listing no Slaves at all, and
+    // without this number the loss could only be guessed at.
+    uint32_t getDelivered() const { return _delivered; }
 
 private:
     // Received packets are parked here and handled from loop(), never in the callback.
@@ -84,6 +88,7 @@ private:
     static const uint8_t RX_QUEUE_LEN = 16;
     QueueHandle_t _rxQueue = nullptr;
     uint32_t _droppedQueueFull = 0;
+    uint32_t _delivered = 0;
     void registerPeer(const uint8_t* mac, uint8_t senderId);
 
     PacketReceivedCallback _callback = nullptr;

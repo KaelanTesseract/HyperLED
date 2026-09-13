@@ -249,7 +249,6 @@ void WiFiManagerClass::superviseLink() {
             _wasConnected = true;
             _reconnectCount++;
             _lastProbeOk = now;
-            _radioResetDone = false;
             // Associated again, so whatever was tried last time worked: let the reboot budget
             // refill for the next occasion.
             setStaRestartStreak(0);
@@ -264,32 +263,27 @@ void WiFiManagerClass::superviseLink() {
         // Associated as far as the driver is concerned - now find out whether that is true.
         if (now - _lastProbeStart >= LINK_PROBE_INTERVAL_MS) startLinkProbe();
 
-        if (_probeFailures >= LINK_PROBE_FAILURES_BEFORE_RECONNECT) {
+        if (_probeFailures > 0) {
             if (_linkBadSince == 0) _linkBadSince = now;
-            if (_offlineSince == 0) _offlineSince = now;
 
+            // Nothing is touched before this point. The station stays associated, ESP-NOW keeps
+            // its channel, and the Slaves keep being served - a probe that is merely wrong costs
+            // nothing at all now, which is the whole point of the change.
             if (now - _linkBadSince >= LINK_DEAD_RESTART_MS) {
-                Serial.println("WiFi: unreachable for four minutes despite being associated, restarting");
-                Serial.flush();
-                ESP.restart();
-            }
-
-            if (now - _lastReconnectAttempt >= LINK_REASSOCIATE_INTERVAL_MS) {
-                _lastReconnectAttempt = now;
-                _forcedReconnects++;
-                Serial.println("WiFi: associated but unreachable, forcing re-association");
-                // Note the first argument: false leaves the radio powered. Passing true turns it
-                // off, which takes ESP-NOW down with it - and measurement showed the Slaves then
-                // disappeared outright and did not come back, so the cure was destroying the LED
-                // sync this device exists to provide. A plain begin() is still not enough on its
-                // own: the driver sees nothing wrong with a zombie association and accepts it
-                // without doing anything.
-                WiFi.disconnect(false, false);
-                WiFi.begin(_ssid.c_str(), _password.c_str());
+                uint32_t streak = staRestartStreak();
+                if (streak < STA_MAX_RESTART_STREAK) {
+                    setStaRestartStreak(streak + 1);
+                    _forcedReconnects++;
+                    Serial.printf("WiFi: associated but unreachable for %lus, restarting (%lu)\n",
+                                  (now - _linkBadSince) / 1000, (unsigned long)(streak + 1));
+                    Serial.flush();
+                    ESP.restart();
+                }
             }
             return;
         }
 
+        _linkBadSince = 0;
         _offlineSince = 0;
         return;
     }
@@ -318,19 +312,12 @@ void WiFiManagerClass::superviseLink() {
         // leave the radio alone in between so ESP-NOW carries on serving the Slaves.
     }
 
-    // First escalation: rebuild the radio without rebooting. Cheaper than a restart and it
-    // clears most stuck driver states on its own.
-    if (!_radioResetDone && downMs >= STA_RADIO_RESET_MS) {
-        _radioResetDone = true;
-        Serial.println("WiFi: still down, resetting the radio");
-        WiFi.disconnect(true, false);
-        WiFi.mode(WIFI_OFF);
-        WiFi.mode(WIFI_STA);
-        WiFi.setAutoReconnect(false);
-        WiFi.begin(_ssid.c_str(), _password.c_str());
-        _lastReconnectAttempt = now;
-        return;
-    }
+    // There used to be a "reset the radio" step here - WIFI_OFF then WIFI_STA - as a cheaper
+    // alternative to rebooting. It was a mistake twice over. ESP-NOW is built on the Wi-Fi
+    // driver, so powering the radio down deinitialises it, and nothing put it back: the Master
+    // went on hearing Slaves without ever registering one again. It also panicked, which is
+    // exactly what the recorded reset reason 4 in WiFiManager after 457s was. Paced retries
+    // until the reboot threshold is both safer and enough.
 
     if (now - _lastReconnectAttempt < WIFI_RETRY_INTERVAL_MS) return;
     _lastReconnectAttempt = now;

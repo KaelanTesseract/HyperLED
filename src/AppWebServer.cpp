@@ -173,6 +173,8 @@ void WebServerManagerClass::setupRoutes() {
             doc["sendErrors"] = bus->getSendErrors();
         }
         {
+            doc["dropQueueFull"] = bus->getDroppedQueueFull();
+            doc["delivered"] = bus->getDelivered();
             doc["ledPackets"] = SlaveManager.getLedPacketsSent();
             doc["ledFrames"] = SlaveManager.getLedFramesSent();
         }
