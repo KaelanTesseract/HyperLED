@@ -162,6 +162,7 @@ void WiFiManagerClass::probeFinished(uint32_t received) {
     if (received > 0) {
         _lastProbeOk = millis();
         _probeFailures = 0;
+        _linkBadSince = 0;   // the only thing that may clear this
         return;
     }
     _probeFailures++;
@@ -173,6 +174,11 @@ void WiFiManagerClass::startLinkProbe() {
     if (_probeRunning) return;
 
     IPAddress gw = WiFi.gatewayIP();
+#ifdef HYPERLED_TEST_DEAD_LINK
+    // Test build only: 192.0.2.0/24 is TEST-NET-1 and is guaranteed never to be routed, so the
+    // probe fails exactly as it would against a gateway that has stopped answering.
+    gw = IPAddress(192, 0, 2, 1);
+#endif
     if ((uint32_t)gw == 0) return;
 
     // One session, reused. Creating and deleting one per probe leaks sockets over days.
@@ -219,7 +225,6 @@ void WiFiManagerClass::superviseLink() {
         if (!_wasConnected) {
             _wasConnected = true;
             _reconnectCount++;
-            _probeFailures = 0;
             _lastProbeOk = now;
             // mDNS and NetBIOS bind to the address the device had when they started, so after a
             // new lease they answer for one that no longer exists - http://hyperled/ then leads
@@ -233,22 +238,26 @@ void WiFiManagerClass::superviseLink() {
         if (now - _lastProbeStart >= LINK_PROBE_INTERVAL_MS) startLinkProbe();
 
         if (_probeFailures >= LINK_PROBE_FAILURES_BEFORE_RECONNECT) {
+            if (_linkBadSince == 0) _linkBadSince = now;
             if (_offlineSince == 0) _offlineSince = now;
 
-            if (getOfflineMs() >= LINK_DEAD_RESTART_MS) {
-                Serial.println("WiFi: unreachable for five minutes despite being associated, restarting");
+            if (now - _linkBadSince >= LINK_DEAD_RESTART_MS) {
+                Serial.println("WiFi: unreachable for four minutes despite being associated, restarting");
                 Serial.flush();
                 ESP.restart();
             }
 
-            if (now - _lastReconnectAttempt >= WIFI_RETRY_INTERVAL_MS) {
+            if (now - _lastReconnectAttempt >= LINK_REASSOCIATE_INTERVAL_MS) {
                 _lastReconnectAttempt = now;
                 _forcedReconnects++;
                 Serial.println("WiFi: associated but unreachable, forcing re-association");
-                // Full teardown: a plain begin() on a zombie association is accepted by the
-                // driver and changes nothing, because as far as it is concerned there is
-                // nothing wrong.
-                WiFi.disconnect(true, false);
+                // Note the first argument: false leaves the radio powered. Passing true turns it
+                // off, which takes ESP-NOW down with it - and measurement showed the Slaves then
+                // disappeared outright and did not come back, so the cure was destroying the LED
+                // sync this device exists to provide. A plain begin() is still not enough on its
+                // own: the driver sees nothing wrong with a zombie association and accepts it
+                // without doing anything.
+                WiFi.disconnect(false, false);
                 WiFi.begin(_ssid.c_str(), _password.c_str());
             }
             return;

@@ -119,9 +119,14 @@ private:
     // what the driver says.
     static const unsigned long LINK_PROBE_INTERVAL_MS = 30000;
     static const uint8_t LINK_PROBE_FAILURES_BEFORE_RECONNECT = 3;
-    // If re-associating does not bring it back either, restart. Crude, but a controller that is
-    // meant to run unattended for days is better off rebooting than sitting there unreachable.
-    static const unsigned long LINK_DEAD_RESTART_MS = 300000;
+    // Re-associating is not free: it briefly takes the station off its channel, and the Slaves
+    // lose the Master while it does. Once a minute is often enough to recover a link that can be
+    // recovered, and rare enough not to wreck the LED sync if a probe ever fails spuriously.
+    static const unsigned long LINK_REASSOCIATE_INTERVAL_MS = 60000;
+    // If re-associating does not bring it back either, restart. Crude, but a controller meant to
+    // run unattended for days is better off rebooting than sitting there unreachable - and a
+    // restart demonstrably brings the Slaves back, where repeated re-association did not.
+    static const unsigned long LINK_DEAD_RESTART_MS = 240000;
 
     void startLinkProbe();
 
@@ -129,6 +134,11 @@ private:
     bool _probeRunning = false;
     unsigned long _lastProbeStart = 0;
     unsigned long _lastProbeOk = 0;
+    // When the link was last known to work. Cleared ONLY by a probe that actually succeeds -
+    // never by an attempt to fix things. Reconnecting used to reset it, so the escalation timer
+    // restarted on every attempt and the "give up and restart" branch could never be reached:
+    // the recovery was erasing the evidence that it was not working.
+    unsigned long _linkBadSince = 0;
     uint32_t _probeFailures = 0;
     uint32_t _forcedReconnects = 0;
 
