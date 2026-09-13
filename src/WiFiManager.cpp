@@ -146,6 +146,65 @@ void WiFiManagerClass::loop() {
     }
 }
 
+
+// --- Reachability probe -------------------------------------------------------------------
+// The callbacks run on the ping session's own task and only tally the result; everything that
+// acts on it happens in superviseLink() on the main loop.
+
+static void hyperledPingEnd(esp_ping_handle_t hdl, void* args) {
+    uint32_t received = 0;
+    esp_ping_get_profile(hdl, ESP_PING_PROF_REPLY, &received, sizeof(received));
+    WiFiManager.probeFinished(received);
+}
+
+void WiFiManagerClass::probeFinished(uint32_t received) {
+    _probeRunning = false;
+    if (received > 0) {
+        _lastProbeOk = millis();
+        _probeFailures = 0;
+        return;
+    }
+    _probeFailures++;
+    Serial.printf("WiFi: gateway did not answer (%lu in a row)\n",
+                  (unsigned long)_probeFailures);
+}
+
+void WiFiManagerClass::startLinkProbe() {
+    if (_probeRunning) return;
+
+    IPAddress gw = WiFi.gatewayIP();
+    if ((uint32_t)gw == 0) return;
+
+    // One session, reused. Creating and deleting one per probe leaks sockets over days.
+    if (_pingHandle == nullptr) {
+        ip_addr_t target;
+        memset(&target, 0, sizeof(target));
+        target.type = IPADDR_TYPE_V4;
+        target.u_addr.ip4.addr = (uint32_t)gw;
+
+        esp_ping_config_t cfg = ESP_PING_DEFAULT_CONFIG();
+        cfg.target_addr = target;
+        cfg.count = 2;
+        cfg.timeout_ms = 2000;
+        cfg.interval_ms = 500;
+        cfg.task_stack_size = 3072;
+        cfg.task_prio = 1;
+
+        esp_ping_callbacks_t cbs;
+        memset(&cbs, 0, sizeof(cbs));
+        cbs.on_ping_end = hyperledPingEnd;
+
+        if (esp_ping_new_session(&cfg, &cbs, &_pingHandle) != ESP_OK) {
+            _pingHandle = nullptr;
+            return;
+        }
+    }
+
+    _probeRunning = true;
+    _lastProbeStart = millis();
+    if (esp_ping_start(_pingHandle) != ESP_OK) _probeRunning = false;
+}
+
 void WiFiManagerClass::superviseLink() {
     // Only meaningful for a station with credentials. In AP mode there is nothing to supervise,
     // and during the setup flow a reconnect here would fight with the attempt being tested.
@@ -160,6 +219,8 @@ void WiFiManagerClass::superviseLink() {
         if (!_wasConnected) {
             _wasConnected = true;
             _reconnectCount++;
+            _probeFailures = 0;
+            _lastProbeOk = now;
             // mDNS and NetBIOS bind to the address the device had when they started, so after a
             // new lease they answer for one that no longer exists - http://hyperled/ then leads
             // nowhere even though the controller is back.
@@ -167,6 +228,33 @@ void WiFiManagerClass::superviseLink() {
             if (MDNS.begin("hyperled")) MDNS.addService("http", "tcp", 80);
             NBNS.begin("hyperled");
         }
+
+        // Associated as far as the driver is concerned - now find out whether that is true.
+        if (now - _lastProbeStart >= LINK_PROBE_INTERVAL_MS) startLinkProbe();
+
+        if (_probeFailures >= LINK_PROBE_FAILURES_BEFORE_RECONNECT) {
+            if (_offlineSince == 0) _offlineSince = now;
+
+            if (getOfflineMs() >= LINK_DEAD_RESTART_MS) {
+                Serial.println("WiFi: unreachable for five minutes despite being associated, restarting");
+                Serial.flush();
+                ESP.restart();
+            }
+
+            if (now - _lastReconnectAttempt >= WIFI_RETRY_INTERVAL_MS) {
+                _lastReconnectAttempt = now;
+                _forcedReconnects++;
+                Serial.println("WiFi: associated but unreachable, forcing re-association");
+                // Full teardown: a plain begin() on a zombie association is accepted by the
+                // driver and changes nothing, because as far as it is concerned there is
+                // nothing wrong.
+                WiFi.disconnect(true, false);
+                WiFi.begin(_ssid.c_str(), _password.c_str());
+            }
+            return;
+        }
+
+        _offlineSince = 0;
         return;
     }
 

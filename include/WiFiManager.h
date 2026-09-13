@@ -24,6 +24,7 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include "Config.h"
+#include "ping/ping_sock.h"
 
 // Result of a credential test started from the AP-mode setup screen.
 enum WifiSetupState : uint8_t {
@@ -66,6 +67,16 @@ public:
     uint32_t getReconnectCount() const { return _reconnectCount; }
     unsigned long getOfflineMs() const;
 
+    // Reachability, as opposed to what the driver claims. See superviseLink().
+    uint32_t getProbeFailures() const { return _probeFailures; }
+    uint32_t getForcedReconnects() const { return _forcedReconnects; }
+    unsigned long getLastProbeOkAgoMs() const {
+        return _lastProbeOk == 0 ? 0 : millis() - _lastProbeOk;
+    }
+    // Called from the ping session's task when a probe finishes. Public only because that
+    // callback is a plain C function pointer and cannot be a member.
+    void probeFinished(uint32_t received);
+
 private:
     bool _isAPMode = false;
     bool _triggerScan = false;
@@ -98,6 +109,28 @@ private:
     unsigned long _offlineSince = 0;
     void superviseLink();
     static void onWiFiEvent(arduino_event_id_t event, arduino_event_info_t info);
+
+    // WiFi.status() is not a statement about reachability. An access point can drop a client
+    // without the station noticing: the driver keeps reporting WL_CONNECTED, no disconnect event
+    // is raised, and the device sits there believing it is online while nothing reaches it - not
+    // even ARP. Every check built on WiFi.status() stayed silent through exactly that, which is
+    // why the outages left no trace at all. So the link is tested by using it: a ping to the
+    // gateway every half minute, and a link that stops answering is treated as down no matter
+    // what the driver says.
+    static const unsigned long LINK_PROBE_INTERVAL_MS = 30000;
+    static const uint8_t LINK_PROBE_FAILURES_BEFORE_RECONNECT = 3;
+    // If re-associating does not bring it back either, restart. Crude, but a controller that is
+    // meant to run unattended for days is better off rebooting than sitting there unreachable.
+    static const unsigned long LINK_DEAD_RESTART_MS = 300000;
+
+    void startLinkProbe();
+
+    esp_ping_handle_t _pingHandle = nullptr;
+    bool _probeRunning = false;
+    unsigned long _lastProbeStart = 0;
+    unsigned long _lastProbeOk = 0;
+    uint32_t _probeFailures = 0;
+    uint32_t _forcedReconnects = 0;
 
     void connectSTA();
     void startAP();

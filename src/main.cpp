@@ -68,7 +68,10 @@ void setup() {
     if (esp_task_wdt_init(&wdtConfig) == ESP_ERR_INVALID_STATE) {
         esp_task_wdt_reconfigure(&wdtConfig);
     }
-    esp_task_wdt_add(nullptr);
+    esp_err_t wdtErr = esp_task_wdt_add(nullptr);
+    // Said out loud, because a watchdog that silently failed to arm is worse than none: it
+    // would have been trusted to catch exactly the hangs it was not catching.
+    Serial.printf("Watchdog: loop %s\n", wdtErr == ESP_OK ? "armed (30s)" : "NOT ARMED");
 }
 
 // Reports any manager that holds up the loop. While one does, the Master sends no pings and a

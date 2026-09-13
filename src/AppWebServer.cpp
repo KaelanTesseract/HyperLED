@@ -211,6 +211,9 @@ void WebServerManagerClass::setupRoutes() {
         json += ",\"wifiReconnects\":" + String((unsigned long)WiFiManager.getReconnectCount());
         json += ",\"wifiLastReason\":" + String((unsigned)WiFiManager.getLastDisconnectReason());
         json += ",\"wifiOfflineMs\":" + String((unsigned long)WiFiManager.getOfflineMs());
+        json += ",\"linkProbeFailures\":" + String((unsigned long)WiFiManager.getProbeFailures());
+        json += ",\"forcedReconnects\":" + String((unsigned long)WiFiManager.getForcedReconnects());
+        json += ",\"lastProbeOkAgoMs\":" + String((unsigned long)WiFiManager.getLastProbeOkAgoMs());
         // What the run before this one was doing when it ended. A hang leaves nothing behind on
         // its own - this is written to RTC memory as the loop goes, so it survives the reset.
         if (LoopWatch.hasPrevious()) {
