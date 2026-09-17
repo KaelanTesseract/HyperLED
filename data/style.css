@@ -1002,6 +1002,30 @@ input[type="password"] {
     flex: 1 1 auto;
 }
 
+.widget-align {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.widget-align .btn-chip {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 10px 6px;
+    font-size: var(--text-caption);
+}
+
+/* A coordinate at which the element sits centred - the colour of the guide lines. */
+.pos-centred {
+    color: #f472b6;
+    font-weight: 600;
+}
+
+@media (prefers-color-scheme: light) {
+    .pos-centred { color: #be185d; }
+}
+
 .btn-chip {
     width: auto;
     min-height: 44px;

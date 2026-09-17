@@ -3236,8 +3236,19 @@ document.addEventListener('DOMContentLoaded', () => {
         return { w: parseInt(matrixWidth.value) || 16, h: parseInt(matrixHeight.value) || 16 };
     }
 
+    // Screen pixels per panel pixel. The preview fills the card up to 640px in either direction, so
+    // a 64x64 panel gets 10px per pixel on a desktop instead of 4 - enough to place elements
+    // exactly. On a phone it is as wide as the card allows. Whole numbers only, so every panel
+    // pixel stays a sharp square.
+    const PREVIEW_MAX_PX = 640;
+    let previewAvailWidth = 280;
     function previewCellSize(w, h) {
-        return Math.max(2, Math.min(20, Math.floor(280 / Math.max(w, h))));
+        const wrapper = document.getElementById('matrixPreviewWrapper');
+        const host = wrapper && wrapper.parentElement;
+        // A hidden area measures 0 - keep the last real width then.
+        if (host && host.clientWidth > 0) previewAvailWidth = host.clientWidth;
+        const room = Math.min(PREVIEW_MAX_PX, previewAvailWidth);
+        return Math.max(2, Math.min(20, Math.floor(Math.min(room / w, PREVIEW_MAX_PX / h))));
     }
 
     // Current limiting can leave the real output at a few percent brightness, which is almost
@@ -3491,6 +3502,66 @@ document.addEventListener('DOMContentLoaded', () => {
         }).catch(() => {});
     }
 
+    // Centring. An element is centred when as much of the panel is left of it as right of it:
+    // 2*x + width == panel width. If the element and the panel differ in odd/even size that can
+    // never be exact - one pixel more on one side is then as centred as it gets, and counts.
+    function isCentred(pos, size, total) {
+        return Math.abs(2 * pos + size - total) <= 1;
+    }
+    function centredPos(size, total) {
+        return Math.max(0, Math.floor((total - size) / 2));
+    }
+    function widgetCentring(w) {
+        const { w: mw, h: mh } = editorDims();
+        return {
+            h: isCentred(w.x, Math.max(1, widgetPixelWidth(w)), mw),
+            v: isCentred(w.y, Math.max(1, widgetPixelHeight(w)), mh)
+        };
+    }
+
+    // The guides show while an element is dragged, and for a moment after a centre button, for
+    // that one element. A guide the element sits on lights up.
+    const GUIDE_IDLE = 'rgba(244, 114, 182, 0.45)';
+    const GUIDE_HIT = '#f472b6';
+    let guideWidgetIndex = -1;
+    let guideUntil = 0;
+    let guideTimer = null;
+    function flashGuides(index) {
+        guideWidgetIndex = index;
+        guideUntil = Date.now() + 1500;
+        clearTimeout(guideTimer);
+        guideTimer = setTimeout(() => drawWidgetOverlay(currentWidgets()), 1600);
+    }
+
+    function drawCentreGuides(ctx, w, cell) {
+        const cw = widgetOverlayCanvas.width;
+        const ch = widgetOverlayCanvas.height;
+        const c = widgetCentring(w);
+        const line = (hit, x1, y1, x2, y2) => {
+            ctx.save();
+            ctx.strokeStyle = hit ? GUIDE_HIT : GUIDE_IDLE;
+            ctx.lineWidth = hit ? 2 : 1;
+            ctx.setLineDash(hit ? [] : [Math.max(3, cell), Math.max(3, cell)]);
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+            ctx.restore();
+        };
+        line(c.h, cw / 2, 0, cw / 2, ch);
+        line(c.v, 0, ch / 2, cw, ch / 2);
+    }
+
+    function updateWidgetPosLabel(w) {
+        const label = document.getElementById('widgetPos_' + w.id);
+        if (!label) return;
+        const c = widgetCentring(w);
+        const part = (axis, value, hit) => hit
+            ? `<span class="pos-centred" title="${t('widget_centred')}">${axis}:${value}</span>`
+            : `${axis}:${value}`;
+        label.innerHTML = part('X', w.x, c.h) + ' ' + part('Y', w.y, c.v);
+    }
+
     function drawWidgetOverlay(widgets) {
         if (!widgetOverlayCanvas) return;
         const { w: mw, h: mh } = editorDims();
@@ -3521,6 +3592,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const labelY = by >= 12 ? by - 3 : by + 9;
             ctx.fillText(String(idx + 1), Math.max(1, bx), labelY);
         });
+        let guided = draggingWidget;
+        if (!guided && Date.now() < guideUntil) guided = widgets[guideWidgetIndex];
+        if (guided) drawCentreGuides(ctx, guided, cell);
     }
 
     function renderTextWidgetEditor() {
@@ -3528,6 +3602,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const show = state.effect === EFFECT_TEXT_ID;
         textWidgetEditor.style.display = show ? 'block' : 'none';
         if (widgetOverlayCanvas) widgetOverlayCanvas.style.display = show ? 'block' : 'none';
+        const guideHint = document.getElementById('widgetGuideHint');
+        if (guideHint) guideHint.style.display = show ? '' : 'none';
         // The "Panel" area shows either the elements or the line explaining how to get them.
         updatePanelArea();
         if (!show) return;
@@ -3551,8 +3627,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         <option value="5" ${w.type === 5 ? 'selected' : ''}>${widgetTypeLabel(5)}</option>
                         <option value="6" ${w.type === 6 ? 'selected' : ''}>${widgetTypeLabel(6)}</option>
                     </select>
-                    <span style="font-size:var(--text-caption); color: var(--text-muted); white-space:nowrap;" id="widgetPos_${w.id}">X:${w.x} Y:${w.y}</span>
+                    <span style="font-size:var(--text-caption); color: var(--text-muted); white-space:nowrap;" id="widgetPos_${w.id}"></span>
                     <button type="button" data-action="remove" class="btn-remove" aria-label="${t('aria_widget_remove')}">&times;</button>
+                </div>
+                <div class="widget-align">
+                    <button type="button" data-action="centre-h" class="btn btn-secondary btn-chip"><span aria-hidden="true">↔</span> <span data-i18n="widget_centre_h">${t('widget_centre_h')}</span></button>
+                    <button type="button" data-action="centre-v" class="btn btn-secondary btn-chip"><span aria-hidden="true">↕</span> <span data-i18n="widget_centre_v">${t('widget_centre_v')}</span></button>
                 </div>
                 ${w.type !== 4 ? `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
                     <label style="font-size:var(--text-caption); color:var(--text-muted);" data-i18n="widget_size">Größe</label>
@@ -3585,6 +3665,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>` : ''}
             `;
             textWidgetList.appendChild(card);
+            updateWidgetPosLabel(w);
+
+            const centre = (axis) => {
+                const { w: mw, h: mh } = editorDims();
+                if (axis === 'h') w.x = centredPos(Math.max(1, widgetPixelWidth(w)), mw);
+                else w.y = centredPos(Math.max(1, widgetPixelHeight(w)), mh);
+                flashGuides(widgets.indexOf(w));
+                updateWidgetPosLabel(w);
+                drawWidgetOverlay(widgets);
+                saveWidgets(widgets);
+            };
+            card.querySelector('[data-action="centre-h"]').addEventListener('click', () => centre('h'));
+            card.querySelector('[data-action="centre-v"]').addEventListener('click', () => centre('v'));
 
             const typeSelect = card.querySelector('[data-field="type"]');
             typeSelect.addEventListener('change', () => {
@@ -3730,16 +3823,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!hit) return;
             draggingWidget = hit;
             dragStart = { mx, my, ox: hit.x, oy: hit.y };
+            drawWidgetOverlay(currentWidgets());
         });
-        window.addEventListener('mousemove', (e) => {
-            if (!draggingWidget) return;
-            const { mx, my } = overlayCellFromEvent(e.clientX, e.clientY);
+        const dragTo = (clientX, clientY) => {
+            const { mx, my } = overlayCellFromEvent(clientX, clientY);
             const { w: mw, h: mh } = editorDims();
             draggingWidget.x = Math.max(0, Math.min(mw - 1, dragStart.ox + (mx - dragStart.mx)));
             draggingWidget.y = Math.max(0, Math.min(mh - 1, dragStart.oy + (my - dragStart.my)));
-            const posLabel = document.getElementById('widgetPos_' + draggingWidget.id);
-            if (posLabel) posLabel.innerText = `X:${draggingWidget.x} Y:${draggingWidget.y}`;
+            updateWidgetPosLabel(draggingWidget);
             drawWidgetOverlay(currentWidgets());
+        };
+        window.addEventListener('mousemove', (e) => {
+            if (!draggingWidget) return;
+            dragTo(e.clientX, e.clientY);
         });
         window.addEventListener('mouseup', () => {
             if (!draggingWidget) return;
@@ -3754,16 +3850,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!hit) return;
             draggingWidget = hit;
             dragStart = { mx, my, ox: hit.x, oy: hit.y };
+            drawWidgetOverlay(currentWidgets());
             e.preventDefault();
         }, { passive: false });
         widgetOverlayCanvas.addEventListener('touchmove', (e) => {
             if (!draggingWidget) return;
             const t0 = e.touches[0];
-            const { mx, my } = overlayCellFromEvent(t0.clientX, t0.clientY);
-            const { w: mw, h: mh } = editorDims();
-            draggingWidget.x = Math.max(0, Math.min(mw - 1, dragStart.ox + (mx - dragStart.mx)));
-            draggingWidget.y = Math.max(0, Math.min(mh - 1, dragStart.oy + (my - dragStart.my)));
-            drawWidgetOverlay(currentWidgets());
+            dragTo(t0.clientX, t0.clientY);
             e.preventDefault();
         }, { passive: false });
         widgetOverlayCanvas.addEventListener('touchend', () => {

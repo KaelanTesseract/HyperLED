@@ -52,6 +52,12 @@ dieser Datei gelöscht – hier steht nur, was noch offen ist.
   `#34D399`: Weiß/Grau (Sättigung < 0,3), Rot (Farbton ≤ 20° oder ≥ 340°, wäre die Fehlerfarbe),
   und Farben, die auch aufgehellt keine 4,5:1 zur dunklen Beschriftung erreichen. Zu dunkle Farben
   werden im selben Farbton aufgehellt. Die Umrisse im Widget-Editor bleiben bewusst grün.
+- Panel-Vorschau: ganze Pixel pro Panel-Pixel, so groß wie die Karte erlaubt, höchstens 640 px
+  (64×64 → 10 px am Desktop). Mittel-Hilfslinien sind rosa (`#f472b6`), damit sie sich von den
+  grünen Umrissen abheben; sie erscheinen beim Ziehen und kurz nach „mittig"-Knöpfen. Mittig heißt
+  `|2·x + Breite − Panelbreite| ≤ 1` – passt die Größe nicht auf gerade/ungerade, zählen beide
+  Positionen mit einem Pixel Versatz als mittig. Kein magnetisches Einrasten, damit jede Position
+  erreichbar bleibt.
 - Die einzige Bewegung ist das Ab-/Aufblenden des Streifens beim Ausschalten (0,35 s).
 - Helles und dunkles Erscheinungsbild folgen der Systemeinstellung (`prefers-color-scheme`); einen
   Umschalter in der App gibt es bewusst nicht. Farben stehen nur als Rollen-Token in `:root`
