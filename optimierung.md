@@ -64,6 +64,18 @@ dieser Datei gelöscht – hier steht nur, was noch offen ist.
   Segment-Helligkeit, unabhängig von den Elementen – ausdrücklich so gewünscht, keine automatische
   Kopplung. Bildpixel mit allen Kanälen unter 12 sind durchsichtig. Auf Gerät-Panels läuft der
   Hintergrund nur, wenn das Gerät alle Elemente selbst zeichnet – nie als Pixelstrom.
+- Jeder Regler zeigt seinen Wert (`attachSliderValue()`, „Name · 50 %“; in Element-Karten der Wert
+  rechts). Jedes Eingabefeld hat eine verknüpfte Beschriftung (`for`/`aria-labelledby`), jeder
+  Symbolknopf eine `aria-label` und `type="button"`.
+- Pro Bereich höchstens ein gefüllter grüner Knopf; weitere Speichern-Knöpfe sind sekundär.
+  Werkseinstellungen stehen in einem eigenen Abschnitt „Controller zurücksetzen“.
+- „Gleichlauf“ ist ein Umschaltknopf (`.toggle-chip`, Checkbox bleibt für Tastatur und Screenreader),
+  kein freistehender Schalter. Der Ein/Aus-Knopf des gewählten Segments ist eingeschaltet nur
+  umrandet, damit er sich vom globalen Ein/Aus-Knopf unterscheidet.
+- „Licht“ am Desktop: Die Effekt-Karte überspannt drei Rasterzeilen, damit „Farbe“ direkt unter
+  „Segmente“ steht. „Uhr / Text“ und „Bild“ blenden Geschwindigkeit, Intensität und Palette aus.
+- Element-Karten tragen die Nummer ihres Rahmens in der Vorschau; jede Einstellung ist eine
+  beschriftete Zeile (`widgetRowHtml()`).
 - Die einzige Bewegung ist das Ab-/Aufblenden des Streifens beim Ausschalten (0,35 s).
 - Helles und dunkles Erscheinungsbild folgen der Systemeinstellung (`prefers-color-scheme`); einen
   Umschalter in der App gibt es bewusst nicht. Farben stehen nur als Rollen-Token in `:root`

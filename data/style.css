@@ -131,6 +131,34 @@ body {
     margin-bottom: 0;
 }
 
+/* The effect list is the tallest card. Spanning several rows lets the colour card sit right under
+   the segments instead of below the whole list (with two rows the list's height was still shared
+   out onto the first row, leaving a gap). */
+.area-cards > .effects-card {
+    grid-row: span 3;
+}
+
+/* A select or field under a label needs a little air; sliders bring their own. */
+.field-block label {
+    margin-bottom: 6px;
+}
+.subsection .field-block:first-of-type {
+    margin-top: 12px;
+}
+
+.section-head-spaced {
+    margin-top: 32px;
+}
+
+.subsection-title {
+    margin: 4px 0 10px;
+}
+
+/* Wide enough for its placeholder; the button next to it takes the rest or wraps below. */
+.row-inline .preset-name-field {
+    flex: 2 1 220px;
+}
+
 header {
     display: flex;
     justify-content: space-between;
@@ -548,7 +576,8 @@ select option {
     border: 1px dashed var(--outline);
     padding: 15px;
     border-radius: 10px;
-    color: var(--text-muted);
+    color: var(--text-main);
+    font-weight: 600;
     transition: border-color 0.15s, color 0.15s;
 }
 
@@ -739,7 +768,7 @@ select option {
 }
 
 .settings-section summary .settings-section-desc {
-    font-size: 13px;
+    font-size: var(--text-caption);
     color: var(--text-muted);
     margin-top: 4px;
 }
@@ -751,8 +780,8 @@ select option {
     width: 26px;
     height: 26px;
     border-radius: 50%;
-    background: var(--fill-strong);
-    color: var(--text-main);
+    background: transparent;
+    color: var(--text-muted);
     font-size: 15px;
     font-weight: 700;
     transition: transform 0.2s, background 0.2s;
@@ -869,6 +898,62 @@ input[type="password"] {
 
 .power-btn.on svg {
     filter: none;
+}
+
+/* The selected segment's switch is subordinate to the global one in the corner: on is an
+   accent outline with an accent symbol, not the same filled disc. */
+.seg-icon-btn.power-btn.on {
+    background: var(--surface-2);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+/* A button that toggles a state (outside a list, where a switch does not belong). The checkbox
+   stays for keyboard and screen readers; the label is what people see and press. */
+.toggle-chip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--surface-2);
+    color: var(--text-muted);
+    font-size: var(--text-caption);
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+}
+html body .toggle-chip input[type="checkbox"].toggle-chip-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+html body .toggle-chip input[type="checkbox"].toggle-chip-input::after {
+    content: none;
+}
+.toggle-chip .toggle-chip-mark {
+    display: none;
+}
+.toggle-chip:has(.toggle-chip-input:checked) {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+.toggle-chip:has(.toggle-chip-input:checked) .toggle-chip-mark {
+    display: inline;
+}
+.toggle-chip:has(.toggle-chip-input:focus-visible) {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+.toggle-chip:hover {
+    background: var(--hover);
 }
 
 /* The chosen effect and the chosen segment carry a check mark, not just a tint. */
@@ -1003,6 +1088,60 @@ input[type="password"] {
 }
 
 /* Colour swatch and brightness of one element, side by side. */
+/* One labelled line in an element card. */
+.widget-row-label {
+    flex: 0 0 7.5em;
+    font-size: var(--text-caption);
+    color: var(--text-muted);
+}
+.widget-row .field-flex {
+    min-width: 0;
+}
+.widget-card-number {
+    flex-shrink: 0;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 6px;
+    border-radius: 8px;
+    border: 1px solid rgba(52, 211, 153, 0.75);
+    color: var(--text-main);
+    font-size: var(--text-caption);
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-variant-numeric: tabular-nums;
+}
+.widget-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.widget-card-head .widget-pos {
+    margin-left: auto;
+    font-size: var(--text-caption);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.device-card-id {
+    font-size: var(--text-caption);
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-left: 4px;
+}
+
+/* Labelled number fields in a canvas panel row. */
+.canvas-field {
+    width: 64px;
+}
+.canvas-field label {
+    display: block;
+    font-size: var(--text-caption);
+    color: var(--text-muted);
+}
+
 .widget-row {
     display: flex;
     align-items: center;
@@ -1623,7 +1762,7 @@ input[type="password"] {
 
 /* --- Slider values -----------------------------------------------------------
    Written by app.js into a data attribute so translating the label cannot wipe it. */
-.slider-wrapper label[data-slider-value]::after {
+label[data-slider-value]::after {
     content: attr(data-slider-value);
     color: var(--text-muted);
     font-weight: 400;

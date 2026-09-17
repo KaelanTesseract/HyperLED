@@ -258,6 +258,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }, true);
     }
 
+    // Text people typed (device names), made safe to put into HTML.
+    function escapeText(value) {
+        return String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+
+    // Keeps the percentage next to a device's LED brightness slider in step.
+    document.addEventListener('input', (e) => {
+        const el = e.target;
+        if (!el || !el.id || el.id.indexOf('slaveLedBri_') !== 0) return;
+        const out = document.querySelector('[data-slave-bri-value="' + el.id.slice(12) + '"]');
+        if (out) out.textContent = Math.round(el.value * 100 / 255) + ' %';
+    });
+
     // --- Slider values -------------------------------------------------------
     // A slider with no number leaves people guessing what 0-255 means. The value is written into
     // a data attribute and drawn by CSS after the label, so applyTranslations() can keep
@@ -610,6 +623,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // MQTT Elements
     const mqttEnable = document.getElementById('mqttEnable');
+    // The server fields only matter while MQTT is on.
+    function updateMqttFields() {
+        const fields = document.getElementById('mqttFields');
+        if (fields && mqttEnable) fields.style.display = mqttEnable.checked ? '' : 'none';
+    }
+    if (mqttEnable) mqttEnable.addEventListener('change', updateMqttFields);
     const mqttServer = document.getElementById('mqttServer');
     const mqttPort = document.getElementById('mqttPort');
     const mqttUser = document.getElementById('mqttUser');
@@ -1603,24 +1622,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
             div.innerHTML = `
                 <div style="flex: 1; min-width: 120px;">
-                    <label style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_target')}</label>
-                    <select class="seg-target field" data-idx="${idx}">
+                    <label for="segTarget_${idx}" style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_target')}</label>
+                    <select id="segTarget_${idx}" class="seg-target field" data-idx="${idx}">
                         ${targetOptions}
                     </select>
                 </div>
                 <div style="flex: 2; min-width: 120px;">
-                    <label style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_name')}</label>
-                    <input type="text" class="seg-name field" data-idx="${idx}" value="${translateSegmentName(seg.name) || (t('dyn_segment') + ' ' + idx)}">
+                    <label for="segName_${idx}" style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_name')}</label>
+                    <input type="text" id="segName_${idx}" class="seg-name field" data-idx="${idx}" value="${escapeText(translateSegmentName(seg.name) || (t('dyn_segment') + ' ' + idx))}">
                 </div>
                 <div style="flex: 1; min-width: 80px;">
-                    <label style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_start')} (${minStart}-${maxStop})</label>
-                    <input type="number" class="seg-start field" data-idx="${idx}" min="${minStart}" max="${maxStop}" value="${seg.start + 1}">
+                    <label for="segStart_${idx}" style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_start')} (${minStart}-${maxStop})</label>
+                    <input type="number" id="segStart_${idx}" class="seg-start field" data-idx="${idx}" min="${minStart}" max="${maxStop}" value="${seg.start + 1}">
                 </div>
                 <div style="flex: 1; min-width: 80px;">
-                    <label style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_stop')} (${minStart}-${maxStop})</label>
-                    <input type="number" class="seg-stop field" data-idx="${idx}" min="${minStart}" max="${maxStop}" value="${seg.stop}">
+                    <label for="segStop_${idx}" style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_stop')} (${minStart}-${maxStop})</label>
+                    <input type="number" id="segStop_${idx}" class="seg-stop field" data-idx="${idx}" min="${minStart}" max="${maxStop}" value="${seg.stop}">
                 </div>
-                <button class="icon-btn icon-btn-danger btn-del-seg" data-idx="${idx}" style="margin-top: 15px; flex-shrink: 0;">
+                <button type="button" class="icon-btn icon-btn-danger btn-del-seg" data-idx="${idx}" aria-label="${t('aria_seg_delete')}" style="margin-top: 15px; flex-shrink: 0;">
                     <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
                         <polyline points="3 6 5 6 21 6"></polyline>
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -1857,7 +1876,9 @@ document.addEventListener('DOMContentLoaded', () => {
             row.appendChild(secLabel);
 
             const btnRemove = document.createElement('button');
+            btnRemove.type = 'button';
             btnRemove.className = 'icon-btn icon-btn-danger';
+            btnRemove.setAttribute('aria-label', t('aria_remove_entry'));
             btnRemove.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
             btnRemove.addEventListener('click', () => {
                 currentPlaylist.entries.splice(idx, 1);
@@ -2013,7 +2034,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const btnRemove = document.createElement('button');
+            btnRemove.type = 'button';
             btnRemove.className = 'icon-btn icon-btn-danger';
+            btnRemove.setAttribute('aria-label', t('aria_remove_entry'));
             btnRemove.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
             btnRemove.addEventListener('click', () => {
                 currentSchedules.entries.splice(idx, 1);
@@ -2083,6 +2106,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const slaveSelect = document.createElement('select');
             slaveSelect.className = 'field field-flex';
+            slaveSelect.setAttribute('aria-label', t('aria_canvas_device'));
             if (slaves.length === 0) {
                 const opt = document.createElement('option');
                 opt.innerText = t('dyn_slave') || 'Slave';
@@ -2099,14 +2123,16 @@ document.addEventListener('DOMContentLoaded', () => {
             slaveSelect.addEventListener('change', (e) => { panel.slaveId = parseInt(e.target.value); });
             row.appendChild(slaveSelect);
 
-            const makeNumberInput = (label, value, onChange, width) => {
+            const makeNumberInput = (label, value, onChange) => {
                 const wrap = document.createElement('div');
-                wrap.style.cssText = 'width: ' + width + 'px;';
+                wrap.className = 'canvas-field';
                 const lbl = document.createElement('label');
-                lbl.style.cssText = 'font-size: 10px; color: var(--text-muted); display: block;';
+                const fieldId = 'canvasField_' + idx + '_' + label.replace(/\W/g, '');
+                lbl.htmlFor = fieldId;
                 lbl.innerText = label;
                 wrap.appendChild(lbl);
                 const input = document.createElement('input');
+                input.id = fieldId;
                 input.type = 'number';
                 input.min = '0';
                 input.value = value;
@@ -2116,13 +2142,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 return wrap;
             };
 
-            row.appendChild(makeNumberInput(t('canvas_width') || 'Breite', panel.width, v => panel.width = v, 55));
-            row.appendChild(makeNumberInput(t('canvas_height') || 'Höhe', panel.height, v => panel.height = v, 55));
-            row.appendChild(makeNumberInput('X', panel.offsetX, v => panel.offsetX = v, 50));
-            row.appendChild(makeNumberInput('Y', panel.offsetY, v => panel.offsetY = v, 50));
+            row.appendChild(makeNumberInput(t('canvas_width') || 'Breite', panel.width, v => panel.width = v));
+            row.appendChild(makeNumberInput(t('canvas_height') || 'Höhe', panel.height, v => panel.height = v));
+            row.appendChild(makeNumberInput('X', panel.offsetX, v => panel.offsetX = v));
+            row.appendChild(makeNumberInput('Y', panel.offsetY, v => panel.offsetY = v));
 
             const layoutSelect = document.createElement('select');
             layoutSelect.className = 'field field-auto';
+            layoutSelect.setAttribute('aria-label', t('matrix_layout'));
             [[0, t('matrix_layout_serpentine') || 'Serpentine'], [1, t('matrix_layout_progressive') || 'Linear']].forEach(([val, label]) => {
                 const opt = document.createElement('option');
                 opt.value = val;
@@ -2134,8 +2161,11 @@ document.addEventListener('DOMContentLoaded', () => {
             row.appendChild(layoutSelect);
 
             const btnRemove = document.createElement('button');
+            btnRemove.type = 'button';
             btnRemove.className = 'icon-btn icon-btn-danger';
+            btnRemove.setAttribute('aria-label', t('aria_remove_entry'));
             btnRemove.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+            btnRemove.setAttribute('aria-label', t('aria_canvas_delete'));
             btnRemove.addEventListener('click', () => {
                 currentCanvasPanels.splice(idx, 1);
                 renderCanvasPanelsList();
@@ -2430,7 +2460,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     card.innerHTML = `
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <div style="display: flex; align-items: center; gap: 10px;">
-                                <h3 class="device-card-title">${isConfigured ? t('dyn_slave_configured') + ' (ID ' + slave.id + ')' : t('dyn_slave_new')}</h3>
+                                <h3 class="device-card-title">${isConfigured ? escapeText((slave.name && slave.name !== 'Unknown') ? slave.name : t('dyn_slave_configured')) : t('dyn_slave_new')} <span class="device-card-id">ID ${slave.id}</span></h3>
                                 <span class="badge">${slave.isWireless ? t('dyn_link_wireless') : t('dyn_link_cable')}</span>
                             </div>
                             <span style="font-size: var(--text-caption); color: var(--text-muted);">${t('dyn_slave_seen')}${Math.round(slave.lastSeenAge / 1000)}${t('dyn_slave_seen_suffix')}</span>
@@ -2439,30 +2469,30 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${t('dyn_slave_version')} <strong style="color: var(--text-main);">${slave.version || t('dyn_slave_unknown_ver')}</strong>
                         </div>
                         <div class="form-group" style="margin-bottom: 10px;">
-                            <label>${t('dyn_slave_name')}</label>
-                            <input type="text" id="slaveName_${slave.id}" value="${slave.name === 'Unknown' ? t('dyn_slave') + ' ' + slave.id : slave.name}">
+                            <label for="slaveName_${slave.id}">${t('dyn_slave_name')}</label>
+                            <input type="text" id="slaveName_${slave.id}" value="${escapeText(slave.name === 'Unknown' ? t('dyn_slave') + ' ' + slave.id : slave.name)}">
                         </div>
                         <div class="form-group" style="margin-bottom: 10px;">
-                            <label>${t('dyn_slave_led_type')}</label>
+                            <label for="slaveType_${slave.id}">${t('dyn_slave_led_type')}</label>
                             <select id="slaveType_${slave.id}" onchange="onSlaveTypeChange(${slave.id})">
                                 ${typeOptions}
                             </select>
                         </div>
                         <div id="groupSlaveNormal_${slave.id}" style="display: flex; gap: 10px; margin-bottom: 10px;">
                             <div class="form-group" style="flex: 1;">
-                                <label>${t('dyn_slave_data_pin')}</label>
+                                <label for="slavePin_${slave.id}">${t('dyn_slave_data_pin')}</label>
                                 <select id="slavePin_${slave.id}">
                                     ${pinOptions}
                                 </select>
                             </div>
                             <div class="form-group" style="flex: 1; display: none;" id="groupSlavePin2_${slave.id}">
-                                <label>${t('dyn_slave_clock_pin')}</label>
+                                <label for="slavePin2_${slave.id}">${t('dyn_slave_clock_pin')}</label>
                                 <select id="slavePin2_${slave.id}">
                                     ${pinOptions.replace('selected', '')}
                                 </select>
                             </div>
                             <div class="form-group" style="flex: 1;">
-                                <label>${t('dyn_slave_led_count')}</label>
+                                <label for="slaveLeds_${slave.id}">${t('dyn_slave_led_count')}</label>
                                 <input type="number" id="slaveLeds_${slave.id}" min="0" max="1000" value="${slave.ledCount}">
                             </div>
                         </div>
@@ -2476,16 +2506,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                             <div style="display: flex; gap: 10px; margin-bottom: 8px;">
                                 <div class="form-group" style="flex: 1;">
-                                    <label>${t('matrix_width') || 'Breite'}</label>
+                                    <label for="slaveMatW_${slave.id}">${t('matrix_width') || 'Breite'}</label>
                                     <input type="number" id="slaveMatW_${slave.id}" min="1" max="128" value="16">
                                 </div>
                                 <div class="form-group" style="flex: 1;">
-                                    <label>${t('matrix_height') || 'Höhe'}</label>
+                                    <label for="slaveMatH_${slave.id}">${t('matrix_height') || 'Höhe'}</label>
                                     <input type="number" id="slaveMatH_${slave.id}" min="1" max="128" value="16">
                                 </div>
                             </div>
                             <div class="form-group">
-                                <label>${t('hub75_shift_driver') || 'Treiber-Chip'}</label>
+                                <label for="slaveShiftDriver_${slave.id}">${t('hub75_shift_driver') || 'Treiber-Chip'}</label>
                                 <select id="slaveShiftDriver_${slave.id}">
                                     <option value="0">Generic</option>
                                     <option value="1">FM6126A</option>
@@ -2496,16 +2526,20 @@ document.addEventListener('DOMContentLoaded', () => {
                                 </select>
                             </div>
                         </div>
-                        <button id="btnSaveSlave_${slave.id}" class="btn-primary" onclick="configureSlave(${slave.id})" style="width: 100%; padding: 8px;">${t('dyn_send_config')}</button>
+                        <button type="button" id="btnSaveSlave_${slave.id}" class="btn-secondary" onclick="configureSlave(${slave.id})">${t('dyn_send_config')}</button>
 
                         <div style="margin-top: 15px; padding-top: 12px; border-top: 1px solid var(--separator);">
                             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                                 <label for="slaveLedOn_${slave.id}" style="margin: 0; font-size: 14px;">${t('slave_led_title')}</label>
                                 <input type="checkbox" id="slaveLedOn_${slave.id}" checked onchange="sendSlaveStatusLed(${slave.id})">
                             </div>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <input type="color" id="slaveLedColor_${slave.id}" value="#00ff00" style="width: 50px; height: 34px; padding: 3px; cursor: pointer;" onchange="sendSlaveStatusLed(${slave.id})">
-                                <input type="range" id="slaveLedBri_${slave.id}" min="1" max="255" value="40" style="flex: 1;" onchange="sendSlaveStatusLed(${slave.id})">
+                            <div class="widget-row">
+                                <input type="color" id="slaveLedColor_${slave.id}" value="#00ff00" class="field-color" aria-label="${t('statusled_color')}" onchange="sendSlaveStatusLed(${slave.id})">
+                                <label class="widget-bri" for="slaveLedBri_${slave.id}">
+                                    <span class="widget-bri-label">${t('statusled_bri')}</span>
+                                    <input type="range" id="slaveLedBri_${slave.id}" min="1" max="255" value="40" onchange="sendSlaveStatusLed(${slave.id})">
+                                    <span class="widget-bri-value" data-slave-bri-value="${slave.id}">16 %</span>
+                                </label>
                             </div>
                             <p style="font-size: var(--text-caption); color: var(--text-muted); margin: 8px 0 0 0;">${t('slave_led_hint')}</p>
                         </div>
@@ -2970,6 +3004,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (res.ok) {
                 const data = await res.json();
                 mqttEnable.checked = data.enabled;
+                updateMqttFields();
                 mqttServer.value = data.server || "";
                 mqttPort.value = data.port || 1883;
                 mqttUser.value = data.user || "";
@@ -3127,6 +3162,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (textEffectControls) {
             textEffectControls.style.display = state.effect === EFFECT_TEXT_ID ? 'block' : 'none';
         }
+        // "Uhr / Text" and "Bild" have no speed, intensity or palette of their own.
+        const staticEffect = state.effect === EFFECT_TEXT_ID || state.effect === 25;
+        [speedSlider, intensitySlider, paletteSelect].forEach(control => {
+            const wrap = control && control.closest('.slider-wrapper');
+            if (wrap) wrap.style.display = staticEffect ? 'none' : '';
+        });
         if (typeof renderTextWidgetEditor === 'function') renderTextWidgetEditor({ passive: true });
         if (typeof updatePanelArea === 'function') updatePanelArea();
         updateLiveText(liveTarget());
@@ -3399,6 +3440,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const translated = typeof t === 'function' ? t(key) : key;
         return translated === key ? (fallback[format] || fallback[0]) : translated;
     }
+    // One labelled line in an element card. `control` must carry id `${prefix}_${w.id}`.
+    function widgetRowHtml(w, prefix, labelKey, control, suffix) {
+        return `<div class="widget-row">
+            <label class="widget-row-label" for="${prefix}_${w.id}">${t(labelKey)}</label>
+            ${control}${suffix || ''}
+        </div>`;
+    }
     function widgetFormatOptionsHtml(w) {
         const keys = WIDGET_FORMAT_KEYS[w.type];
         if (!keys) return '';
@@ -3406,9 +3454,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const opts = keys.map((_, idx) =>
             `<option value="${idx}" ${current === idx ? 'selected' : ''}>${widgetFormatLabel(w.type, idx)}</option>`
         ).join('');
-        return `<div class="form-group" style="margin-bottom:8px;">
-            <select data-field="format" class="field field-auto">${opts}</select>
-        </div>`;
+        const labelKey = w.type === 6 ? 'widget_direction' : 'widget_format';
+        return widgetRowHtml(w, 'widgetFormat', labelKey,
+            `<select id="widgetFormat_${w.id}" data-field="format" class="field field-flex">${opts}</select>`);
     }
     function widgetFontLabel(key, fallback) {
         const translated = typeof t === 'function' ? t(key) : key;
@@ -3417,12 +3465,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function widgetFontOptionsHtml(w) {
         if (w.type !== 0 && w.type !== 1 && w.type !== 2 && w.type !== 5 && w.type !== 6) return '';
         const current = w.font || 0;
-        return `<div class="form-group" style="margin-bottom:8px;">
-            <select data-field="font" class="field field-auto">
+        return widgetRowHtml(w, 'widgetFont', 'widget_font',
+            `<select id="widgetFont_${w.id}" data-field="font" class="field field-flex">
                 <option value="0" ${current === 0 ? 'selected' : ''}>${widgetFontLabel('widget_font_normal', 'Normal (5x7)')}</option>
                 <option value="1" ${current === 1 ? 'selected' : ''}>${widgetFontLabel('widget_font_mini', 'Mini (3x5)')}</option>
-            </select>
-        </div>`;
+            </select>`);
     }
 
     function currentWidgets() {
@@ -3615,7 +3662,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const bgEffectSelect = document.getElementById('bgEffectSelect');
     const bgControls = document.getElementById('bgControls');
     const bgBrightness = document.getElementById('bgBrightness');
-    const bgBrightnessValue = document.getElementById('bgBrightnessValue');
     const bgSpeed = document.getElementById('bgSpeed');
     const bgIntensity = document.getElementById('bgIntensity');
     const bgPalette = document.getElementById('bgPalette');
@@ -3680,6 +3726,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const bgPercent = (bri) => Math.max(5, Math.min(100, Math.round(bri * 100 / 255)));
 
     // Fills the controls from the segment. A control being used keeps what the user is doing.
+    attachSliderValue(bgBrightness, value => ' \u00b7 ' + value + ' %');
+    attachSliderValue(bgSpeed, asPercent);
+    attachSliderValue(bgIntensity, asPercent);
+
     function renderPanelBackground() {
         if (!bgEffectSelect) return;
         const bg = currentBackground();
@@ -3689,9 +3739,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         set(bgEffectSelect, String(bg.fx));
         set(bgBrightness, String(bgPercent(bg.bri)));
-        if (bgBrightnessValue && document.activeElement !== bgBrightness) {
-            bgBrightnessValue.textContent = bgPercent(bg.bri) + ' %';
-        }
         set(bgSpeed, String(bg.sx));
         set(bgIntensity, String(bg.ix));
         set(bgPalette, String(bg.pal));
@@ -3700,6 +3747,7 @@ document.addEventListener('DOMContentLoaded', () => {
         set(bgColor2Enabled, bg.c2, 'checked');
         if (bgControls) bgControls.style.display = bg.fx !== BG_NONE ? '' : 'none';
         if (bgColor2) bgColor2.style.display = bg.c2 ? '' : 'none';
+        refreshSliderValues();
     }
 
     function saveBackground(changes) {
@@ -3727,9 +3775,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (bgEffectSelect) {
         bgEffectSelect.addEventListener('change', () => {
             saveBackground({ fx: parseInt(bgEffectSelect.value, 10) });
-        });
-        bgBrightness.addEventListener('input', () => {
-            bgBrightnessValue.textContent = bgBrightness.value + ' %';
         });
         bgBrightness.addEventListener('change', () => {
             const pct = Math.max(5, Math.min(100, parseInt(bgBrightness.value, 10) || 30));
@@ -3782,15 +3827,17 @@ document.addEventListener('DOMContentLoaded', () => {
         widgetEditorSig = sig;
         widgetPickerOpen = false;
         textWidgetList.innerHTML = '';
-        widgets.forEach((w) => {
+        widgets.forEach((w, widgetIndex) => {
+            const number = widgetIndex + 1;
             const card = document.createElement('div');
             card.className = 'card glass';
             card.classList.add('widget-card');
             const hexColor = '#' + (w.color !== undefined ? w.color : 0xFFFFFF).toString(16).padStart(6, '0');
             const safeText = (w.text || '').replace(/"/g, '&quot;');
             card.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
-                    <select data-field="type" class="field field-auto">
+                <div class="widget-card-head">
+                    <span class="widget-card-number" title="${t('widget_number', { n: number })}">${number}</span>
+                    <select data-field="type" class="field field-auto" aria-label="${t('widget_type_of', { n: number })}">
                         <option value="0" ${w.type === 0 ? 'selected' : ''}>${widgetTypeLabel(0)}</option>
                         <option value="1" ${w.type === 1 ? 'selected' : ''}>${widgetTypeLabel(1)}</option>
                         <option value="2" ${w.type === 2 ? 'selected' : ''}>${widgetTypeLabel(2)}</option>
@@ -3799,38 +3846,32 @@ document.addEventListener('DOMContentLoaded', () => {
                         <option value="5" ${w.type === 5 ? 'selected' : ''}>${widgetTypeLabel(5)}</option>
                         <option value="6" ${w.type === 6 ? 'selected' : ''}>${widgetTypeLabel(6)}</option>
                     </select>
-                    <span style="font-size:var(--text-caption); color: var(--text-muted); white-space:nowrap;" id="widgetPos_${w.id}"></span>
-                    <button type="button" data-action="remove" class="btn-remove" aria-label="${t('aria_widget_remove')}">&times;</button>
+                    <span class="widget-pos" id="widgetPos_${w.id}"></span>
+                    <button type="button" data-action="remove" class="btn-remove" aria-label="${t('widget_remove_n', { n: number })}">&times;</button>
                 </div>
                 <div class="widget-align">
                     <button type="button" data-action="centre-h" class="btn btn-secondary btn-chip"><span aria-hidden="true">↔</span> <span data-i18n="widget_centre_h">${t('widget_centre_h')}</span></button>
                     <button type="button" data-action="centre-v" class="btn btn-secondary btn-chip"><span aria-hidden="true">↕</span> <span data-i18n="widget_centre_v">${t('widget_centre_v')}</span></button>
                 </div>
-                ${w.type !== 4 ? `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                    <label style="font-size:var(--text-caption); color:var(--text-muted);" data-i18n="widget_size">Größe</label>
-                    <input type="number" data-field="scale" min="1" max="8" value="${widgetScale(w)}" class="field field-auto">
-                    <span style="font-size:var(--text-caption); color:var(--text-muted);">x</span>
-                </div>` : ''}
+                ${w.type !== 4 ? widgetRowHtml(w, 'widgetScale', 'widget_size',
+                    `<input type="number" id="widgetScale_${w.id}" data-field="scale" min="1" max="8" value="${widgetScale(w)}" class="field field-narrow">`,
+                    `<span class="widget-bri-label">×</span>`) : ''}
                 ${widgetFontOptionsHtml(w)}
                 ${widgetFormatOptionsHtml(w)}
-                ${w.type === 6 ? `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                    <label style="font-size:var(--text-caption); color:var(--text-muted);" data-i18n="widget_marquee_width">Länge</label>
-                    <input type="number" data-field="marqueeWidth" min="4" max="255" value="${w.w || 32}" class="field field-auto">
-                    <span style="font-size:var(--text-caption); color:var(--text-muted);">px</span>
-                </div>` : ''}
-                ${w.type === 6 ? `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                    <label style="font-size:var(--text-caption); color:var(--text-muted); white-space:nowrap;" data-i18n="widget_marquee_speed">Geschwindigkeit</label>
-                    <input type="range" data-field="marqueeSpeed" min="0" max="255" value="${w.speed !== undefined ? w.speed : 128}" style="flex:1;">
-                </div>` : ''}
-                ${(w.type === 2 || w.type === 6) ? `<input type="text" data-field="text" maxlength="64" value="${safeText}" placeholder="HELLO" class="field field-auto">` : ''}
-                ${bgOn ? `<div class="widget-row">
-                    <label class="widget-bri-label" for="widgetLegible_${w.id}">${t('widget_legible')}</label>
-                    <select id="widgetLegible_${w.id}" data-field="legible" class="field field-flex">
+                ${(w.type === 2 || w.type === 6) ? widgetRowHtml(w, 'widgetText', 'widget_text',
+                    `<input type="text" id="widgetText_${w.id}" data-field="text" maxlength="64" value="${safeText}" placeholder="HELLO" class="field field-flex">`) : ''}
+                ${w.type === 6 ? widgetRowHtml(w, 'widgetLength', 'widget_marquee_width',
+                    `<input type="number" id="widgetLength_${w.id}" data-field="marqueeWidth" min="4" max="255" value="${w.w || 32}" class="field field-narrow">`,
+                    `<span class="widget-bri-label">px</span>`) : ''}
+                ${w.type === 6 ? widgetRowHtml(w, 'widgetSpeed', 'widget_marquee_speed',
+                    `<input type="range" id="widgetSpeed_${w.id}" data-field="marqueeSpeed" min="0" max="255" value="${w.speed !== undefined ? w.speed : 128}" style="flex:1; min-width:0;">`,
+                    `<span class="widget-bri-value" data-role="speedValue">${Math.round((w.speed !== undefined ? w.speed : 128) * 100 / 255)} %</span>`) : ''}
+                ${bgOn ? widgetRowHtml(w, 'widgetLegible', 'widget_legible',
+                    `<select id="widgetLegible_${w.id}" data-field="legible" class="field field-flex">
                         <option value="1" ${legibleOf(w) === 1 ? 'selected' : ''}>${t('legible_outline')}</option>
                         <option value="2" ${legibleOf(w) === 2 ? 'selected' : ''}>${t('legible_box')}</option>
                         <option value="0" ${legibleOf(w) === 0 ? 'selected' : ''}>${t('legible_none')}</option>
-                    </select>
-                </div>` : ''}
+                    </select>`) : ''}
                 <div class="widget-row">
                     ${w.type !== 3 ? `<input type="color" data-field="color" value="${hexColor}" class="field-color" aria-label="${t('widget_color')}">` : ''}
                     <label class="widget-bri">
@@ -3840,16 +3881,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     </label>
                 </div>
                 ${w.type === 3 ? `<input type="file" data-field="image" accept="image/*" style="display:none;">
-                    <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
-                        <input type="number" data-field="imgW" min="1" max="64" value="${w.w || 8}" class="field field-auto">
-                        <span style="color:var(--text-muted);">x</span>
-                        <input type="number" data-field="imgH" min="1" max="64" value="${w.h || 8}" class="field field-auto">
-                        <button type="button" data-action="upload" class="btn btn-secondary" style="flex:1; font-size:var(--text-caption); padding:6px;" data-i18n="widget_img_select">Bild wählen</button>
-                    </div>` : ''}
-                ${w.type === 4 ? `<div style="display:flex; align-items:center; gap:8px;">
-                        <label style="font-size:var(--text-caption); color:var(--text-muted);" data-i18n="widget_diameter">Durchmesser</label>
-                        <input type="number" data-field="diameter" min="8" max="64" value="${w.w || 16}" class="field field-auto">
-                    </div>` : ''}
+                    ${widgetRowHtml(w, 'widgetImgW', 'widget_img_size',
+                        `<input type="number" id="widgetImgW_${w.id}" data-field="imgW" min="1" max="64" value="${w.w || 8}" class="field field-narrow" aria-label="${t('canvas_width')}">
+                        <span class="widget-bri-label">×</span>
+                        <input type="number" data-field="imgH" min="1" max="64" value="${w.h || 8}" class="field field-narrow" aria-label="${t('canvas_height')}">`)}
+                    <button type="button" data-action="upload" class="btn btn-secondary">${t('widget_img_select')}</button>` : ''}
+                ${w.type === 4 ? widgetRowHtml(w, 'widgetDiameter', 'widget_diameter',
+                    `<input type="number" id="widgetDiameter_${w.id}" data-field="diameter" min="8" max="64" value="${w.w || 16}" class="field field-narrow">`) : ''}
             `;
             textWidgetList.appendChild(card);
             updateWidgetPosLabel(w);
@@ -3903,6 +3941,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const marqueeSpeedInput = card.querySelector('[data-field="marqueeSpeed"]');
             if (marqueeSpeedInput) {
+                const speedValue = card.querySelector('[data-role="speedValue"]');
+                marqueeSpeedInput.addEventListener('input', () => {
+                    speedValue.textContent = Math.round(marqueeSpeedInput.value * 100 / 255) + ' %';
+                });
                 marqueeSpeedInput.addEventListener('change', () => {
                     w.speed = Math.max(0, Math.min(255, parseInt(marqueeSpeedInput.value) || 0));
                     saveWidgets(widgets);
