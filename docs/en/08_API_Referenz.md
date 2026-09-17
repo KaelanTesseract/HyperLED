@@ -73,10 +73,10 @@ Return the plain list of effect or palette names as a JSON array (the index matc
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/matrix_preview` | GET | Live preview of the Master matrix's current pixel content. |
+| `/api/matrix_preview` | GET | Live preview of the Master matrix's current pixel content. With `?seg=N` the live pixels of segment N instead; `&s=K` returns only every K-th pixel, and with `&w=<panel width>` the step applies to rows and columns (result: a grid of ceil(w/K) columns). |
 | `/api/matrix_config` | POST | 2D matrix setup (width, height, layout). |
 | `/api/canvas_panels` | GET / POST | Multi-panel canvas (combine several panels into one larger area). |
-| `/api/text_widgets` | POST | Set widgets (time, date, text, image, analog clock, weather) for a segment. |
+| `/api/text_widgets` | POST | Set widgets (time, date, text, image, analog clock, weather, marquee/scrolling text) for a segment. |
 | `/api/text_widget_image` | POST | Upload image data for an image widget (pixel art editor/converter). |
 | `/api/weather_status` | GET | Current status of the weather widget (temperature, icon). |
 | `/api/weather_location` | POST | Set the location for the weather widget (geocoded via Open-Meteo). |

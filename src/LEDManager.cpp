@@ -23,8 +23,10 @@
 #include "Font3x5.h"
 #include "WeatherIcons.h"
 #include "WeatherManager.h"
+#include "WidgetRender.h"
 #include <LittleFS.h>
 #include <math.h>
+#include <esp_rom_crc.h>
 
 // Image widgets (see TextWidget) persist their pixel data as a small file
 // under /img rather than embedding it in the segments JSON stored in NVS -
@@ -35,8 +37,16 @@ static String widgetImagePath(uint8_t widgetId) {
     return "/img/w" + String(widgetId) + ".rgb";
 }
 
+// CRC-32 of an image's pixels; never 0 for an image that has data (0 means "no image").
+static uint32_t widgetImageCrc(const std::vector<uint8_t>& data) {
+    if (data.empty()) return 0;
+    uint32_t crc = esp_rom_crc32_le(0, data.data(), data.size());
+    return crc == 0 ? 1 : crc;
+}
+
 static void loadWidgetImageFromFs(TextWidget& tw) {
     tw.imgData.clear();
+    tw.imgCrc = 0;
     if (tw.imgW == 0 || tw.imgH == 0) return;
     if (!LittleFS.begin()) return; // no-op if already mounted
     String path = widgetImagePath(tw.id);
@@ -48,6 +58,7 @@ static void loadWidgetImageFromFs(TextWidget& tw) {
     size_t got = f.read(tw.imgData.data(), expected);
     f.close();
     if (got != expected) tw.imgData.clear();
+    tw.imgCrc = widgetImageCrc(tw.imgData);
 }
 
 static void saveWidgetImageToFs(const TextWidget& tw) {
@@ -192,6 +203,7 @@ void LEDManagerClass::loadSettings() {
                         tw.scale = w["scale"] | 1;
                         tw.format = w["format"] | 0;
                         tw.font = w["font"] | 0;
+                        tw.speed = w["speed"] | 128;
                         seg.textWidgets.push_back(tw);
                     }
                 }
@@ -292,6 +304,7 @@ void LEDManagerClass::saveSettings() {
                 w["scale"] = tw.scale;
                 w["format"] = tw.format;
                 w["font"] = tw.font;
+                w["speed"] = tw.speed;
             }
         }
         if (seg.isSlave) {
@@ -773,6 +786,7 @@ void LEDManagerClass::setSegmentsFromJson(JsonArray segmentsArray) {
                 tw.scale = w["scale"] | 1;
                 tw.format = w["format"] | 0;
                 tw.font = w["font"] | 0;
+                tw.speed = w["speed"] | 128;
                 seg.textWidgets.push_back(tw);
             }
         }
@@ -849,6 +863,7 @@ void LEDManagerClass::getSegmentsJson(JsonArray array) const {
                 w["scale"] = tw.scale;
                 w["format"] = tw.format;
                 w["font"] = tw.font;
+                w["speed"] = tw.speed;
             }
         }
         if (seg.isSlave) {
@@ -1071,14 +1086,55 @@ void LEDManagerClass::loop() {
             // panel-sized segment it is a lot of waste: a 64x64 panel is 4096 pixels per frame.
             // Leaving that work undone is the point of local rendering; it keeps the Master free
             // for the web interface and for managing the other Slaves.
-            if (seg.isSlave && seg.slaveId != 254 &&
-                EffectEngine::canRender(seg.effect) &&
-                SlaveManager.slaveRendersLocally(seg.slaveId)) {
-                continue;
+            //
+            // "Uhr / Text" is finer-grained: a Lauftext/custom-text widget goes to the Slave as its
+            // own small config independently of whatever ELSE shares the segment (clock, weather,
+            // image) - those still need a Master-rendered, streamed frame. So this segment can only
+            // be skipped entirely when there is nothing left for the Master to draw; otherwise it
+            // still renders below, just with the Slave's own widgets left out (see skipMask).
+            // Must stay in step with the widget handling in the send loop further down.
+            bool slaveDrawsEffect = false;
+            uint16_t widgetSkipMask = 0;
+            bool masterWidgetLayer = true;
+            if (seg.isSlave && seg.slaveId != 254) {
+                slaveDrawsEffect = EffectEngine::canRender(seg.effect) &&
+                                   SlaveManager.slaveRendersLocally(seg.slaveId);
+                if (seg.effect == 29 && SlaveManager.slaveRendersWidgets(seg.slaveId)) {
+                    bool allTypes = SlaveManager.slaveRendersAllWidgets(seg.slaveId);
+                    if (allTypes) {
+                        // The checksum the Slave is told about needs the pixels loaded.
+                        for (auto& tw : seg.textWidgets) {
+                            if (tw.type == WidgetRender::TYPE_IMAGE && tw.imgData.empty() &&
+                                tw.imgW > 0 && tw.imgH > 0) {
+                                loadWidgetImageFromFs(tw);
+                            }
+                        }
+                    }
+                    widgetSkipMask = localWidgetMask(seg.textWidgets, allTypes);
+                    masterWidgetLayer = __builtin_popcount(widgetSkipMask) < (int)seg.textWidgets.size();
+                }
+                if (slaveDrawsEffect) continue;
+                if (!masterWidgetLayer) {
+                    // The Slave draws every element itself, so nothing of this segment is sent as
+                    // pixels (the send loop below never streams it). It is still drawn here - all
+                    // elements, at the 200ms floor below - while the web interface shows this panel,
+                    // because the preview and the live strip read this very buffer.
+                    if (!previewWanted((size_t)(&seg - &_segments[0]))) continue;
+                    widgetSkipMask = 0;
+                }
             }
 
             unsigned int delayMs = 500 - (seg.speed * 490 / 255);
             if (seg.effect == 0) delayMs = 100;
+            // Safety floor for a "Uhr / Text" segment whose frame has to be streamed to a Slave -
+            // a Slave too old for CMD_SET_WIDGETS, a widget list too big for one packet, or a
+            // clock/weather/image widget alongside the Lauftext. At speed 255 the redraw would run
+            // every 10ms, and a scrolling Lauftext changes most of a 64x64 panel each time, which
+            // is the traffic that took both links down. The marquee's position comes from millis(),
+            // so a slower redraw only costs smoothness, never speed.
+            if (seg.effect == 29 && seg.isSlave && seg.slaveId != 254 && delayMs < 200) {
+                delayMs = 200;
+            }
 
             if (now - seg.lastUpdate > delayMs) {
                 seg.lastUpdate = now;
@@ -1094,7 +1150,7 @@ void LEDManagerClass::loop() {
                         renderWithEngine(seg, ablCap);
                     } else switch (seg.effect) {
                         case 25: effectImage(seg, ablCap); break;
-                        case 29: effectText(seg, ablCap); break;
+                        case 29: effectText(seg, ablCap, widgetSkipMask); break;
                         default: renderWithEngine(seg, ablCap); break;
                     }
                 }
@@ -1139,6 +1195,21 @@ void LEDManagerClass::loop() {
                     // put a visible step at the segment boundary.
                     uint8_t srcBri = (uint8_t)(((uint16_t)src.brightness * segmentAblCap(seg, ablCap)) / 255);
 
+                    // "Uhr / Text" widgets the Slave draws itself. Not in a sync group: those
+                    // members are rendered as one span above, with every widget drawn into it.
+                    bool widgetMode = !inSyncGroup && src.effect == 29 &&
+                                      SlaveManager.slaveRendersWidgets(seg.slaveId);
+                    WidgetLink& link = _widgetLink[seg.slaveId];
+                    if (!widgetMode && link.active) {
+                        // Leaving widget mode: tell the Slave to stop drawing (it also times out on
+                        // its own if this gets lost), and repaint whatever streams next in full - the
+                        // Slave has had its widget rectangles out of the stream until now.
+                        const uint8_t release[HYPERBUS_WIDGET_HEADER_LEN] = {HYPERBUS_WIDGET_FLAG_RELEASE, 0, 0};
+                        SlaveManager.sendWidgetConfig(seg.slaveId, release, sizeof(release));
+                        SlaveManager.invalidateLedFrame(seg.slaveId);
+                        link = WidgetLink();
+                    }
+
                     if (EffectEngine::canRender(src.effect) &&
                         SlaveManager.slaveRendersLocally(seg.slaveId)) {
                         SlaveManager.sendSegmentConfig(seg.slaveId, src.effect, srcBri,
@@ -1147,6 +1218,42 @@ void LEDManagerClass::loop() {
                                                        src.color2Enabled, src.whiteOnly, src.cct,
                                                        src.effectStep, winOffset, winTotal);
                         continue;
+                    }
+                    // Same idea for "Uhr / Text": whichever custom-text/Lauftext widgets are in the
+                    // list go over as their own small config instead of riding the streamed frame -
+                    // independently of whatever ELSE shares the segment (clock, weather, image).
+                    // Position/size are per-panel already (see beginSurface's per-segment surface
+                    // for a Slave), so unlike the sync window above they need no translation - the
+                    // Slave draws them at the same x/y the Master would.
+                    //
+                    // The config goes out even when the list holds no such widget: it is also what
+                    // tells the Slave whether a streamed frame covers the rest of the panel, and so
+                    // whether it may clear pixels outside its own widgets.
+                    if (widgetMode) {
+                        bool allTypes = SlaveManager.slaveRendersAllWidgets(seg.slaveId);
+                        uint16_t mask = localWidgetMask(src.textWidgets, allTypes);
+                        bool masterLayer = __builtin_popcount(mask) < (int)src.textWidgets.size();
+                        uint8_t widgetPayload[HYPERBUS_WIDGETS_MAX_PAYLOAD];
+                        uint16_t widgetLen = serializeWidgetsForSlave(src.textWidgets, mask, srcBri,
+                                                                      src.isOn, masterLayer, allTypes,
+                                                                      widgetPayload);
+                        SlaveManager.sendWidgetConfig(seg.slaveId, widgetPayload, widgetLen);
+
+                        // Who owns the rest of the panel just changed. Drop what is queued for the
+                        // Slave: either nothing streams any more and leftover chunks would paint over
+                        // the Slave's own clear, or a stream starts and must repaint the whole panel,
+                        // not only what differs from a frame sent long ago.
+                        if (!link.active || link.masterLayer != masterLayer) {
+                            SlaveManager.invalidateLedFrame(seg.slaveId);
+                        }
+                        link.active = true;
+                        link.masterLayer = masterLayer;
+
+                        // Nothing left the Slave can't draw itself - no frame to stream.
+                        if (!masterLayer) continue;
+                        // Otherwise fall through: the clock/weather/image widgets were rendered into
+                        // the buffer (effectText() skipped the Slave's widgets), and that frame still
+                        // needs to reach the Slave the normal way.
                     }
                     uint16_t ledsToSend = seg.stop - seg.start;
                     if (totalCount >= seg.stop) {
@@ -1224,9 +1331,6 @@ uint8_t LEDManagerClass::getGlobalAblCap() {
 
 // --- New Advanced Effects ---
 
-// tm_wday-indexed (0 = Sunday), used by the "Wochentag" date format below.
-static const char* const WEEKDAY_ABBR[7] = {"SO", "MO", "DI", "MI", "DO", "FR", "SA"};
-
 void LEDManagerClass::beginSurface(const Segment& seg) {
     _surfaceIsSegment = false;
     _surfaceUnavailable = false;
@@ -1287,7 +1391,7 @@ void LEDManagerClass::effectImage(Segment& seg, uint8_t ablCap) {
     (void)ablCap;
 }
 
-void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap) {
+void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap, uint16_t skipMask) {
     // Renders every widget in seg.textWidgets (clock/date/text/image) at its
     // own freely-positioned (x,y) using the built-in 5x7 bitmap font (see
     // Font5x7.h). Makes no sense on a plain 1D strip, so it no-ops there (like
@@ -1309,251 +1413,50 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap) {
 
     if (seg.textWidgets.empty()) return;
 
-    uint16_t currentBri = (seg.brightness * segmentAblCap(seg, ablCap)) / 255;
+    uint8_t currentBri = (uint8_t)((seg.brightness * segmentAblCap(seg, ablCap)) / 255);
+
+    // The drawing itself lives in WidgetRender.h, shared with the HUB75 Slave, so an element looks
+    // the same whichever side draws it.
+    WidgetRender::Clock clk;
+    clk.known = true; // the Master always draws its own clock, synced or not
     time_t nowEpoch = time(nullptr);
-    struct tm timeinfo;
-    localtime_r(&nowEpoch, &timeinfo);
-    char buf[16];
+    localtime_r(&nowEpoch, &clk.tm);
 
-    for (auto& tw : seg.textWidgets) {
-        uint8_t scale = tw.scale;
-        if (scale < 1) scale = 1;
-        if (scale > TEXT_WIDGET_SCALE_MAX) scale = TEXT_WIDGET_SCALE_MAX;
+    WidgetRender::Weather wx;
+    wx.valid = WeatherManager.hasData();
+    wx.temp = wx.valid ? (int16_t)lroundf(WeatherManager.getTemperature()) : 0;
+    wx.icon = WeatherManager.getWeatherIcon();
 
-        if (tw.type == 5) {
-            // Wetter - icon (WeatherIcons.h) + temperature text (Font5x7/Font3x5,
-            // like the other text widgets). tw.format: 0 = icon+temp, 1 = icon
-            // only, 2 = temp only. Data comes from WeatherManager's background
-            // polling (see WeatherManager.cpp) - never fetched from here.
-            uint8_t r = ((tw.color >> 16) & 0xFF) * currentBri / 255;
-            uint8_t g = ((tw.color >> 8) & 0xFF) * currentBri / 255;
-            uint8_t b = (tw.color & 0xFF) * currentBri / 255;
+    unsigned long nowMs = millis();
+    auto plot = [&](int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b) {
+        drawSurfacePixel(seg, (uint16_t)x, (uint16_t)y, r, g, b, 0);
+    };
 
-            int16_t curX = tw.x;
-            if (tw.format != 2) {
-                uint8_t icon = WeatherManager.getWeatherIcon();
-                for (uint8_t col = 0; col < WEATHER_ICON_WIDTH; col++) {
-                    for (uint8_t row = 0; row < WEATHER_ICON_HEIGHT; row++) {
-                        if (!weather_icon_pixel(icon, col, row)) continue;
-                        for (uint8_t sy = 0; sy < scale; sy++) {
-                            int16_t py = tw.y + (int16_t)row * scale + sy;
-                            if (py < 0 || py >= (int16_t)ch) continue;
-                            for (uint8_t sx = 0; sx < scale; sx++) {
-                                int16_t px = curX + (int16_t)col * scale + sx;
-                                if (px < 0 || px >= (int16_t)cw) continue;
-                                drawSurfacePixel(seg, px, py, r, g, b, 0);
-                            }
-                        }
-                    }
-                }
-                curX += (int16_t)((WEATHER_ICON_WIDTH + 1) * scale);
-            }
-            if (tw.format != 1) {
-                char wbuf[8];
-                if (WeatherManager.hasData()) {
-                    snprintf(wbuf, sizeof(wbuf), "%d`C", (int)lroundf(WeatherManager.getTemperature()));
-                } else {
-                    snprintf(wbuf, sizeof(wbuf), "--`C");
-                }
-                bool mini = (tw.font == 1);
-                uint8_t glyphW = mini ? FONT3X5_GLYPH_WIDTH : FONT5X7_GLYPH_WIDTH;
-                uint8_t glyphH = mini ? FONT3X5_GLYPH_HEIGHT : FONT5X7_GLYPH_HEIGHT;
-                bool (*glyphPixel)(char, uint8_t, uint8_t) = mini ? font3x5_pixel : font5x7_pixel;
-                uint8_t charAdvance = (glyphW + 1) * scale;
-                for (size_t i = 0; wbuf[i] != '\0'; i++) {
-                    int16_t charX = curX + (int16_t)(i * charAdvance);
-                    if (charX + glyphW * scale < 0 || charX >= (int16_t)cw) continue;
-                    for (uint8_t col = 0; col < glyphW; col++) {
-                        for (uint8_t row = 0; row < glyphH; row++) {
-                            if (!glyphPixel(wbuf[i], col, row)) continue;
-                            for (uint8_t sy = 0; sy < scale; sy++) {
-                                int16_t py = tw.y + (int16_t)row * scale + sy;
-                                if (py < 0 || py >= (int16_t)ch) continue;
-                                for (uint8_t sx = 0; sx < scale; sx++) {
-                                    int16_t px = charX + (int16_t)col * scale + sx;
-                                    if (px < 0 || px >= (int16_t)cw) continue;
-                                    drawSurfacePixel(seg, px, py, r, g, b, 0);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            continue;
+    for (size_t widgetIndex = 0; widgetIndex < seg.textWidgets.size(); widgetIndex++) {
+        TextWidget& tw = seg.textWidgets[widgetIndex];
+        if (widgetIndex < 16 && (skipMask & (1u << widgetIndex))) continue; // the Slave draws this one
+
+        if (tw.type == WidgetRender::TYPE_IMAGE && tw.imgData.empty() && tw.imgW > 0 && tw.imgH > 0) {
+            // Lazily, because LEDManager::begin() runs before the web server mounts LittleFS.
+            loadWidgetImageFromFs(tw);
         }
 
-        if (tw.type == 4) {
-            // Analoguhr - drawn with trig instead of a font; tw.imgW doubles as the
-            // face diameter (no separate size field needed) and tw.format selects
-            // the design: 0=Klassisch (Kreis+Ziffernpunkte), 1=Minimal (nur Zeiger),
-            // 2=Ziffernpunkte+Sekundenzeiger, 3=Kreuz (nur 12/3/6/9-Punkte+Kreis).
-            uint16_t diameter = tw.imgW > 0 ? tw.imgW : 16;
-            if (diameter < 8) diameter = 8;
-            float radius = diameter / 2.0f;
-            float ccx = tw.x + radius;
-            float ccy = tw.y + radius;
-
-            uint8_t r = ((tw.color >> 16) & 0xFF) * currentBri / 255;
-            uint8_t g = ((tw.color >> 8) & 0xFF) * currentBri / 255;
-            uint8_t b = (tw.color & 0xFF) * currentBri / 255;
-
-            auto plot = [&](float px, float py) {
-                int16_t ix = (int16_t)lroundf(px);
-                int16_t iy = (int16_t)lroundf(py);
-                if (ix < 0 || ix >= (int16_t)cw || iy < 0 || iy >= (int16_t)ch) return;
-                drawSurfacePixel(seg, ix, iy, r, g, b, 0);
-            };
-            auto plotHand = [&](float angleDeg, float len) {
-                float rad = angleDeg * (float)PI / 180.0f;
-                float dx = sinf(rad), dy = -cosf(rad);
-                int steps = (int)len + 1;
-                for (int s = 0; s <= steps; s++) {
-                    float t = (float)s * len / steps;
-                    plot(ccx + dx * t, ccy + dy * t);
-                }
-            };
-
-            if (tw.format == 0 || tw.format == 3) { // face outline
-                for (float a = 0; a < 360.0f; a += 2.0f) {
-                    float rad = a * (float)PI / 180.0f;
-                    plot(ccx + radius * sinf(rad), ccy - radius * cosf(rad));
-                }
-            }
-            // Tick marks are drawn as short inward-pointing spokes (not single points
-            // sitting on the outline) so they're actually visible as distinct marks
-            // instead of blending into the face outline.
-            if (tw.format == 0) { // 12 short ticks
-                for (int i = 0; i < 12; i++) {
-                    float rad = i * 30.0f * (float)PI / 180.0f;
-                    float sn = sinf(rad), cs = cosf(rad);
-                    for (float rr = radius * 0.75f; rr <= radius; rr += 1.0f) {
-                        plot(ccx + rr * sn, ccy - rr * cs);
-                    }
-                }
-            } else if (tw.format == 2) { // 12 dots (no outline for this design, so plain dots stand out)
-                for (int i = 0; i < 12; i++) {
-                    float rad = i * 30.0f * (float)PI / 180.0f;
-                    plot(ccx + radius * sinf(rad), ccy - radius * cosf(rad));
-                }
-            } else if (tw.format == 3) { // 4 long ticks (12/3/6/9) - clearly longer than "Klassisch"'s
-                for (int i = 0; i < 4; i++) {
-                    float rad = i * 90.0f * (float)PI / 180.0f;
-                    float sn = sinf(rad), cs = cosf(rad);
-                    for (float rr = radius * 0.55f; rr <= radius; rr += 1.0f) {
-                        plot(ccx + rr * sn, ccy - rr * cs);
-                    }
-                }
-            }
-
-            plotHand(((timeinfo.tm_hour % 12) + timeinfo.tm_min / 60.0f) * 30.0f, radius * 0.5f);
-            plotHand(timeinfo.tm_min * 6.0f, radius * 0.85f);
-            if (tw.format == 2) {
-                plotHand(timeinfo.tm_sec * 6.0f, radius * 0.9f);
-            }
-            continue;
-        }
-
-        if (tw.type == 3) {
-            // Image widget - lazily loaded from its LittleFS file on first use
-            // (can't be loaded any earlier than this: LEDManager::begin() runs
-            // before WebServerManager mounts LittleFS at startup).
-            if (tw.imgData.empty() && tw.imgW > 0 && tw.imgH > 0) {
-                loadWidgetImageFromFs(tw);
-            }
-            if (tw.imgData.size() != (size_t)tw.imgW * tw.imgH * 3) continue;
-            for (uint16_t iy = 0; iy < tw.imgH; iy++) {
-                for (uint16_t ix = 0; ix < tw.imgW; ix++) {
-                    size_t off = ((size_t)iy * tw.imgW + ix) * 3;
-                    uint8_t r = (uint16_t)tw.imgData[off] * currentBri / 255;
-                    uint8_t g = (uint16_t)tw.imgData[off + 1] * currentBri / 255;
-                    uint8_t b = (uint16_t)tw.imgData[off + 2] * currentBri / 255;
-                    if (!r && !g && !b) continue;
-                    for (uint8_t sy = 0; sy < scale; sy++) {
-                        int16_t py = tw.y + (int16_t)iy * scale + sy;
-                        if (py < 0 || py >= (int16_t)ch) continue;
-                        for (uint8_t sx = 0; sx < scale; sx++) {
-                            int16_t px = tw.x + (int16_t)ix * scale + sx;
-                            if (px < 0 || px >= (int16_t)cw) continue;
-                            drawSurfacePixel(seg, px, py, r, g, b, 0);
-                        }
-                    }
-                }
-            }
-            continue;
-        }
-
-        String text;
-        if (tw.type == 0) { // Uhrzeit
-            switch (tw.format) {
-                case 1: // HH:MM:SS
-                    snprintf(buf, sizeof(buf), "%02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-                    break;
-                case 2: { // 12h AM/PM
-                    int h12 = timeinfo.tm_hour % 12;
-                    if (h12 == 0) h12 = 12;
-                    snprintf(buf, sizeof(buf), "%02d:%02d%s", h12, timeinfo.tm_min, timeinfo.tm_hour < 12 ? "AM" : "PM");
-                    break;
-                }
-                default: // HH:MM
-                    snprintf(buf, sizeof(buf), "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
-                    break;
-            }
-            text = buf;
-        } else if (tw.type == 1) { // Datum
-            switch (tw.format) {
-                case 1: // DD.MM.YYYY
-                    snprintf(buf, sizeof(buf), "%02d.%02d.%04d", timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
-                    break;
-                case 2: // DD.MM.YY
-                    snprintf(buf, sizeof(buf), "%02d.%02d.%02d", timeinfo.tm_mday, timeinfo.tm_mon + 1, (timeinfo.tm_year + 1900) % 100);
-                    break;
-                case 3: // YYYY-MM-DD (ISO)
-                    snprintf(buf, sizeof(buf), "%04d-%02d-%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
-                    break;
-                case 4: // MM/DD/YYYY (US)
-                    snprintf(buf, sizeof(buf), "%02d/%02d/%04d", timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_year + 1900);
-                    break;
-                case 5: // Wochentag DD.MM.
-                    snprintf(buf, sizeof(buf), "%s %02d.%02d.", WEEKDAY_ABBR[timeinfo.tm_wday], timeinfo.tm_mday, timeinfo.tm_mon + 1);
-                    break;
-                default: // DD.MM.
-                    snprintf(buf, sizeof(buf), "%02d.%02d.", timeinfo.tm_mday, timeinfo.tm_mon + 1);
-                    break;
-            }
-            text = buf;
-        } else { // Eigener Text
-            text = tw.text;
-        }
-        if (text.length() == 0) continue;
-
-        uint8_t r = ((tw.color >> 16) & 0xFF) * currentBri / 255;
-        uint8_t g = ((tw.color >> 8) & 0xFF) * currentBri / 255;
-        uint8_t b = (tw.color & 0xFF) * currentBri / 255;
-
-        bool mini = (tw.font == 1);
-        uint8_t glyphW = mini ? FONT3X5_GLYPH_WIDTH : FONT5X7_GLYPH_WIDTH;
-        uint8_t glyphH = mini ? FONT3X5_GLYPH_HEIGHT : FONT5X7_GLYPH_HEIGHT;
-        bool (*glyphPixel)(char, uint8_t, uint8_t) = mini ? font3x5_pixel : font5x7_pixel;
-
-        const uint8_t charAdvance = (glyphW + 1) * scale; // 1px gap between glyphs, scaled
-        for (size_t i = 0; i < text.length(); i++) {
-            int16_t charX = tw.x + i * charAdvance;
-            if (charX + glyphW * scale < 0 || charX >= (int16_t)cw) continue;
-            for (uint8_t col = 0; col < glyphW; col++) {
-                for (uint8_t row = 0; row < glyphH; row++) {
-                    if (!glyphPixel(text[i], col, row)) continue;
-                    for (uint8_t sy = 0; sy < scale; sy++) {
-                        int16_t py = tw.y + (int16_t)row * scale + sy;
-                        if (py < 0 || py >= (int16_t)ch) continue;
-                        for (uint8_t sx = 0; sx < scale; sx++) {
-                            int16_t px = charX + (int16_t)col * scale + sx;
-                            if (px < 0 || px >= (int16_t)cw) continue;
-                            drawSurfacePixel(seg, px, py, r, g, b, 0);
-                        }
-                    }
-                }
-            }
-        }
+        WidgetRender::Spec spec;
+        spec.type = tw.type;
+        spec.x = tw.x;
+        spec.y = tw.y;
+        spec.color = tw.color;
+        spec.scale = tw.scale;
+        spec.format = tw.format;
+        spec.font = tw.font;
+        spec.speed = tw.speed;
+        spec.width = tw.imgW;
+        spec.height = tw.imgH;
+        spec.text = tw.text.c_str();
+        spec.textLen = (uint16_t)tw.text.length();
+        spec.img = tw.imgData.empty() ? nullptr : tw.imgData.data();
+        spec.imgLen = tw.imgData.size();
+        WidgetRender::draw(spec, currentBri, cw, ch, clk, wx, nowMs, plot);
     }
 }
 
@@ -1640,7 +1543,7 @@ void LEDManagerClass::setTextWidgets(uint8_t segId, JsonArray widgets) {
         tw.id = w["id"] | 0;
         if (tw.id == 0) tw.id = nextId++;
         tw.type = w["type"] | 0;
-        if (tw.type > 5) tw.type = 0;
+        if (tw.type > 6) tw.type = 0;
         tw.x = w["x"] | 0;
         tw.y = w["y"] | 0;
         tw.color = w["color"] | 0xFFFFFF;
@@ -1649,7 +1552,9 @@ void LEDManagerClass::setTextWidgets(uint8_t segId, JsonArray widgets) {
         if (tw.text.length() > 64) tw.text = tw.text.substring(0, 64);
         uint8_t imgW = w["w"] | 0;
         uint8_t imgH = w["h"] | 0;
-        tw.imgW = imgW > TEXT_WIDGET_IMG_MAX ? TEXT_WIDGET_IMG_MAX : imgW;
+        // The marquee's window width (type 6) isn't image pixel data, so it isn't
+        // bounded by TEXT_WIDGET_IMG_MAX - it may need to span a wide canvas.
+        tw.imgW = (tw.type == 6 || imgW <= TEXT_WIDGET_IMG_MAX) ? imgW : TEXT_WIDGET_IMG_MAX;
         tw.imgH = imgH > TEXT_WIDGET_IMG_MAX ? TEXT_WIDGET_IMG_MAX : imgH;
         uint8_t scale = w["scale"] | 1;
         if (scale < 1) scale = 1;
@@ -1657,6 +1562,7 @@ void LEDManagerClass::setTextWidgets(uint8_t segId, JsonArray widgets) {
         tw.scale = scale;
         tw.format = w["format"] | 0;
         tw.font = w["font"] | 0;
+        tw.speed = w["speed"] | 128;
         if (tw.type == 3 && tw.imgW > 0 && tw.imgH > 0) {
             loadWidgetImageFromFs(tw); // re-associate with its existing image, if any
         }
@@ -1687,7 +1593,100 @@ void LEDManagerClass::getTextWidgetsJson(uint8_t segId, JsonArray array) const {
         w["scale"] = tw.scale;
         w["format"] = tw.format;
         w["font"] = tw.font;
+        w["speed"] = tw.speed;
     }
+}
+
+uint16_t LEDManagerClass::localWidgetMask(const std::vector<TextWidget>& widgets, bool allTypes) {
+    uint16_t mask = 0;
+    size_t total = HYPERBUS_WIDGET_HEADER_LEN;
+    size_t count = widgets.size() < 16 ? widgets.size() : 16;
+    for (size_t i = 0; i < count; i++) {
+        const TextWidget& tw = widgets[i];
+        bool textual = (tw.type == WidgetRender::TYPE_TEXT || tw.type == WidgetRender::TYPE_MARQUEE);
+        // An old Slave draws only text and Lauftext; clock, weather and image need what only the
+        // Master had until 0.2.004 (time, forecast, pixels).
+        if (!allTypes && !textual) continue;
+        size_t entrySize = (allTypes ? HYPERBUS_WIDGET_ENTRY_V2_FIXED_LEN : HYPERBUS_WIDGET_ENTRY_FIXED_LEN) +
+                           (textual ? tw.text.length() : 0);
+        // Rare (a lot of text over ESP-NOW's 240-byte cap): stop rather than build a payload nothing
+        // could send. Whatever already fit still goes over; the rest stays with the Master.
+        if (total + entrySize > HYPERBUS_WIDGETS_MAX_PAYLOAD) break;
+        total += entrySize;
+        mask |= (uint16_t)(1u << i);
+    }
+    return mask;
+}
+
+uint16_t LEDManagerClass::serializeWidgetsForSlave(const std::vector<TextWidget>& widgets, uint16_t mask,
+                                                   uint8_t brightness, bool isOn, bool masterLayer,
+                                                   bool allTypes, uint8_t* out) {
+    uint16_t len = 0;
+    out[len++] = (isOn ? HYPERBUS_WIDGET_FLAG_ON : 0) |
+                 (masterLayer ? HYPERBUS_WIDGET_FLAG_MASTER_LAYER : 0) |
+                 (allTypes ? HYPERBUS_WIDGET_FLAG_ALL_TYPES : 0);
+    out[len++] = brightness;
+    uint16_t countPos = len++;
+    uint8_t count = 0;
+    const uint16_t fixedLen = allTypes ? HYPERBUS_WIDGET_ENTRY_V2_FIXED_LEN : HYPERBUS_WIDGET_ENTRY_FIXED_LEN;
+    size_t n = widgets.size() < 16 ? widgets.size() : 16;
+    for (size_t i = 0; i < n; i++) {
+        if (!(mask & (1u << i))) continue;
+        const TextWidget& tw = widgets[i];
+        bool textual = (tw.type == WidgetRender::TYPE_TEXT || tw.type == WidgetRender::TYPE_MARQUEE);
+        uint8_t textLen = textual ? (uint8_t)tw.text.length() : 0;
+        // localWidgetMask() already sized the selection to fit; this only guards against the list
+        // changing in between.
+        if (len + fixedLen + textLen > HYPERBUS_WIDGETS_MAX_PAYLOAD) break;
+        out[len++] = tw.id;
+        out[len++] = tw.type;
+        out[len++] = (uint8_t)(tw.x & 0xFF);
+        out[len++] = (uint8_t)((tw.x >> 8) & 0xFF);
+        out[len++] = (uint8_t)(tw.y & 0xFF);
+        out[len++] = (uint8_t)((tw.y >> 8) & 0xFF);
+        out[len++] = (uint8_t)((tw.color >> 16) & 0xFF);
+        out[len++] = (uint8_t)((tw.color >> 8) & 0xFF);
+        out[len++] = (uint8_t)(tw.color & 0xFF);
+        out[len++] = tw.scale;
+        out[len++] = tw.format;
+        out[len++] = tw.font;
+        out[len++] = tw.speed; // Lauftext scroll speed
+        out[len++] = tw.imgW;  // image width / analog diameter / Lauftext window
+        if (allTypes) {
+            out[len++] = tw.imgH;
+            // Only an image that is actually loaded has pixels to fetch; 0 tells the Slave there
+            // is nothing to ask for (and nothing to draw).
+            uint32_t crc = (tw.type == WidgetRender::TYPE_IMAGE &&
+                            tw.imgData.size() == (size_t)tw.imgW * tw.imgH * 3) ? tw.imgCrc : 0;
+            out[len++] = (uint8_t)(crc & 0xFF);
+            out[len++] = (uint8_t)((crc >> 8) & 0xFF);
+            out[len++] = (uint8_t)((crc >> 16) & 0xFF);
+            out[len++] = (uint8_t)((crc >> 24) & 0xFF);
+        }
+        out[len++] = textLen;
+        if (textLen > 0) memcpy(&out[len], tw.text.c_str(), textLen);
+        len += textLen;
+        count++;
+    }
+    out[countPos] = count;
+    return len;
+}
+
+bool LEDManagerClass::copyWidgetImage(uint8_t widgetId, uint32_t crc, std::vector<uint8_t>& out,
+                                      uint8_t& width, uint8_t& height) const {
+    if (crc == 0) return false;
+    for (const auto& seg : _segments) {
+        for (const auto& tw : seg.textWidgets) {
+            if (tw.id != widgetId || tw.type != WidgetRender::TYPE_IMAGE) continue;
+            if (tw.imgCrc != crc) return false;
+            if (tw.imgData.size() != (size_t)tw.imgW * tw.imgH * 3) return false;
+            out = tw.imgData;
+            width = tw.imgW;
+            height = tw.imgH;
+            return true;
+        }
+    }
+    return false;
 }
 
 void LEDManagerClass::setTextWidgetImage(uint8_t segId, uint8_t widgetId, uint8_t w, uint8_t h, const std::vector<uint8_t>& rgbData) {
@@ -1701,6 +1700,7 @@ void LEDManagerClass::setTextWidgetImage(uint8_t segId, uint8_t widgetId, uint8_
             tw.imgW = w;
             tw.imgH = h;
             tw.imgData = rgbData;
+            tw.imgCrc = widgetImageCrc(tw.imgData);
             saveWidgetImageToFs(tw);
             if (_segments[segId].effect != 29) setEffect(segId, 29);
             triggerSave();

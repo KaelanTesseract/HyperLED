@@ -36,6 +36,12 @@ struct DiscoveredSlave {
     bool isWireless;
     // Set from the reported firmware version - see slaveRendersLocally().
     bool rendersLocally = false;
+    // Set from the reported firmware version - see slaveRendersWidgets(). A Slave can render
+    // ordinary effects locally (rendersLocally) without yet supporting CMD_SET_WIDGETS, so this
+    // is tracked separately rather than folded into the flag above.
+    bool rendersWidgets = false;
+    // Firmware 0.2.004 and later draw every element type - see slaveRendersAllWidgets().
+    bool rendersAllWidgets = false;
     // What the Slave reports about its own output. Only a Slave knows this - the Master stores
     // nothing about it - so without it the UI cannot show an existing configuration and would
     // overwrite it with its defaults on the next save. 255 means the Slave did not report.
@@ -71,9 +77,31 @@ public:
                            uint8_t intensity, uint8_t palette, bool isOn, uint32_t color,
                            uint32_t color2, bool color2Enabled, bool whiteOnly, uint8_t cct,
                            uint16_t effectStep, uint16_t windowOffset = 0, uint16_t windowTotal = 0);
+    // Hands a pre-serialized CMD_SET_WIDGETS payload (see HyperBus.h) to a Slave that can draw its
+    // own "Uhr / Text" widgets. Same dedup/refresh behaviour as sendSegmentConfig - safe to call
+    // every frame, only actually transmits on a real change or when the refresh interval is due.
+    void sendWidgetConfig(uint8_t slaveId, const uint8_t* payload, uint16_t length);
+    // Forgets what this Slave is believed to show, so the next streamed frame goes out in full and
+    // nothing still queued from the previous one is sent. Needed whenever the pixels on the panel
+    // change owner - the delta logic otherwise only sends what differs from a frame the Slave may
+    // no longer be showing.
+    void invalidateLedFrame(uint8_t slaveId);
     // Whether this Slave's firmware can render effects on its own. Older Slaves keep receiving
     // streamed pixel data, so a mixed set of firmware versions stays functional.
     bool slaveRendersLocally(uint8_t slaveId) const;
+    // Whether this Slave's firmware understands CMD_SET_WIDGETS (local "Uhr / Text" rendering for
+    // the custom-text and Lauftext widget types). Checked separately from slaveRendersLocally():
+    // an older Slave that already renders ordinary effects locally would otherwise silently drop
+    // an unknown CMD_SET_WIDGETS and never get pixels for that segment any other way.
+    bool slaveRendersWidgets(uint8_t slaveId) const;
+    // Whether this Slave draws every element type itself - clock, date, analog clock, weather and
+    // image too (CMD_SET_WIDGETS layout 2, firmware 0.2.004 and later). Such a Slave is kept told
+    // the time and the weather, and fetches image pixels on its own.
+    bool slaveRendersAllWidgets(uint8_t slaveId) const;
+    // Whether this Slave has reported in recently. Nothing that could flood a link is sent to a
+    // Slave that has not: a Slave that is gone shows nothing anyway, and the traffic would starve
+    // the pings that bring it back.
+    bool slaveIsOnline(uint8_t slaveId) const;
     // Pixel size of the HUB75 panel this Slave reported, if it is one. Lets a 2D effect draw into
     // the Slave's own panel instead of the shared canvas.
     bool getSlavePanelSize(uint8_t slaveId, uint16_t& w, uint16_t& h) const;
@@ -114,6 +142,62 @@ private:
     HyperBusClass* _uartBus;
     EspNowBusClass* _espBus;
     std::vector<DiscoveredSlave> _discoveredSlaves;
+
+    // What a Slave's firmware can do and which transport it answered on, remembered per id and
+    // kept when the discovery list is pruned (a Slave drops out after 15s without a PONG).
+    //
+    // The rendering mode must not change just because a PONG went missing. It used to: losing the
+    // Slave made slaveRendersWidgets() false, the Master fell back to streaming the whole panel -
+    // Lauftext included, redrawn every ~10ms - and an unknown Slave defaulted to the UART bus,
+    // where a 20KB frame blocks the loop for about 1.8s. That stopped the pings that would have
+    // brought the Slave back, so the outage kept itself alive until the power was pulled: web
+    // interface dead, ESP-NOW dead. Same class of bug the note in HyperBus.h warns about - one
+    // source of truth for what a Slave can draw, or the Master floods the link it depends on.
+    struct SlaveCapability {
+        bool rendersLocally = false;
+        bool rendersWidgets = false;
+        bool rendersAllWidgets = false;
+        bool isWireless = true;
+    };
+
+    // What a Slave that draws the elements itself needs from the Master, sent rarely and small.
+    //
+    // Time: a broadcast every few seconds (and at once when such a Slave appears). The Slave runs
+    // its clock from millis() in between, so the interval only bounds the drift and how quickly a
+    // daylight-saving change or a first NTP sync shows up.
+    static const unsigned long CLOCK_BROADCAST_MS = 10000;
+    unsigned long _lastClockBroadcast = 0;
+    bool _clockBroadcastDue = false;
+    void broadcastClock();
+    // Weather: on change, plus a refresh so a restarted Slave does not wait for the next forecast.
+    static const unsigned long WEATHER_REFRESH_MS = 30000;
+    unsigned long _lastWeatherBroadcast = 0;
+    uint8_t _sentWeather[HYPERBUS_WEATHER_PAYLOAD_LEN] = {0xFF, 0, 0, 0xFF};
+    void broadcastWeather(bool force);
+    bool anySlaveRendersAllWidgets() const;
+
+    // Image pixels, sent only when a Slave asks for them (CMD_REQUEST_WIDGET_IMAGE) and then a
+    // piece at a time from loop(): a 64x64 image is 55 packets, which in one burst would starve
+    // the pings exactly like a streamed frame used to.
+    struct ImageTransfer {
+        uint8_t slaveId;
+        uint8_t widgetId;
+        uint32_t crc;
+        uint8_t width;
+        uint8_t height;
+        std::vector<uint8_t> data;
+        uint16_t offset;
+    };
+    std::vector<ImageTransfer> _imageTransfers;
+    unsigned long _lastImageChunk = 0;
+    static const unsigned long IMAGE_CHUNK_INTERVAL_MS = 20;
+    void handleImageRequest(uint8_t slaveId, const uint8_t* payload, uint16_t length);
+    void pumpImageTransfers();
+    std::map<uint8_t, SlaveCapability> _slaveCaps;
+
+    // Which bus to talk to a Slave on. fallbackToUart is for the small control packets that must
+    // still go out to a Slave that has not been discovered (yet); it is never used for pixel data.
+    BusInterface* busFor(uint8_t slaveId, bool fallbackToUart = true);
 
     // One lock for everything this class owns.
     //
@@ -199,7 +283,17 @@ private:
     };
     static const unsigned long SEGMENT_REFRESH_MS = 2000;
     std::map<uint8_t, SentSegment> _sentSegments;
-    
+
+    // Same idea as SentSegment/_sentSegments, but for CMD_SET_WIDGETS: the payload is variable
+    // length (text strings), so the last-sent copy is a vector rather than a fixed array.
+    struct SentWidgets {
+        std::vector<uint8_t> payload;
+        unsigned long lastSent;
+        bool valid = false;
+    };
+    static const unsigned long WIDGETS_REFRESH_MS = 2000;
+    std::map<uint8_t, SentWidgets> _sentWidgets;
+
     void handlePacket(const HyperBusPacket& packet);
     static void staticHandlePacket(const HyperBusPacket& packet);
 };

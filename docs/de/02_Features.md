@@ -13,6 +13,7 @@ HyperLED bietet eine riesige Bandbreite an Funktionen, die das System sowohl fü
 * **2D-Matrix-Unterstützung:** Serpentine- und fortlaufendes Layout, inklusive HUB75-Scan-Matrix-Panels.
 * **Pixel Art Editor & Converter:** Male direkt im Browser oder lade Pixel-Art-Bilder hoch – beides landet als Hintergrundbild-Widget auf der Matrix.
 * **Widget-System:** Uhrzeit, Datum, Text, Bilder und eine analoge Uhr (mehrere Designs) lassen sich frei auf der Matrix platzieren und einzeln skalieren, mit Live-Vorschau ohne Zwischenschritt.
+* **Lauftext-Widget:** Text scrollt endlos durch ein frei positionierbares Fenster mit einstellbarer Länge (Breite in Pixeln), Richtung (links/rechts) und eigener Geschwindigkeit pro Widget – unabhängig von anderen Elementen (Uhrzeit, Wetter, Bild) im selben Segment.
 * **Wetter-Widget:** Zeigt aktuelle Temperatur und Wettersymbol (Sonne, Wolken, Regen, Schnee, Gewitter) an – auf Basis von Open-Meteo, ohne API-Key.
 
 ## Steuerung

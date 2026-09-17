@@ -77,26 +77,43 @@ struct CanvasPanel {
 // (see widgetImagePath() in LEDManager.cpp).
 struct TextWidget {
     uint8_t id = 0;
-    uint8_t type = 0; // 0 = clock (HH:MM), 1 = date (DD.MM.), 2 = custom text, 3 = image
+    uint8_t type = 0; // 0 = clock (HH:MM), 1 = date (DD.MM.), 2 = custom text, 3 = image,
+                       // 4 = analog clock, 5 = weather, 6 = Lauftext (scrolling marquee text)
     int16_t x = 0;
     int16_t y = 0;
-    uint32_t color = 0xFFFFFF; // used by clock/date/text (not image)
-    String text = "";          // used by type == 2
-    uint8_t imgW = 0;          // used by type == 3
+    uint32_t color = 0xFFFFFF; // used by clock/date/text/marquee (not image)
+    String text = "";          // used by type == 2 and type == 6
+    // Used by type == 3 (image pixel dimensions) and type == 4 (face diameter,
+    // width doubling as height). For type == 6 this instead holds the marquee's
+    // visible window width in pixels - the "length" of the scrolling widget -
+    // uncapped by TEXT_WIDGET_IMG_MAX since it holds no per-pixel image data and
+    // may need to span a wide multi-panel canvas.
+    uint8_t imgW = 0;
     uint8_t imgH = 0;
     // Size multiplier (1-TEXT_WIDGET_SCALE_MAX): each font/image pixel is drawn
     // as an NxN block, so a widget can be made bigger without more source detail.
     uint8_t scale = 1;
     // Display format for type == 0 (clock) or type == 1 (date); see effectText
-    // in LEDManager.cpp for the exact layouts. Ignored by other widget types.
+    // in LEDManager.cpp for the exact layouts. For type == 6 (marquee) selects
+    // scroll direction: 0 = scrolls left, 1 = scrolls right. Ignored otherwise.
     uint8_t format = 0;
-    // Font for type == 0/1/2 (clock/date/text): 0 = normal 5x7 (Font5x7.h),
-    // 1 = compact 3x5 "mini" (Font3x5.h). Ignored by image widgets.
+    // Font for type == 0/1/2/6 (clock/date/text/marquee): 0 = normal 5x7
+    // (Font5x7.h), 1 = compact 3x5 "mini" (Font3x5.h). Ignored by image widgets.
     uint8_t font = 0;
+    // Scroll speed for type == 6 (Lauftext), 0-255, same scale as the segment's own Speed slider
+    // (mapped to ~2-30 px/s - see effectText). Its own field rather than reusing seg.speed: a
+    // marquee widget can share a segment with a clock/weather/image widget that has nothing to do
+    // with scroll speed, and multiple Lauftext widgets may want different speeds. Ignored by every
+    // other widget type.
+    uint8_t speed = 128;
     // Pixel data for an image widget (RGB triplets, imgW*imgH*3 bytes) - kept
     // in RAM only; not part of the JSON round-trip that persists to NVS. Lazily
     // loaded from its LittleFS file on first use (see effectText).
     std::vector<uint8_t> imgData;
+    // Identifies imgData (CRC-32, never 0 while there is data). A Slave that draws the image itself
+    // compares it with what it holds and asks for the pixels when they differ - see
+    // CMD_REQUEST_WIDGET_IMAGE. Kept in step with imgData wherever that changes.
+    uint32_t imgCrc = 0;
 };
 
 struct Segment {
@@ -193,6 +210,38 @@ public:
     void getTextWidgetsJson(uint8_t segId, JsonArray array) const;
     void setTextWidgetImage(uint8_t segId, uint8_t widgetId, uint8_t w, uint8_t h, const std::vector<uint8_t>& rgbData);
     uint8_t getNextWidgetId() const;
+    // The subset of a widget list a Slave can draw itself - custom text and Lauftext, neither of
+    // which needs a Master-exclusive resource - up to however many fit HYPERBUS_WIDGETS_MAX_PAYLOAD.
+    // Deliberately independent of what ELSE is in the list: a Lauftext sitting next to a clock or
+    // weather widget still goes to the Slave as its own small, low-traffic config instead of
+    // forcing the whole segment into full-frame pixel streaming (which is what made a fast-scrolling
+    // Lauftext saturate ESP-NOW badly enough to take the Master's own WiFi down with it - the
+    // marquee redraws and changes most of the panel every tick, defeating the delta-chunking in
+    // SlaveManager::queueFrame(), unlike a slow-changing clock/weather/image widget).
+    //
+    // Returned as a bitmask (bit i = widgets[i]) rather than a copied list: it is evaluated on every
+    // loop pass, and copying widgets with their String text that often would churn the heap. Any
+    // widget whose bit is clear - clock/date/analog clock/weather/image, or a text widget that did
+    // not fit - is still rendered and streamed by the Master.
+    //
+    // allTypes: the Slave draws every element type itself (firmware 0.2.004 and later, see
+    // SlaveManager::slaveRendersAllWidgets). Then the only elements left to the Master are those
+    // that did not fit into the payload.
+    static uint16_t localWidgetMask(const std::vector<TextWidget>& widgets, bool allTypes);
+    // Writes the CMD_SET_WIDGETS payload for the widgets selected by `mask` into `out`, which must
+    // hold HYPERBUS_WIDGETS_MAX_PAYLOAD bytes, and returns its length. masterLayer tells the Slave
+    // that a streamed frame covers the rest of the panel (see HYPERBUS_WIDGET_FLAG_MASTER_LAYER).
+    // Scroll speed travels per widget (TextWidget::speed).
+    // allTypes selects entry layout 2 (see CMD_SET_WIDGETS) and must match what localWidgetMask()
+    // was asked for.
+    static uint16_t serializeWidgetsForSlave(const std::vector<TextWidget>& widgets, uint16_t mask,
+                                             uint8_t brightness, bool isOn, bool masterLayer,
+                                             bool allTypes, uint8_t* out);
+    // Copies the pixels of image element `widgetId` if they still have checksum `crc`. For the
+    // Slave's CMD_REQUEST_WIDGET_IMAGE; a copy, because the transfer takes a moment and the image
+    // may be replaced meanwhile. Loop task only.
+    bool copyWidgetImage(uint8_t widgetId, uint32_t crc, std::vector<uint8_t>& out,
+                         uint8_t& width, uint8_t& height) const;
     // Persisted like every other setting: sync survived nothing before, so a power cycle left
     // the segments on their stored effect but no longer running as one chain, and a reloaded web
     // page showed the checkbox cleared even while sync was still on.
@@ -249,6 +298,13 @@ public:
     // preview a panel driven by a Slave: the Master renders those pixels and streams them on,
     // but never shows them itself, so they were invisible everywhere.
     bool getSegmentPixels(uint8_t segId, uint16_t& start, uint16_t& count, const uint8_t*& buf) const;
+    // Called by the preview endpoint. A Slave that draws all of a panel's elements itself gets no
+    // pixels from the Master, so the Master stops drawing that panel - except while someone is
+    // looking at it in the web interface, which reads exactly this buffer.
+    void notePreviewWanted(uint8_t segId) {
+        _previewSeg = segId;
+        _previewWantedAt = millis();
+    }
 
     // The ABL cap that actually applies to a given segment. getGlobalAblCap() deliberately
     // leaves out Slave segments that are not on the Master's power budget, so capping them
@@ -309,6 +365,23 @@ private:
     // takes to find it again.
     std::map<uint8_t, std::pair<uint16_t, uint16_t>> _knownPanelSize;
 
+    // Per Slave: whether it was last handed "Uhr / Text" widgets, and whether a streamed frame went
+    // with them. A change in either means the pixels on the panel now belong to someone else - see
+    // the widget handling in loop().
+    struct WidgetLink {
+        bool active = false;
+        bool masterLayer = false;
+    };
+    std::map<uint8_t, WidgetLink> _widgetLink;
+
+    // See notePreviewWanted(). Written by the web server task, read by the loop.
+    volatile uint8_t _previewSeg = 255;
+    volatile unsigned long _previewWantedAt = 0;
+    static const unsigned long PREVIEW_HOLD_MS = 3000;
+    bool previewWanted(size_t segIndex) const {
+        return _previewSeg == segIndex && millis() - _previewWantedAt < PREVIEW_HOLD_MS;
+    }
+
     bool _syncActive = false;
     // Which segment leads the sync group this frame and what span it covers. Recomputed each
     // loop() because segments, and their membership, can change at any time.
@@ -341,7 +414,10 @@ private:
     void effectImage(Segment& seg, uint8_t ablCap);
     // "Uhr / Text" - renders a clock, date, or custom text message using the
     // built-in 5x7 bitmap font (see Font5x7.h); scrolls if it doesn't fit.
-    void effectText(Segment& seg, uint8_t ablCap);
+    // skipMask: widgets whose bit is set (bit i = seg.textWidgets[i]) are left undrawn, because the
+    // Slave draws them itself (see localWidgetMask). The frame then carries only the Master's own
+    // widgets, and the Slave keeps its widget rectangles out of it.
+    void effectText(Segment& seg, uint8_t ablCap, uint16_t skipMask = 0);
 
     // HUB75 showcase effects (see EFFECT_HUB75_SHOWCASE_START above).
 

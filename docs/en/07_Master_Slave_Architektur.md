@@ -4,7 +4,13 @@ One of HyperLED's most powerful features is its ability to link multiple ESP32 c
 
 ## How It Works
 
-One controller acts as the **Master**, other controllers in the chain act as **Slaves**. On every frame, the Master sends the raw color data for the assigned LEDs as a packet to the Slaves. The Slaves listen to this stream and output it 1:1 to their own LED strip or HUB75 panel.
+One controller acts as the **Master**, other controllers in the chain act as **Slaves**. The Master assigns the segments and tells each Slave what to show – the picture itself is computed by the Slave wherever it can:
+
+- **Effects:** The Master only sends the settings (effect, colour, brightness, speed …) when something changes, and the Slave runs the animation itself.
+- **"Clock / Text" on a HUB75 panel:** From Slave firmware 0.2.004 on, the Slave draws every element itself – time, date, analog clock, text, scrolling text, weather and image. The Master sends the element list, the time every few seconds, the weather when it changes, and images exactly once: a Slave that lacks an image (after a restart, for example) requests it on its own and verifies it by checksum.
+- **Pixel stream as a fallback:** Only what a Slave cannot do itself (older firmware, the "Image" effect, an element that no longer fits into one packet) is computed by the Master, which then sends the changed pixels.
+
+This keeps the Master free for the web interface and for coordinating the Slaves, and keeps the radio link from being flooded with picture data.
 
 A Slave doesn't run its own control logic – its name, LED type, pinout, or matrix size are configured entirely through the Master's web interface.
 

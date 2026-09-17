@@ -18,6 +18,10 @@
  */
 #include "SlaveManager.h"
 #include "Config.h"
+#include "LEDManager.h"
+#include "WeatherManager.h"
+#include "WidgetRender.h"
+#include <sys/time.h>
 #include <ArduinoJson.h>
 #include <algorithm>
 
@@ -69,6 +73,15 @@ void SlaveManagerClass::loop() {
     // produced is the whole point: the loop keeps turning between chunks, so pings still go out
     // and the web interface still answers while a panel is being filled.
     pumpLedTx();
+    pumpImageTransfers();
+
+    if (anySlaveRendersAllWidgets()) {
+        if (_clockBroadcastDue || now - _lastClockBroadcast >= CLOCK_BROADCAST_MS) {
+            _clockBroadcastDue = false;
+            broadcastClock();
+        }
+        broadcastWeather(false);
+    }
 
     // PING frequently so slaves scanning channels can find us quickly
     if (now - _lastPingTime > 250) {
@@ -114,6 +127,8 @@ void SlaveManagerClass::loop() {
 
 static bool versionRendersLocally(const String& version);
 static bool versionReportsConfig(const String& version);
+static bool versionRendersWidgets(const String& version);
+static bool versionRendersAllWidgets(const String& version);
 
 // A corrupted/garbled PONG (e.g. from a protocol-version mismatch or a noisy wire) can contain raw
 // control bytes. ArduinoJson does not escape those, which produces invalid JSON on /api/slaves and
@@ -176,6 +191,8 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                     s.name = sName;
                     s.version = sVersion;
                     s.rendersLocally = versionRendersLocally(sVersion);
+                    s.rendersWidgets = versionRendersWidgets(sVersion);
+                    s.rendersAllWidgets = versionRendersAllWidgets(sVersion);
                     if (sType != 255) {
                         s.ledType = sType;
                         s.matrixWidth = sMatW;
@@ -189,6 +206,15 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                 }
             }
             
+            SlaveCapability& caps = _slaveCaps[packet.senderId];
+            caps.rendersLocally = versionRendersLocally(sVersion);
+            caps.rendersWidgets = versionRendersWidgets(sVersion);
+            bool drawsAll = versionRendersAllWidgets(sVersion);
+            // A Slave that draws the clock should not wait up to ten seconds to learn the time.
+            if (drawsAll && (!found || !caps.rendersAllWidgets)) _clockBroadcastDue = true;
+            caps.rendersAllWidgets = drawsAll;
+            caps.isWireless = packet.isWireless;
+
             if (!found) {
                 DiscoveredSlave ds;
                 ds.currentId = packet.senderId;
@@ -196,6 +222,8 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                 ds.name = sName;
                 ds.version = sVersion;
                 ds.rendersLocally = versionRendersLocally(sVersion);
+                ds.rendersWidgets = versionRendersWidgets(sVersion);
+                ds.rendersAllWidgets = drawsAll;
                 ds.ledType = sType;
                 ds.matrixWidth = sMatW;
                 ds.matrixHeight = sMatH;
@@ -205,6 +233,8 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                 _discoveredSlaves.push_back(ds);
             }
         }
+    } else if (packet.command == CMD_REQUEST_WIDGET_IMAGE) {
+        handleImageRequest(packet.senderId, packet.payload, packet.length);
     }
 }
 
@@ -217,17 +247,22 @@ std::vector<DiscoveredSlave> SlaveManagerClass::getDiscoveredSlaves() {
     return sorted;
 }
 
-// Helper to determine the correct bus for a slave ID
-BusInterface* getBusForSlave(uint8_t slaveId, std::vector<DiscoveredSlave>& discovered, BusInterface* uartBus, BusInterface* espBus) {
+// Which bus to talk to a Slave on: the transport it last answered on, remembered even after it
+// dropped out of the discovery list. A Slave nobody has ever heard from gets nullptr unless the
+// caller allows the UART fallback, which only the small control packets do - see _slaveCaps.
+BusInterface* SlaveManagerClass::busFor(uint8_t slaveId, bool fallbackToUart) {
     if (slaveId == HYPERBUS_BROADCAST_ID) return nullptr; // Special case
-    
-    for (const auto& s : discovered) {
+
+    for (const auto& s : _discoveredSlaves) {
         if (s.currentId == slaveId) {
-            return s.isWireless ? espBus : uartBus;
+            return s.isWireless ? (BusInterface*)_espBus : (BusInterface*)_uartBus;
         }
     }
-    // Default to UART if unknown
-    return uartBus;
+    auto known = _slaveCaps.find(slaveId);
+    if (known != _slaveCaps.end()) {
+        return known->second.isWireless ? (BusInterface*)_espBus : (BusInterface*)_uartBus;
+    }
+    return fallbackToUart ? (BusInterface*)_uartBus : nullptr;
 }
 
 void SlaveManagerClass::configureSlave(uint8_t currentId, uint8_t newId, uint8_t pin, uint8_t pin2, uint16_t count, uint8_t type, const String& name, uint16_t matrixWidth, uint16_t matrixHeight, uint8_t hub75ShiftDriver) {
@@ -247,8 +282,8 @@ void SlaveManagerClass::configureSlave(uint8_t currentId, uint8_t newId, uint8_t
     payload[10] = hub75ShiftDriver;
     memcpy(&payload[11], name.c_str(), name.length());
 
-    BusInterface* targetBus = getBusForSlave(currentId, _discoveredSlaves, _uartBus, _espBus);
-    targetBus->sendPacket(currentId, HYPERBUS_MASTER_ID, CMD_SET_CONFIG, payload, len);
+    BusInterface* targetBus = busFor(currentId);
+    if (targetBus) targetBus->sendPacket(currentId, HYPERBUS_MASTER_ID, CMD_SET_CONFIG, payload, len);
 
     // Remember it until the Slave confirms. The discovery list is deliberately NOT updated to the
     // new ID here: doing that on send alone is what made a lost packet invisible, since the Master
@@ -293,9 +328,11 @@ void SlaveManagerClass::retryPendingConfigs() {
             continue;
         }
 
-        BusInterface* targetBus = getBusForSlave(it->addressedId, _discoveredSlaves, _uartBus, _espBus);
-        targetBus->sendPacket(it->addressedId, HYPERBUS_MASTER_ID, CMD_SET_CONFIG,
-                              it->payload.data(), (uint16_t)it->payload.size());
+        BusInterface* targetBus = busFor(it->addressedId);
+        if (targetBus) {
+            targetBus->sendPacket(it->addressedId, HYPERBUS_MASTER_ID, CMD_SET_CONFIG,
+                                  it->payload.data(), (uint16_t)it->payload.size());
+        }
         it->attempts++;
         it->lastSent = now;
         ++it;
@@ -343,8 +380,8 @@ void SlaveManagerClass::setSlaveStatusLed(uint8_t slaveId, bool on, uint32_t col
         return;
     }
 
-    BusInterface* targetBus = getBusForSlave(slaveId, _discoveredSlaves, _uartBus, _espBus);
-    targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_STATUS_LED, payload, 5);
+    BusInterface* targetBus = busFor(slaveId);
+    if (targetBus) targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_STATUS_LED, payload, 5);
 }
 
 void SlaveManagerClass::triggerSlaveUpdate(uint8_t slaveId, const String& ssid, const String& pass, const String& url) {
@@ -372,8 +409,8 @@ void SlaveManagerClass::triggerSlaveUpdate(uint8_t slaveId, const String& ssid, 
             }
         }
     } else {
-        BusInterface* targetBus = getBusForSlave(slaveId, _discoveredSlaves, _uartBus, _espBus);
-        targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_TRIGGER_UPDATE, (const uint8_t*)json.c_str(), json.length());
+        BusInterface* targetBus = busFor(slaveId);
+        if (targetBus) targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_TRIGGER_UPDATE, (const uint8_t*)json.c_str(), json.length());
     }
 }
 
@@ -403,10 +440,180 @@ static bool versionReportsConfig(const String& version) {
     return (minor == 2 && patch >= 1);
 }
 
-bool SlaveManagerClass::slaveRendersLocally(uint8_t slaveId) const {
+// CMD_SET_WIDGETS (local "Uhr / Text" rendering for the custom-text and Lauftext widget types)
+// arrived in Slave firmware 0.2.2. An older Slave silently ignores that unknown command - it has
+// no fallback of its own - so the Master must know not to rely on it and keep streaming pixels
+// for that segment instead, exactly as it already does for a Slave too old for CMD_SET_SEGMENT.
+static bool versionRendersWidgets(const String& version) {
+    int firstDot = version.indexOf('.');
+    if (firstDot < 0) return false;
+    int secondDot = version.indexOf('.', firstDot + 1);
+    if (secondDot < 0) return false;
+    long major = version.substring(0, firstDot).toInt();
+    long minor = version.substring(firstDot + 1, secondDot).toInt();
+    long patch = version.substring(secondDot + 1).toInt();
+    if (major > 0) return true;
+    if (minor > 2) return true;
+    return (minor == 2 && patch >= 2);
+}
+
+static bool versionRendersAllWidgets(const String& version) {
+    int firstDot = version.indexOf('.');
+    if (firstDot < 0) return false;
+    int secondDot = version.indexOf('.', firstDot + 1);
+    if (secondDot < 0) return false;
+    long major = version.substring(0, firstDot).toInt();
+    long minor = version.substring(firstDot + 1, secondDot).toInt();
+    long patch = version.substring(secondDot + 1).toInt();
+    if (major > 0) return true;
+    if (minor > 2) return true;
+    return (minor == 2 && patch >= 4);
+}
+
+bool SlaveManagerClass::slaveRendersAllWidgets(uint8_t slaveId) const {
+    Guard guard(_lock);
+    auto known = _slaveCaps.find(slaveId);
+    return known != _slaveCaps.end() && known->second.rendersAllWidgets;
+}
+
+bool SlaveManagerClass::anySlaveRendersAllWidgets() const {
     Guard guard(_lock);
     for (const auto& s : _discoveredSlaves) {
-        if (s.currentId == slaveId) return s.rendersLocally;
+        if (s.rendersAllWidgets) return true;
+    }
+    return false;
+}
+
+void SlaveManagerClass::broadcastClock() {
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    time_t now = tv.tv_sec;
+    struct tm local;
+    localtime_r(&now, &local);
+    uint32_t epoch = WidgetRender::localEpoch(local);
+    uint16_t ms = (uint16_t)(tv.tv_usec / 1000);
+
+    uint8_t payload[HYPERBUS_TIME_PAYLOAD_LEN];
+    // Anything before 2020 means NTP has not answered yet. The time goes out regardless - the
+    // Master draws its own clock unsynced too, and the two should show the same.
+    payload[0] = (now > 1577836800) ? HYPERBUS_TIME_FLAG_SYNCED : 0;
+    payload[1] = (uint8_t)(epoch & 0xFF);
+    payload[2] = (uint8_t)((epoch >> 8) & 0xFF);
+    payload[3] = (uint8_t)((epoch >> 16) & 0xFF);
+    payload[4] = (uint8_t)((epoch >> 24) & 0xFF);
+    payload[5] = (uint8_t)(ms & 0xFF);
+    payload[6] = (uint8_t)((ms >> 8) & 0xFF);
+
+    Guard guard(_lock);
+    _lastClockBroadcast = millis();
+    _espBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_SET_TIME, payload, sizeof(payload));
+    _uartBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_SET_TIME, payload, sizeof(payload));
+}
+
+void SlaveManagerClass::broadcastWeather(bool force) {
+    uint8_t payload[HYPERBUS_WEATHER_PAYLOAD_LEN];
+    bool valid = WeatherManager.hasData();
+    int16_t temp = valid ? (int16_t)lroundf(WeatherManager.getTemperature()) : 0;
+    payload[0] = valid ? HYPERBUS_WEATHER_FLAG_VALID : 0;
+    payload[1] = (uint8_t)(temp & 0xFF);
+    payload[2] = (uint8_t)((temp >> 8) & 0xFF);
+    payload[3] = WeatherManager.getWeatherIcon();
+
+    unsigned long now = millis();
+    bool changed = memcmp(payload, _sentWeather, sizeof(payload)) != 0;
+    if (!force && !changed && now - _lastWeatherBroadcast < WEATHER_REFRESH_MS) return;
+
+    Guard guard(_lock);
+    memcpy(_sentWeather, payload, sizeof(payload));
+    _lastWeatherBroadcast = now;
+    _espBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_SET_WEATHER, payload, sizeof(payload));
+    _uartBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_SET_WEATHER, payload, sizeof(payload));
+}
+
+void SlaveManagerClass::handleImageRequest(uint8_t slaveId, const uint8_t* payload, uint16_t length) {
+    if (!payload || length < HYPERBUS_IMAGE_REQUEST_LEN) return;
+    uint8_t widgetId = payload[0];
+    uint32_t crc = (uint32_t)payload[1] | ((uint32_t)payload[2] << 8) |
+                   ((uint32_t)payload[3] << 16) | ((uint32_t)payload[4] << 24);
+
+    // Already on its way: the Slave asks again while it waits, and restarting the transfer each
+    // time would mean it never finishes.
+    for (const auto& t : _imageTransfers) {
+        if (t.slaveId == slaveId && t.widgetId == widgetId && t.crc == crc) return;
+    }
+
+    ImageTransfer t;
+    t.slaveId = slaveId;
+    t.widgetId = widgetId;
+    t.crc = crc;
+    t.offset = 0;
+    // Only for the pixels the Slave was told about; an image changed since then reaches it through
+    // the next widget config, and the Slave asks again with the new checksum.
+    if (!LEDManager.copyWidgetImage(widgetId, crc, t.data, t.width, t.height)) return;
+
+    // A superseded transfer for the same element is pointless now.
+    for (auto it = _imageTransfers.begin(); it != _imageTransfers.end(); ) {
+        if (it->slaveId == slaveId && it->widgetId == widgetId) it = _imageTransfers.erase(it);
+        else ++it;
+    }
+    Serial.printf("Slave %u asked for image %u (%ux%u), sending %u bytes\n", (unsigned)slaveId,
+                  (unsigned)widgetId, (unsigned)t.width, (unsigned)t.height, (unsigned)t.data.size());
+    _imageTransfers.push_back(std::move(t));
+}
+
+void SlaveManagerClass::pumpImageTransfers() {
+    Guard guard(_lock);
+    if (_imageTransfers.empty()) return;
+    unsigned long now = millis();
+    if (now - _lastImageChunk < IMAGE_CHUNK_INTERVAL_MS) return;
+    _lastImageChunk = now;
+
+    ImageTransfer& t = _imageTransfers.front();
+    BusInterface* bus = slaveIsOnline(t.slaveId) ? busFor(t.slaveId, false) : nullptr;
+    if (!bus || t.offset >= t.data.size()) {
+        _imageTransfers.erase(_imageTransfers.begin());
+        return;
+    }
+
+    uint16_t total = (uint16_t)t.data.size();
+    uint16_t piece = total - t.offset;
+    if (piece > HYPERBUS_IMAGE_CHUNK_DATA) piece = HYPERBUS_IMAGE_CHUNK_DATA;
+
+    uint8_t packet[HYPERBUS_IMAGE_CHUNK_HEADER + HYPERBUS_IMAGE_CHUNK_DATA];
+    packet[0] = t.widgetId;
+    packet[1] = t.width;
+    packet[2] = t.height;
+    packet[3] = (uint8_t)(t.crc & 0xFF);
+    packet[4] = (uint8_t)((t.crc >> 8) & 0xFF);
+    packet[5] = (uint8_t)((t.crc >> 16) & 0xFF);
+    packet[6] = (uint8_t)((t.crc >> 24) & 0xFF);
+    packet[7] = (uint8_t)(t.offset & 0xFF);
+    packet[8] = (uint8_t)((t.offset >> 8) & 0xFF);
+    packet[9] = (uint8_t)(total & 0xFF);
+    packet[10] = (uint8_t)((total >> 8) & 0xFF);
+    memcpy(&packet[HYPERBUS_IMAGE_CHUNK_HEADER], &t.data[t.offset], piece);
+    bus->sendPacket(t.slaveId, HYPERBUS_MASTER_ID, CMD_WIDGET_IMAGE, packet,
+                    (uint16_t)(HYPERBUS_IMAGE_CHUNK_HEADER + piece));
+    t.offset += piece;
+    if (t.offset >= total) _imageTransfers.erase(_imageTransfers.begin());
+}
+
+bool SlaveManagerClass::slaveRendersLocally(uint8_t slaveId) const {
+    Guard guard(_lock);
+    auto known = _slaveCaps.find(slaveId);
+    return known != _slaveCaps.end() && known->second.rendersLocally;
+}
+
+bool SlaveManagerClass::slaveRendersWidgets(uint8_t slaveId) const {
+    Guard guard(_lock);
+    auto known = _slaveCaps.find(slaveId);
+    return known != _slaveCaps.end() && known->second.rendersWidgets;
+}
+
+bool SlaveManagerClass::slaveIsOnline(uint8_t slaveId) const {
+    Guard guard(_lock);
+    for (const auto& s : _discoveredSlaves) {
+        if (s.currentId == slaveId) return true;
     }
     return false;
 }
@@ -468,9 +675,35 @@ void SlaveManagerClass::sendSegmentConfig(uint8_t slaveId, uint8_t effect, uint8
     sent.lastSent = now;
     sent.valid = true;
 
-    BusInterface* targetBus = getBusForSlave(slaveId, _discoveredSlaves, _uartBus, _espBus);
-    targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_SEGMENT, payload,
-                          HYPERBUS_SEGMENT_PAYLOAD_LEN);
+    BusInterface* targetBus = busFor(slaveId);
+    if (targetBus) {
+        targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_SEGMENT, payload,
+                              HYPERBUS_SEGMENT_PAYLOAD_LEN);
+    }
+}
+
+void SlaveManagerClass::sendWidgetConfig(uint8_t slaveId, const uint8_t* payload, uint16_t length) {
+    Guard guard(_lock);
+    if (millis() < _pauseLedsUntil) return;
+
+    SentWidgets& sent = _sentWidgets[slaveId];
+    unsigned long now = millis();
+    bool changed = !sent.valid || sent.payload.size() != length
+                   || memcmp(sent.payload.data(), payload, length) != 0;
+    if (!changed && now - sent.lastSent < WIDGETS_REFRESH_MS) return;
+
+    sent.payload.assign(payload, payload + length);
+    sent.lastSent = now;
+    sent.valid = true;
+
+    BusInterface* targetBus = busFor(slaveId);
+    if (targetBus) targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_WIDGETS, payload, length);
+}
+
+void SlaveManagerClass::invalidateLedFrame(uint8_t slaveId) {
+    Guard guard(_lock);
+    _ledTx.erase(slaveId);
+    _lastLedSend.erase(slaveId);
 }
 
 void SlaveManagerClass::sendLEDData(uint8_t slaveId, const uint8_t* rgbData, uint16_t length) {
@@ -484,11 +717,23 @@ void SlaveManagerClass::sendLEDData(uint8_t slaveId, const uint8_t* rgbData, uin
         _espBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_SET_LEDS, rgbData, length);
         return;
     }
+    // A Slave that has not reported in shows nothing, so streaming to it is pure harm: the frame
+    // would go out on a guessed transport (UART at 115200 baud - about 1.8s of blocking writes for
+    // a 64x64 panel) and starve the pings that would bring it back. Drop what is queued instead;
+    // the first frame after it returns is a full one, because the queue was thrown away.
+    if (!slaveIsOnline(slaveId)) {
+        _ledTx.erase(slaveId);
+        _lastLedSend.erase(slaveId);
+        return;
+    }
+
     if (length <= 240) {
-        BusInterface* targetBus = getBusForSlave(slaveId, _discoveredSlaves, _uartBus, _espBus);
-        targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_LEDS, rgbData, length);
-        _ledPacketsSent++;
-        _ledFramesSent++;
+        BusInterface* targetBus = busFor(slaveId, false);
+        if (targetBus) {
+            targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_LEDS, rgbData, length);
+            _ledPacketsSent++;
+            _ledFramesSent++;
+        }
         return;
     }
 
@@ -552,7 +797,16 @@ void SlaveManagerClass::pumpLedTx() {
         LedTx& tx = entry.second;
         if (tx.chunks == 0) continue;
 
-        BusInterface* targetBus = getBusForSlave(entry.first, _discoveredSlaves, _uartBus, _espBus);
+        // Went away while its frame was still draining - stop pumping at it (see sendLEDData).
+        if (!slaveIsOnline(entry.first)) {
+            tx.chunks = 0;
+            tx.data.clear();
+            tx.dirty.clear();
+            continue;
+        }
+
+        BusInterface* targetBus = busFor(entry.first, false);
+        if (!targetBus) continue;
         uint16_t examined = 0;
         while (examined < tx.chunks) {
             // Leaving the loop on the budget rather than on a chunk count keeps the cost the same

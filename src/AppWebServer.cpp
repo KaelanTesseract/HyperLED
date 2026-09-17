@@ -18,6 +18,7 @@
  */
 #include "AppWebServer.h"
 #include "esp_system.h"
+#include <esp_heap_caps.h>
 #include "LoopWatch.h"
 #include <LittleFS.h>
 #include <time.h>
@@ -172,12 +173,15 @@ void WebServerManagerClass::setupRoutes() {
             doc["dropForeign"] = bus->getDroppedForeign();
             doc["sendErrors"] = bus->getSendErrors();
         }
-        {
+        if (bus) {
             doc["dropQueueFull"] = bus->getDroppedQueueFull();
             doc["delivered"] = bus->getDelivered();
-            doc["ledPackets"] = SlaveManager.getLedPacketsSent();
-            doc["ledFrames"] = SlaveManager.getLedFramesSent();
+            doc["lastSendError"] = bus->getLastSendError();
+            doc["sendFailStreak"] = bus->getSendFailStreak();
+            doc["lastRxAgoMs"] = bus->getLastRxAgoMs();
         }
+        doc["ledPackets"] = SlaveManager.getLedPacketsSent();
+        doc["ledFrames"] = SlaveManager.getLedFramesSent();
         String json;
         serializeJson(doc, json);
         request->send(200, "application/json", json);
@@ -200,6 +204,10 @@ void WebServerManagerClass::setupRoutes() {
         json += ",\"heapFree\":" + String((unsigned)ESP.getFreeHeap());
         json += ",\"heapMinFree\":" + String((unsigned)ESP.getMinFreeHeap());
         json += ",\"heapLargestBlock\":" + String((unsigned)ESP.getMaxAllocHeap());
+        // Internal RAM separately: the Wi-Fi driver's buffers can only live there, so this is
+        // the figure that runs out first when the radio stops sending.
+        json += ",\"internalFree\":" + String((unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+        json += ",\"internalMinFree\":" + String((unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
         // Uptime and reset reason together answer the one question that outside observation
         // cannot: whether an outage was the link going away or the board restarting under it.
         // They look identical from the network, and on this hardware they look identical on the
@@ -216,6 +224,28 @@ void WebServerManagerClass::setupRoutes() {
         json += ",\"linkProbeFailures\":" + String((unsigned long)WiFiManager.getProbeFailures());
         json += ",\"forcedReconnects\":" + String((unsigned long)WiFiManager.getForcedReconnects());
         json += ",\"lastProbeOkAgoMs\":" + String((unsigned long)WiFiManager.getLastProbeOkAgoMs());
+        // The state the previous run was in when its link died (see WiFiManager).
+        const WiFiManagerClass::LinkFailureSnapshot& lf = WiFiManager.getPreviousLinkFailure();
+        if (lf.valid) {
+            json += ",\"prevLinkFailure\":{\"at\":" + String(lf.uptimeAtFailure);
+            json += ",\"restartAt\":" + String(lf.uptimeAtRestart);
+            json += ",\"probeFailures\":" + String(lf.probeFailures);
+            json += ",\"heapFree\":" + String(lf.heapFree);
+            json += ",\"heapMinFree\":" + String(lf.heapMinFree);
+            json += ",\"heapLargestBlock\":" + String(lf.heapLargestBlock);
+            json += ",\"internalFree\":" + String(lf.internalFree);
+            json += ",\"rssi\":" + String(lf.rssi);
+            json += ",\"channel\":" + String(lf.channel);
+            json += ",\"wifiStatus\":" + String(lf.wifiStatus);
+            json += ",\"espNowSendErrors\":" + String(lf.espNowSendErrors);
+            json += ",\"espNowReceived\":" + String(lf.espNowReceived);
+            json += ",\"ledPackets\":" + String(lf.ledPackets);
+            json += ",\"reason\":" + String(lf.reason);
+            json += ",\"espNowFirstError\":" + String(lf.espNowFirstError);
+            json += ",\"espNowLastError\":" + String(lf.espNowLastError);
+            json += ",\"espNowFailStreak\":" + String(lf.espNowFailStreak);
+            json += ",\"espNowRxAgoMs\":" + String(lf.espNowRxAgoMs) + "}";
+        }
         // What the run before this one was doing when it ended. A hang leaves nothing behind on
         // its own - this is written to RTC memory as the loop goes, so it survives the reset.
         if (LoopWatch.hasPrevious()) {
@@ -430,6 +460,7 @@ void WebServerManagerClass::setupRoutes() {
         // and streams it onward without ever displaying it.
         if (request->hasParam("seg")) {
             uint8_t segId = (uint8_t)request->getParam("seg")->value().toInt();
+            LEDManager.notePreviewWanted(segId);
             uint16_t start = 0, count = 0;
             const uint8_t* buf = nullptr;
             if (!LEDManager.getSegmentPixels(segId, start, count, buf)) {
@@ -440,14 +471,45 @@ void WebServerManagerClass::setupRoutes() {
             // AsyncResponseStream. That class reads its buffer back one character at a time, and
             // each read shifts the whole remainder down - quadratic work that took seconds for a
             // 4096-pixel panel and tripped the task watchdog into rebooting the device.
-            String json;
-            json.reserve((size_t)count * 9 + 2);
-            json += '[';
-            for (uint16_t i = 0; i < count; i++) {
-                if (i) json += ',';
-                const uint8_t* px = &buf[(size_t)(start + i) * 5];
+            //
+            // s=K thins the answer to every K-th pixel, for small live views such as the strip on
+            // the dashboard: they need a few dozen values, not thousands. With w=<panel width> the
+            // step applies to rows and columns alike, so the result is still a grid (ceil(w/K)
+            // columns). Without s the full segment is returned, exactly as before.
+            uint16_t step = 1;
+            if (request->hasParam("s")) {
+                step = (uint16_t)constrain(request->getParam("s")->value().toInt(), 1, 64);
+            }
+            uint16_t width = 0;
+            if (request->hasParam("w")) {
+                width = (uint16_t)constrain(request->getParam("w")->value().toInt(), 0, 512);
+            }
+            if (width > count) width = 0;
+
+            auto appendPixel = [&](String& out, uint16_t index, bool first) {
+                if (!first) out += ',';
+                const uint8_t* px = &buf[(size_t)(start + index) * 5];
                 uint32_t rgb = ((uint32_t)px[0] << 16) | ((uint32_t)px[1] << 8) | px[2];
-                json += rgb;
+                out += rgb;
+            };
+
+            String json;
+            json.reserve((size_t)(count / step + 1) * 9 + 2);
+            json += '[';
+            bool first = true;
+            if (width > 1 && step > 1) {
+                uint16_t height = count / width;
+                for (uint16_t y = 0; y < height; y += step) {
+                    for (uint16_t x = 0; x < width; x += step) {
+                        appendPixel(json, (uint16_t)(y * width + x), first);
+                        first = false;
+                    }
+                }
+            } else {
+                for (uint16_t i = 0; i < count; i += step) {
+                    appendPixel(json, i, first);
+                    first = false;
+                }
             }
             json += ']';
             AsyncWebServerResponse* response = request->beginResponse(200, "application/json", json);
@@ -940,7 +1002,10 @@ void WebServerManagerClass::setupWLEDJsonAPI() {
         info["ip"] = WiFi.localIP().toString();
     };
 
-    server.on("/json", HTTP_GET, [buildState, buildInfo](AsyncWebServerRequest *request){
+    // Exact match only. A plain "/json" also matches everything below it, and since this handler
+    // is registered first it answered /json/state, /json/info, /json/eff and /json/pal with the
+    // combined document - WLED clients asking for just the state got everything instead.
+    server.on(AsyncURIMatcher::exact("/json"), HTTP_GET, [buildState, buildInfo](AsyncWebServerRequest *request){
         JsonDocument doc;
 
         buildState(doc["state"].to<JsonVariant>());
