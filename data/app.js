@@ -3127,7 +3127,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (textEffectControls) {
             textEffectControls.style.display = state.effect === EFFECT_TEXT_ID ? 'block' : 'none';
         }
-        if (typeof renderTextWidgetEditor === 'function') renderTextWidgetEditor();
+        if (typeof renderTextWidgetEditor === 'function') renderTextWidgetEditor({ passive: true });
         if (typeof updatePanelArea === 'function') updatePanelArea();
         updateLiveText(liveTarget());
         applyLightAccent();
@@ -3602,8 +3602,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (guided) drawCentreGuides(ctx, guided, cell);
     }
 
-    function renderTextWidgetEditor() {
+    // What the element cards were last built from. The state poll calls the editor every two
+    // seconds; rebuilding the cards each time threw away whatever was open in them - the colour
+    // picker closed after a moment, a half-typed text vanished.
+    let widgetEditorSig = null;
+    // Set while an element's colour picker is open. The picker is a browser window of its own, so
+    // the page's focus does not always show it.
+    let widgetPickerOpen = false;
+
+    // passive: a routine refresh (the state poll). It rebuilds the cards only if what they show
+    // changed, and never while one of them is being edited. Everything else (saving, switching
+    // segment, uploading) rebuilds them.
+    function renderTextWidgetEditor(opts) {
         if (!textWidgetEditor) return;
+        const passive = !!(opts && opts.passive);
         const show = state.effect === EFFECT_TEXT_ID;
         textWidgetEditor.style.display = show ? 'block' : 'none';
         if (widgetOverlayCanvas) widgetOverlayCanvas.style.display = show ? 'block' : 'none';
@@ -3614,6 +3626,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!show) return;
 
         const widgets = currentWidgets();
+        const dims = editorDims();
+        const sig = JSON.stringify([currentSegmentId, dims.w, dims.h,
+            typeof currentLang !== 'undefined' ? currentLang : '', widgets]);
+        if (passive) {
+            const editing = widgetPickerOpen || textWidgetList.contains(document.activeElement);
+            if (editing || (sig === widgetEditorSig && textWidgetList.children.length > 0)) {
+                drawWidgetOverlay(widgets);
+                return;
+            }
+        }
+        widgetEditorSig = sig;
+        widgetPickerOpen = false;
         textWidgetList.innerHTML = '';
         widgets.forEach((w) => {
             const card = document.createElement('div');
@@ -3759,11 +3783,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const colorInput = card.querySelector('[data-field="color"]');
             if (colorInput) {
+                colorInput.addEventListener('click', () => { widgetPickerOpen = true; });
+                colorInput.addEventListener('blur', () => { widgetPickerOpen = false; });
                 colorInput.addEventListener('input', () => {
                     w.color = parseInt(colorInput.value.replace('#', ''), 16);
                     drawWidgetOverlay(widgets);
                 });
                 colorInput.addEventListener('change', () => {
+                    widgetPickerOpen = false;
                     w.color = parseInt(colorInput.value.replace('#', ''), 16);
                     saveWidgets(widgets);
                 });
