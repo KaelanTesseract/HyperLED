@@ -67,7 +67,28 @@ public:
     // without this number the loss could only be guessed at.
     uint32_t getDelivered() const { return _delivered; }
 
+    // Why sends fail, not only how often. esp_now_send() returns a reason (queue full, wrong
+    // interface, internal error ...) and that reason is what tells a busy radio from a dead one.
+    int32_t getLastSendError() const { return _lastSendError; }
+    // The reason that opened the current run of failures - the first one is the telling one.
+    int32_t getFailRunFirstError() const { return _failRunFirstError; }
+    // Consecutive refused sends, and for how long: one accepted send resets both.
+    uint32_t getSendFailStreak() const { return _sendFailStreak; }
+    unsigned long getSendFailingForMs() const {
+        return _sendFailStreak == 0 ? 0 : millis() - _sendFailSince;
+    }
+    // Time since anything at all was received.
+    unsigned long getLastRxAgoMs() const { return millis() - _lastRxAt; }
+
 private:
+    void noteSendResult(esp_err_t result);
+    int32_t _lastSendError = 0;
+    int32_t _failRunFirstError = 0;
+    uint32_t _sendFailStreak = 0;
+    unsigned long _sendFailSince = 0;
+    // Written by the receive callback on the Wi-Fi task; a single 32-bit write, read as a whole.
+    volatile unsigned long _lastRxAt = 0;
+
     // Received packets are parked here and handled from loop(), never in the callback.
     //
     // esp_now_register_recv_cb() delivers on the Wi-Fi task, and the callback used to run the

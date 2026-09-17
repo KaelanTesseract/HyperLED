@@ -20,6 +20,9 @@
 #include <ESPmDNS.h>
 #include <NetBIOS.h>
 #include "ScheduleManager.h"
+#include "SlaveManager.h"
+#include "EspNowBus.h"
+#include <esp_heap_caps.h>
 
 WiFiManagerClass WiFiManager;
 
@@ -40,6 +43,76 @@ static uint32_t staRestartStreak() {
 static void setStaRestartStreak(uint32_t v) {
     g_staStreakMagic = WIFI_STREAK_MAGIC;
     g_staRestartStreak = v;
+}
+
+// The link-failure snapshot, same survival rules as the streak above.
+// Bumped whenever the layout changes, so a record written by older firmware is never misread.
+#define LINK_SNAPSHOT_MAGIC 0x484C4632u  // "HLF2"
+struct LinkSnapshotRecord {
+    uint32_t magic;
+    WiFiManagerClass::LinkFailureSnapshot data;
+};
+static RTC_NOINIT_ATTR LinkSnapshotRecord g_linkSnapshot;
+
+void WiFiManagerClass::recordLinkFailure(bool restarting, uint32_t reason) {
+    LinkFailureSnapshot& s = g_linkSnapshot.data;
+    // A fresh picture at the first failed probe; later calls keep it and only add to it, so the
+    // numbers describe the moment the link died, not the hour after.
+    if (_probeFailures <= 1 || g_linkSnapshot.magic != LINK_SNAPSHOT_MAGIC) {
+        s = LinkFailureSnapshot{};
+        s.valid = 1;
+        s.uptimeAtFailure = millis() / 1000;
+        s.heapFree = ESP.getFreeHeap();
+        s.heapMinFree = ESP.getMinFreeHeap();
+        s.heapLargestBlock = ESP.getMaxAllocHeap();
+        s.internalFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+        s.rssi = WiFi.RSSI();
+        s.channel = WiFi.channel();
+        s.wifiStatus = (uint32_t)WiFi.status();
+        EspNowBusClass* bus = SlaveManager.getEspBus();
+        if (bus) {
+            s.espNowSendErrors = bus->getSendErrors();
+            s.espNowReceived = bus->getPacketsReceived();
+        }
+        s.ledPackets = SlaveManager.getLedPacketsSent();
+        g_linkSnapshot.magic = LINK_SNAPSHOT_MAGIC;
+    }
+    s.probeFailures = _probeFailures;
+    if (restarting) {
+        s.uptimeAtRestart = millis() / 1000;
+        s.reason = reason;
+    }
+    // The ESP-NOW side is refreshed every time: its state is the evidence, whenever it is taken.
+    EspNowBusClass* nowBus = SlaveManager.getEspBus();
+    if (nowBus) {
+        s.espNowFirstError = nowBus->getFailRunFirstError();
+        s.espNowLastError = nowBus->getLastSendError();
+        s.espNowFailStreak = nowBus->getSendFailStreak();
+        s.espNowRxAgoMs = nowBus->getLastRxAgoMs();
+    }
+
+    // On the serial port too, with the numbers now - if someone is watching, they see the
+    // state of the device at the moment it went deaf, not only after.
+    Serial.printf("WiFi: link dead since %lus - heap %lu (min %lu, block %lu, internal %lu), "
+                  "rssi %ld ch %lu status %lu, espnow sendErr %lu rx %lu, led pkts %lu, "
+                  "espnow refused %lu in a row (first 0x%x, last 0x%x), nothing heard for %lums\n",
+                  (unsigned long)s.uptimeAtFailure, (unsigned long)ESP.getFreeHeap(),
+                  (unsigned long)ESP.getMinFreeHeap(), (unsigned long)ESP.getMaxAllocHeap(),
+                  (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (long)WiFi.RSSI(), (unsigned long)WiFi.channel(), (unsigned long)WiFi.status(),
+                  (unsigned long)(SlaveManager.getEspBus() ? SlaveManager.getEspBus()->getSendErrors() : 0),
+                  (unsigned long)(SlaveManager.getEspBus() ? SlaveManager.getEspBus()->getPacketsReceived() : 0),
+                  (unsigned long)SlaveManager.getLedPacketsSent(),
+                  (unsigned long)s.espNowFailStreak, (unsigned)s.espNowFirstError,
+                  (unsigned)s.espNowLastError, (unsigned long)s.espNowRxAgoMs);
+}
+
+bool WiFiManagerClass::radioLooksDead() const {
+    EspNowBusClass* bus = SlaveManager.getEspBus();
+    if (!bus) return false;
+    return bus->getSendFailStreak() >= RADIO_DEAD_MIN_REFUSED &&
+           bus->getSendFailingForMs() >= RADIO_DEAD_MS &&
+           bus->getLastRxAgoMs() >= RADIO_DEAD_MS;
 }
 
 // Static, because the SDK calls it from the Wi-Fi task. It only records - reconnecting is left
@@ -71,6 +144,22 @@ unsigned long WiFiManagerClass::getOfflineMs() const {
 }
 
 void WiFiManagerClass::begin() {
+    // Take over what the previous life recorded about its dead link, then clear it so a later,
+    // unrelated restart does not report the same event again.
+    if (g_linkSnapshot.magic == LINK_SNAPSHOT_MAGIC) {
+        _prevLinkFailure = g_linkSnapshot.data;
+        g_linkSnapshot.magic = 0;
+        Serial.printf("WiFi: previous run lost its link at %lus and restarted at %lus, reason %lu "
+                      "(heap %lu, block %lu, espnow sendErr %lu, first refusal 0x%x, last 0x%x)\n",
+                      (unsigned long)_prevLinkFailure.uptimeAtFailure,
+                      (unsigned long)_prevLinkFailure.uptimeAtRestart,
+                      (unsigned long)_prevLinkFailure.reason,
+                      (unsigned long)_prevLinkFailure.heapFree,
+                      (unsigned long)_prevLinkFailure.heapLargestBlock,
+                      (unsigned long)_prevLinkFailure.espNowSendErrors,
+                      (unsigned)_prevLinkFailure.espNowFirstError,
+                      (unsigned)_prevLinkFailure.espNowLastError);
+    }
     WiFi.onEvent(WiFiManagerClass::onWiFiEvent);
     Preferences preferences;
     preferences.begin(PREF_NAMESPACE, true);
@@ -186,11 +275,19 @@ void WiFiManagerClass::probeFinished(uint32_t received) {
         _lastProbeOk = millis();
         _probeFailures = 0;
         _linkBadSince = 0;   // the only thing that may clear this
+        // The gateway answering is the one reliable sign that whatever was tried last time
+        // worked, so this - and only this - refills the restart budget. It used to be refilled on
+        // association instead, which never happens after a restart (connectSTA() associates
+        // before superviseLink() ever sees a disconnected station). The budget therefore only
+        // ever went down, and after three dead-link events - however far apart - the device
+        // stopped restarting for good and stayed offline until it lost power.
+        setStaRestartStreak(0);
         return;
     }
     _probeFailures++;
     Serial.printf("WiFi: gateway did not answer (%lu in a row)\n",
                   (unsigned long)_probeFailures);
+    if (_probeFailures == 1 || _probeFailures % 10 == 0) recordLinkFailure(false);
 }
 
 void WiFiManagerClass::startLinkProbe() {
@@ -249,9 +346,8 @@ void WiFiManagerClass::superviseLink() {
             _wasConnected = true;
             _reconnectCount++;
             _lastProbeOk = now;
-            // Associated again, so whatever was tried last time worked: let the reboot budget
-            // refill for the next occasion.
-            setStaRestartStreak(0);
+            // The restart budget is NOT refilled here: associating says nothing about whether
+            // the link carries anything. See probeFinished().
             // mDNS and NetBIOS bind to the address the device had when they started, so after a
             // new lease they answer for one that no longer exists - http://hyperled/ then leads
             // nowhere even though the controller is back.
@@ -269,16 +365,22 @@ void WiFiManagerClass::superviseLink() {
             // Nothing is touched before this point. The station stays associated, ESP-NOW keeps
             // its channel, and the Slaves keep being served - a probe that is merely wrong costs
             // nothing at all now, which is the whole point of the change.
-            if (now - _linkBadSince >= LINK_DEAD_RESTART_MS) {
-                uint32_t streak = staRestartStreak();
-                if (streak < STA_MAX_RESTART_STREAK) {
-                    setStaRestartStreak(streak + 1);
-                    _forcedReconnects++;
-                    Serial.printf("WiFi: associated but unreachable for %lus, restarting (%lu)\n",
-                                  (now - _linkBadSince) / 1000, (unsigned long)(streak + 1));
-                    Serial.flush();
-                    ESP.restart();
-                }
+            uint32_t streak = staRestartStreak();
+            // Within budget: restart after ten minutes - or after one, if ESP-NOW confirms that
+            // the radio itself is dead. Budget spent: still restart, but only once an hour, so a
+            // device that cannot recover does not reboot-loop the Slaves.
+            bool radioDead = radioLooksDead();
+            unsigned long wait = streak >= STA_MAX_RESTART_STREAK ? LINK_DEAD_BACKOFF_MS
+                               : radioDead                        ? RADIO_DEAD_MS
+                                                                  : LINK_DEAD_RESTART_MS;
+            if (now - _linkBadSince >= wait) {
+                if (streak < STA_MAX_RESTART_STREAK + 1) setStaRestartStreak(streak + 1);
+                _forcedReconnects++;
+                Serial.printf("WiFi: associated but unreachable for %lus, restarting (%lu)\n",
+                              (now - _linkBadSince) / 1000, (unsigned long)(streak + 1));
+                recordLinkFailure(true, radioDead ? 2 : 1);
+                Serial.flush();
+                ESP.restart();
             }
             return;
         }
@@ -298,18 +400,21 @@ void WiFiManagerClass::superviseLink() {
     // Second escalation: reboot. A restart rebuilds the whole Wi-Fi stack, which is the only
     // thing observed to clear a station stuck failing the four-way handshake - it retried for
     // over half an hour and a thousand attempts without ever getting through.
-    if (downMs >= STA_DEAD_RESTART_MS) {
-        uint32_t streak = staRestartStreak();
-        if (streak < STA_MAX_RESTART_STREAK) {
-            setStaRestartStreak(streak + 1);
+    uint32_t streak = staRestartStreak();
+    unsigned long restartAfter = streak < STA_MAX_RESTART_STREAK ? STA_DEAD_RESTART_MS
+                                                                 : LINK_DEAD_BACKOFF_MS;
+    // Once the budget is spent the access point is probably not there at all: retries continue
+    // quietly below with the radio left alone (so ESP-NOW keeps serving the Slaves), and a
+    // restart is only tried once an hour instead of never again.
+    if (downMs >= restartAfter) {
+        {
+            if (streak < STA_MAX_RESTART_STREAK + 1) setStaRestartStreak(streak + 1);
             Serial.printf("WiFi: cannot associate after %lus (last reason %u), restarting (%lu)\n",
                           downMs / 1000, (unsigned)_lastDisconnectReason,
                           (unsigned long)(streak + 1));
             Serial.flush();
             ESP.restart();
         }
-        // Budget spent: the access point is not there. Keep trying, quietly and slowly, and
-        // leave the radio alone in between so ESP-NOW carries on serving the Slaves.
     }
 
     // There used to be a "reset the radio" step here - WIFI_OFF then WIFI_STA - as a cheaper

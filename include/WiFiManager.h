@@ -77,6 +77,34 @@ public:
     // callback is a plain C function pointer and cannot be a member.
     void probeFinished(uint32_t received);
 
+    // What the device looked like when its link last went dead, taken at that moment and kept
+    // across the restart that follows (RTC memory). A dead link cannot be inspected over the
+    // network while it lasts, so without this the cause could only ever be guessed afterwards.
+    // Plain data on purpose - no default member values. A constructor would run at boot and wipe
+    // the copy kept in RTC memory, which is the one thing it must not do.
+    struct LinkFailureSnapshot {
+        uint32_t valid;
+        uint32_t uptimeAtFailure;    // s, first probe that failed
+        uint32_t uptimeAtRestart;    // s, 0 if the link came back without a restart
+        uint32_t probeFailures;
+        uint32_t heapFree;
+        uint32_t heapMinFree;
+        uint32_t heapLargestBlock;
+        uint32_t internalFree;
+        int32_t rssi;
+        uint32_t channel;
+        uint32_t wifiStatus;
+        uint32_t espNowSendErrors;
+        uint32_t espNowReceived;
+        uint32_t ledPackets;
+        int32_t espNowFirstError;    // reason that opened the run of refused sends
+        int32_t espNowLastError;
+        uint32_t espNowFailStreak;
+        uint32_t espNowRxAgoMs;
+        uint32_t reason;             // 1 = gateway unreachable, 2 = radio dead (ping + ESP-NOW)
+    };
+    const LinkFailureSnapshot& getPreviousLinkFailure() const { return _prevLinkFailure; }
+
 private:
     bool _isAPMode = false;
     bool _triggerScan = false;
@@ -130,7 +158,11 @@ private:
     // So there is no re-association any more. If the link is genuinely, persistently dead the
     // only action is a restart, which leaves the access point a clean association to accept
     // rather than a half-torn-down one to argue with.
+#ifdef HYPERLED_TEST_DEAD_LINK
+    static const unsigned long LINK_DEAD_RESTART_MS = 60000;
+#else
     static const unsigned long LINK_DEAD_RESTART_MS = 600000;
+#endif
 
     // The other half of the problem, and the one that was left without any escalation at all:
     // not associated and unable to get back. Observed in the field as reason 15 - the WPA2
@@ -163,6 +195,27 @@ private:
     unsigned long _linkBadSince = 0;
     uint32_t _probeFailures = 0;
     uint32_t _forcedReconnects = 0;
+
+    // Once the restart budget is spent, the device used to give up for good and stay offline
+    // until someone pulled the plug. Now it still restarts, just rarely: a controller that is
+    // meant to run for days must not be able to talk itself into a permanent outage.
+#ifdef HYPERLED_TEST_DEAD_LINK
+    // Test build: the same escalation in minutes instead of an hour (see LINK_DEAD_RESTART_MS).
+    static const unsigned long LINK_DEAD_BACKOFF_MS = 180000;
+#else
+    static const unsigned long LINK_DEAD_BACKOFF_MS = 3600000;
+#endif
+
+    // The radio is dead, not merely the route to the gateway, when the probe fails AND every
+    // ESP-NOW send has been refused AND nothing was received - for this long. Two independent
+    // signals agreeing leave no room for the false alarms the ten-minute wait guards against, and
+    // the Slaves are without a Master for every one of those minutes.
+    static const unsigned long RADIO_DEAD_MS = 60000;
+    static const uint32_t RADIO_DEAD_MIN_REFUSED = 50;
+    bool radioLooksDead() const;
+
+    LinkFailureSnapshot _prevLinkFailure{};
+    void recordLinkFailure(bool restarting, uint32_t reason = 1);
 
     void connectSTA();
     void startAP();

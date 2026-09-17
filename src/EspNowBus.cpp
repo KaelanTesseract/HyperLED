@@ -64,6 +64,31 @@ void EspNowBusClass::begin(wifi_mode_t mode, bool autoHop) {
     }
     
     _lastPingReceived = millis();
+    _lastRxAt = millis();
+}
+
+void EspNowBusClass::noteSendResult(esp_err_t result) {
+    if (result == ESP_OK) {
+        if (_sendFailStreak >= 20) {
+            Serial.printf("EspNowBus: sending again after %lu refused packets (%lums)\n",
+                          (unsigned long)_sendFailStreak, (unsigned long)(millis() - _sendFailSince));
+        }
+        _sendFailStreak = 0;
+        return;
+    }
+    _sendErrors++;
+    _lastSendError = (int32_t)result;
+    if (_sendFailStreak == 0) {
+        _sendFailSince = millis();
+        _failRunFirstError = (int32_t)result;
+    }
+    _sendFailStreak++;
+    // Once per run, when it starts to look like more than a full queue.
+    if (_sendFailStreak == 20) {
+        Serial.printf("EspNowBus: every send refused for %lums, first reason 0x%x (%s), now 0x%x\n",
+                      (unsigned long)(millis() - _sendFailSince), (unsigned)_failRunFirstError,
+                      esp_err_to_name((esp_err_t)_failRunFirstError), (unsigned)result);
+    }
 }
 
 void EspNowBusClass::loop() {
@@ -134,7 +159,7 @@ bool EspNowBusClass::sendPacket(uint8_t targetId, uint8_t senderId, uint8_t comm
         }
 
         esp_err_t result = esp_now_send(targetMac, _txBuffer, packetLen);
-        if (result != ESP_OK) _sendErrors++;
+        noteSendResult(result);
         return (result == ESP_OK);
     } else if (command == CMD_SET_LEDS) {
         // Chunking for CMD_SET_LEDS
@@ -162,7 +187,7 @@ bool EspNowBusClass::sendPacket(uint8_t targetId, uint8_t senderId, uint8_t comm
 
             memcpy(&_txBuffer[HYPERBUS_ESPNOW_HEADER + 2], &payload[offset], chunkSize);
 
-            esp_now_send(targetMac, _txBuffer, packetLen);
+            noteSendResult(esp_now_send(targetMac, _txBuffer, packetLen));
 
             offset += chunkSize;
             // A packet needs roughly 1-2ms on air. Feeding the queue every 500us pushed frames
@@ -180,6 +205,7 @@ bool EspNowBusClass::sendPacket(uint8_t targetId, uint8_t senderId, uint8_t comm
 
 void EspNowBusClass::onDataRecv(const esp_now_recv_info_t * esp_now_info, const uint8_t *incomingData, int len) {
     if (!_instance || len < HYPERBUS_ESPNOW_HEADER) return;
+    _instance->_lastRxAt = millis();
     if (incomingData[0] != HYPERBUS_ESPNOW_MAGIC0 || incomingData[1] != HYPERBUS_ESPNOW_MAGIC1) {
         // Not ours - some other ESP-NOW device sharing the channel. See HyperBus.h.
         _instance->_droppedForeign++;
