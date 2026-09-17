@@ -1,19 +1,90 @@
 :root {
-    --bg-color: #0a0a0a;
-    --card-bg: rgba(255, 255, 255, 0.055);
-    --border-color: rgba(255, 255, 255, 0.1);
-    --text-main: #ffffff;
-    --text-muted: #aaaaaa;
-    --primary: #34d399;
-    --primary-hover: #2bb583;
-    --accent: #555555;
+    /* Colour tokens - one role each. Contrast figures are against --surface. */
+    --bg-color: #0B0B0C;
+    --surface: #161618;
+    --surface-2: #1F1F22;
+    --surface-hover: #26262A;
+    --surface-pressed: #2E2E33;
+    --separator: rgba(255, 255, 255, 0.1);
+    --outline: #6B6B73;             /* control boundaries, 3.4:1 */
+    --text-main: #F2F2F4;           /* 16.2:1 */
+    --text-muted: #A1A1A8;          /* 7.0:1 */
+    --primary: #34D399;             /* the one accent: interactive / selected */
+    --on-primary: #0B0B0C;          /* label on --primary, 10.2:1 */
+    --primary-tint: rgba(52, 211, 153, 0.14);
+    --danger: #FF6B6B;              /* 6.5:1 */
+    --danger-tint: rgba(255, 107, 107, 0.12);
+
+    /* Neutral layers, named by role so both appearances can give them their own values. */
+    --fill: rgba(0, 0, 0, 0.2);                 /* inside of fields and inset blocks */
+    --fill-subtle: rgba(255, 255, 255, 0.05);   /* quiet rows and resting icon buttons */
+    --fill-strong: rgba(255, 255, 255, 0.1);    /* tracks, off switches, chevrons */
+    --hover: rgba(255, 255, 255, 0.15);
+    --hairline-strong: rgba(255, 255, 255, 0.2);
+    --scrim: rgba(0, 0, 0, 0.6);                /* behind the confirmation dialog */
+    --shadow: rgba(0, 0, 0, 0.45);
+    color-scheme: dark;
+
+    /* Older names still used by inline styles in index.html and app.js. */
+    --card-bg: var(--surface);
+    --border-color: var(--outline);
+
+    /* Type */
+    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --text-caption: 13px;
+    --text-body: 15px;
+    --text-headline: 17px;
+    --text-title: 22px;
+    --text-large: 28px;
+}
+
+/* Light appearance: the same roles with light values, used whenever the system is set to light.
+   Contrast figures are against --surface (#FFFFFF). The accent is the same green hue, darkened
+   until a white label reads on it (4.65:1); app.js applies the same rule to the light colour. */
+@media (prefers-color-scheme: light) {
+    :root {
+        color-scheme: light;
+        --bg-color: #F2F2F7;
+        --surface: #FFFFFF;
+        --surface-2: #F4F4F6;
+        --surface-hover: #E9E9EE;
+        --surface-pressed: #DEDEE4;
+        --separator: rgba(0, 0, 0, 0.1);
+        --outline: #8A8A93;             /* 3.4:1 */
+        --text-main: #1C1C1E;           /* 17.0:1 */
+        --text-muted: #5E5E66;          /* 6.4:1 */
+        --primary: #1D845F;             /* white label 4.65:1 */
+        --on-primary: #FFFFFF;
+        --primary-tint: rgba(29, 132, 95, 0.12);
+        --danger: #C62828;              /* 5.6:1 */
+        --danger-tint: rgba(198, 40, 40, 0.08);
+        --fill: rgba(0, 0, 0, 0.04);
+        --fill-subtle: rgba(0, 0, 0, 0.03);
+        --fill-strong: rgba(0, 0, 0, 0.08);
+        --hover: rgba(0, 0, 0, 0.06);
+        --hairline-strong: rgba(0, 0, 0, 0.2);
+        --scrim: rgba(0, 0, 0, 0.3);
+        --shadow: rgba(0, 0, 0, 0.14);
+    }
+}
+
+@media (max-width: 600px) {
+    :root {
+        --text-body: 16px;
+    }
 }
 
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
-    font-family: 'Inter', sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+    font-family: inherit;
 }
 
 html, body {
@@ -22,8 +93,11 @@ html, body {
 }
 
 body {
-    background: linear-gradient(135deg, #050505, #111111, #0a0a0a);
+    background: var(--bg-color);
     color: var(--text-main);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.4;
     min-height: 100vh;
     display: flex;
     justify-content: center;
@@ -38,45 +112,23 @@ body {
     }
 }
 
-.orb {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(80px);
-    z-index: -1;
-}
-
-.orb-1 {
-    width: 300px;
-    height: 300px;
-    background: rgba(255, 255, 255, 0.03);
-    top: -50px;
-    left: -50px;
-}
-
-.orb-2 {
-    width: 400px;
-    height: 400px;
-    background: rgba(100, 100, 100, 0.05);
-    bottom: -100px;
-    right: -100px;
-}
-
 .container {
     width: 100%;
     max-width: 1100px;
     z-index: 1;
 }
 
-#mainControls {
+.area-cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 15px;
     align-items: start;
 }
 
-#mainControls .card {
+/* Cards keep their own height - stretching them to the tallest one in the row only produced
+   large empty areas once the colour wheel became a card of its own. */
+.area-cards > .card {
     margin-bottom: 0;
-    height: 100%;
 }
 
 header {
@@ -93,40 +145,23 @@ header {
 }
 
 h1 {
-    font-size: 24px;
-    font-weight: 600;
-    background: linear-gradient(to right, #60a5fa, #34d399);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    font-size: var(--text-title);
+    font-weight: 700;
+    color: var(--text-main);
 }
 
 .power-btn, .icon-btn {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--fill-subtle);
     border: 1px solid var(--border-color);
     color: var(--text-muted);
     width: 48px;
     height: 48px;
     border-radius: 50%;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
-}
-
-.power-btn svg, .icon-btn svg {
-    transition: all 0.3s ease;
-}
-
-.power-btn.on {
-    background: rgba(16, 185, 129, 0.15);
-    border-color: #10b981;
-    color: #10b981;
-    box-shadow: 0 0 15px rgba(16, 185, 129, 0.3), inset 0 0 8px rgba(16, 185, 129, 0.2);
-}
-
-.power-btn.on svg {
-    filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.8));
 }
 
 .icon-btn svg {
@@ -135,19 +170,16 @@ h1 {
 }
 
 .icon-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: rotate(45deg);
+    background: var(--hover);
 }
 
+/* Content cards are opaque: glass belongs to floating controls, not to content. */
 .card {
-    background: var(--card-bg);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--border-color);
+    background: var(--surface);
+    border: 1px solid var(--separator);
     border-radius: 16px;
     padding: 20px;
     margin-bottom: 20px;
-    box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.45);
 }
 
 @media (max-width: 600px) {
@@ -158,18 +190,32 @@ h1 {
 }
 
 h2 {
-    font-size: 16px;
-    color: var(--text-muted);
-    margin-bottom: 16px;
+    font-size: var(--text-title);
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    color: var(--text-main);
+    margin-bottom: 12px;
+}
+
+h3,
+h4 {
+    font-size: var(--text-headline);
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 8px;
+}
+
+h2 {
+    margin-bottom: 16px;
 }
 
 h3 {
-    font-size: 14px;
-    color: var(--text-muted);
     margin-bottom: 12px;
+}
+
+h5 {
+    font-size: var(--text-body);
+    font-weight: 600;
+    color: var(--text-main);
 }
 
 .color-picker-wrapper {
@@ -184,81 +230,196 @@ h3 {
     gap: 12px;
     justify-content: center;
     margin-top: 25px;
-    max-width: 250px;
+    max-width: 280px;
 }
 
 .color-swatch {
-    width: 32px;
-    height: 32px;
+    -webkit-appearance: none;
+    appearance: none;
+    padding: 0;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     cursor: pointer;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 5px var(--shadow);
     transition: transform 0.2s, box-shadow 0.2s;
-    border: 2px solid rgba(255, 255, 255, 0.2);
+    border: 2px solid var(--hairline-strong);
 }
 
 .color-swatch:hover {
     transform: scale(1.15);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    box-shadow: 0 4px 10px var(--shadow);
 }
 
 .slider-wrapper label {
     display: block;
-    margin-bottom: 8px;
-    font-size: 14px;
+    margin-bottom: 0;
+    font-size: var(--text-body);
 }
 
-input[type="range"] {
+/* The input itself is 44px tall so the whole band is easy to hit; only the track inside it is
+   drawn thin. High specificity so .form-group input's box styling can't turn it back into a field. */
+html body input[type="range"] {
     -webkit-appearance: none;
+    appearance: none;
     width: 100%;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
     height: 8px;
-    background: rgba(255, 255, 255, 0.15);
     border-radius: 4px;
-    outline: none;
-    box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+    background: var(--outline);
+}
+
+input[type="range"]::-moz-range-track {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--outline);
 }
 
 input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
+    margin-top: -10px;
     border-radius: 50%;
     background: #ffffff;
-    cursor: pointer;
-    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    /* The outline keeps a white knob visible on a light page as well. */
+    border: 1px solid var(--hairline-strong);
+    box-shadow: 0 0 10px var(--shadow);
     transition: transform 0.1s;
 }
 
-input[type="range"]::-webkit-slider-thumb:hover {
-    transform: scale(1.15);
+input[type="range"]::-moz-range-thumb {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--hairline-strong);
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 0 10px var(--shadow);
 }
 
+input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+}
+
+/* The effects card holds two labelled groups, each a grid of buttons. */
 .effects-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.effects-group {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
 }
 
+.effects-group-title {
+    font-size: var(--text-caption);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: none;
+    margin-bottom: 10px;
+}
+
 .effect-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border-color);
+    background: var(--surface-2);
+    border: 1px solid var(--separator);
     color: var(--text-main);
-    padding: 12px;
-    border-radius: 8px;
+    padding: 10px 12px;
+    border-radius: 10px;
     cursor: pointer;
-    transition: all 0.2s;
-    font-size: 14px;
+    transition: background-color 0.15s, border-color 0.15s;
+    font-size: var(--text-body);
 }
 
 .effect-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--surface-hover);
+}
+
+.effect-btn:active {
+    background: var(--surface-pressed);
 }
 
 .effect-btn.active {
-    background: rgba(16, 185, 129, 0.15);
-    border-color: #10b981;
-    color: #10b981;
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+    background: var(--primary-tint);
+    border-color: var(--primary);
+}
+
+/* Segment list rows on the dashboard. */
+.seg-row-btn {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 14px;
+    text-align: left;
+    background: var(--surface-2);
+    border: 1px solid var(--separator);
+    border-radius: 10px;
+    color: var(--text-main);
+    font-size: var(--text-body);
+    font-weight: 600;
+    overflow: hidden;
+    cursor: grab;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+.seg-row-btn:hover {
+    background: var(--surface-hover);
+}
+
+.seg-row-btn.active {
+    background: var(--primary-tint);
+    border-color: var(--primary);
+}
+
+/* "Update available": information, not an error - neutral surface, accent only on the icon. */
+.update-banner {
+    width: 100%;
+    margin-bottom: 20px;
+    padding: 12px 15px;
+    text-align: left;
+    background: var(--surface);
+    border: 1px solid var(--separator);
+    border-left: 4px solid var(--primary);
+    border-radius: 12px;
+    color: var(--text-main);
+    cursor: pointer;
+}
+
+.update-banner:hover {
+    background: var(--surface-2);
+}
+
+.update-banner-inner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.update-banner svg {
+    flex-shrink: 0;
+    color: var(--primary);
+}
+
+.update-banner-title {
+    display: block;
+    font-size: var(--text-body);
+    font-weight: 600;
+}
+
+.update-banner-text {
+    font-size: var(--text-caption);
+    color: var(--text-muted);
 }
 
 .form-group {
@@ -268,18 +429,21 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .form-group label {
     display: block;
     margin-bottom: 6px;
-    font-size: 14px;
+    font-size: var(--text-body);
     color: var(--text-muted);
 }
 
-.form-group input, .form-group select {
+/* Text-like fields only: switches, sliders and colour wells keep their own shape. */
+.form-group input:not([type="checkbox"]):not([type="range"]):not([type="color"]),
+.form-group select {
     width: 100%;
+    min-height: 44px;
     padding: 10px 12px;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--fill);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     color: var(--text-main);
-    font-size: 14px;
+    font-size: var(--text-body);
     outline: none;
     transition: border-color 0.2s;
 }
@@ -294,18 +458,13 @@ input[type="range"]::-webkit-slider-thumb:hover {
    this makes every dropdown list on the page legible, not just ones inside
    a .form-group (e.g. Palette, or the "Uhr / Text" widget type selects). */
 select option {
-    background: var(--bg-color);
-    color: #ffffff;
-}
-
-.form-group select option {
-    background: var(--bg-color);
-    color: #ffffff;
+    background: var(--surface-2);
+    color: var(--text-main);
 }
 
 .form-group select optgroup {
-    background: var(--card-bg);
-    color: #34d399;
+    background: var(--surface);
+    color: var(--text-muted);
     font-weight: 600;
     font-style: normal;
     padding: 5px;
@@ -313,45 +472,54 @@ select option {
 
 
 
-.btn-primary, .btn-secondary {
+/* Buttons: primary = the one most likely action (accent fill), secondary = everything else,
+   danger = destroys data. Each has a hover and a press state. */
+.btn-primary,
+.btn-secondary,
+.btn-danger {
     width: 100%;
-    padding: 12px;
-    border-radius: 8px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    font-size: var(--text-body);
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
-    border: none;
+    transition: background-color 0.15s, border-color 0.15s, filter 0.15s;
 }
 
 .btn-primary {
-    background: linear-gradient(90deg, #222 0%, #111 100%);
-    color: white;
+    background: var(--primary);
+    color: var(--on-primary);
 }
 
-.btn-primary:hover, .btn-secondary:hover, .btn-danger:hover {
-    background: linear-gradient(90deg, #333 0%, #222 100%);
-    box-shadow: 0 8px 20px rgba(255,255,255,0.05);
-    border-color: rgba(255,255,255,0.2);
-    transform: translateY(-2px);
+.btn-primary:hover {
+    filter: brightness(1.08);
+}
+
+.btn-primary:active {
+    filter: brightness(0.9);
 }
 
 .btn-danger {
-    width: 100%;
-    padding: 12px;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    border: none;
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
-    border: 1px solid rgba(239, 68, 68, 0.4);
+    background: transparent;
+    color: var(--danger);
+    border-color: var(--danger);
 }
 
 .btn-danger:hover {
-    background: rgba(239, 68, 68, 0.3);
-    color: #fca5a5;
-    border-color: rgba(239, 68, 68, 0.6);
+    background: var(--danger-tint);
+}
+
+.btn-danger:active {
+    background: rgba(255, 107, 107, 0.2);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-danger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: none;
 }
 
 /* Custom File Input Styling */
@@ -362,11 +530,12 @@ select option {
     width: 100%;
 }
 
+/* The invisible input covers the whole visible button, so every part of it is the target. */
 .file-upload-wrapper input[type=file] {
-    font-size: 100px;
     position: absolute;
-    left: 0;
-    top: 0;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     opacity: 0;
     cursor: pointer;
 }
@@ -375,41 +544,44 @@ select option {
     display: block;
     width: 100%;
     text-align: center;
-    background: rgba(255,255,255,0.05);
-    border: 1px dashed rgba(255,255,255,0.3);
+    background: var(--surface-2);
+    border: 1px dashed var(--outline);
     padding: 15px;
-    border-radius: 8px;
+    border-radius: 10px;
     color: var(--text-muted);
-    transition: all 0.3s;
+    transition: border-color 0.15s, color 0.15s;
 }
 
 .file-upload-wrapper:hover .btn-upload {
-    border-color: #10b981;
-    color: #10b981;
-    background: rgba(16, 185, 129, 0.05);
+    border-color: var(--primary);
+    color: var(--text-main);
 }
 
 .btn-secondary {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--surface-2);
     color: var(--text-main);
-    border: 1px solid var(--border-color);
+    border-color: var(--outline);
 }
 
 .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--surface-hover);
+}
+
+.btn-secondary:active {
+    background: var(--surface-pressed);
 }
 
 /* Modal Styles */
 .modal {
-    display: none; 
-    position: fixed; 
-    z-index: 100; 
+    display: none;
+    position: fixed;
+    z-index: 100;
     left: 0;
     top: 0;
-    width: 100%; 
-    height: 100%; 
-    overflow: auto; 
-    background-color: rgba(0,0,0,0.6); 
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: var(--scrim);
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
     justify-content: center;
@@ -423,79 +595,14 @@ select option {
     opacity: 1;
 }
 
-.modal-content {
-    background: var(--bg-color);
-    margin: auto;
-    padding: 20px;
-    border: 1px solid var(--border-color);
-    width: 90%;
-    max-width: 550px;
-    border-radius: 16px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-    transform: translateY(20px);
-    transition: transform 0.3s;
-    max-height: 90vh;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-}
-
-/* Sleek Webkit Scrollbar for Modal */
-.modal-content::-webkit-scrollbar {
-    width: 6px;
-}
-.modal-content::-webkit-scrollbar-track {
-    background: transparent;
-}
-.modal-content::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 10px;
-}
-.modal-content::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.4);
-}
-
-@media (max-width: 600px) {
-    .modal-content {
-        width: 95%;
-        padding: 15px;
-        max-height: 95vh;
-    }
-}
-
-.modal.show .modal-content {
-    transform: translateY(0);
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-}
-
-.close-btn {
-    color: var(--text-muted);
-    font-size: 28px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: color 0.2s;
-}
-
-.close-btn:hover,
-.close-btn:focus {
-    color: white;
-    text-decoration: none;
-}
-
-/* Tabs */
-.tabs-wrapper {
+/* Sub-navigation of the "Geräte" area */
+.subnav-wrapper {
     position: relative;
     margin-bottom: 20px;
 }
 
-.tabs-wrapper::before,
-.tabs-wrapper::after {
+.subnav-wrapper::before,
+.subnav-wrapper::after {
     content: '';
     position: absolute;
     top: 0;
@@ -507,30 +614,30 @@ select option {
     z-index: 2;
 }
 
-.tabs-wrapper::before {
+.subnav-wrapper::before {
     left: 0;
     background: linear-gradient(to right, var(--bg-color), transparent);
 }
 
-.tabs-wrapper::after {
+.subnav-wrapper::after {
     right: 0;
     background: linear-gradient(to left, var(--bg-color), transparent);
 }
 
-.tabs-wrapper.scroll-left::before {
+.subnav-wrapper.scroll-left::before {
     opacity: 1;
 }
 
-.tabs-wrapper.scroll-right::after {
+.subnav-wrapper.scroll-right::after {
     opacity: 1;
 }
 
-.tabs-scroll-btn {
+.subnav-scroll-btn {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    width: 24px;
-    height: 24px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     border: 1px solid var(--border-color);
     background: var(--bg-color);
@@ -547,48 +654,49 @@ select option {
     transition: opacity 0.2s, background 0.2s;
 }
 
-.tabs-scroll-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+.subnav-scroll-btn:hover {
+    background: var(--fill-strong);
 }
 
-.tabs-scroll-btn-left {
+.subnav-scroll-btn-left {
     left: -4px;
 }
 
-.tabs-scroll-btn-right {
+.subnav-scroll-btn-right {
     right: -4px;
 }
 
-.tabs-wrapper.scroll-left .tabs-scroll-btn-left,
-.tabs-wrapper.scroll-right .tabs-scroll-btn-right {
+.subnav-wrapper.scroll-left .subnav-scroll-btn-left,
+.subnav-wrapper.scroll-right .subnav-scroll-btn-right {
     opacity: 1;
     pointer-events: auto;
 }
 
-.tabs {
+.subnav {
     display: flex;
     flex-wrap: nowrap;
+    gap: 8px;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    border-bottom: 1px solid var(--border-color);
 }
 
-.tabs::-webkit-scrollbar {
+.subnav::-webkit-scrollbar {
     display: none;
 }
 
 .tab-btn {
     flex: 0 0 auto;
-    background: transparent;
-    border: none;
-    padding: 10px 15px;
+    min-height: 44px;
+    padding: 11px 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--separator);
+    border-radius: 999px;
     color: var(--text-muted);
-    font-size: 15px;
+    font-size: var(--text-body);
     font-weight: 600;
     cursor: pointer;
-    border-bottom: 2px solid transparent;
-    transition: all 0.2s;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
     white-space: nowrap;
 }
 
@@ -597,9 +705,9 @@ select option {
 }
 
 .tab-btn.active {
-    color: #34d399;
-    border-bottom: 2px solid #34d399;
-    text-shadow: 0 0 8px rgba(52, 211, 153, 0.4);
+    background: var(--primary-tint);
+    border-color: var(--primary);
+    color: var(--text-main);
 }
 
 /* Collapsible settings sections (native <details>), used to keep less-common
@@ -607,7 +715,7 @@ select option {
 .settings-section {
     margin-top: 20px;
     padding-top: 15px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: 1px solid var(--separator);
 }
 
 .settings-section summary {
@@ -626,8 +734,8 @@ select option {
 
 .settings-section summary .settings-section-title {
     margin: 0;
-    color: var(--primary);
-    font-size: 15px;
+    color: var(--text-main);
+    font-size: var(--text-headline);
 }
 
 .settings-section summary .settings-section-desc {
@@ -643,7 +751,7 @@ select option {
     width: 26px;
     height: 26px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--fill-strong);
     color: var(--text-main);
     font-size: 15px;
     font-weight: 700;
@@ -652,7 +760,7 @@ select option {
 }
 
 .settings-section summary:hover .chevron {
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--hover);
 }
 
 .settings-section[open] summary .chevron {
@@ -676,5 +784,829 @@ select option {
     from { opacity: 0; transform: translateY(5px); }
     to { opacity: 1; transform: translateY(0); }
 }
-s e l e c t   o p t i o n   {   b a c k g r o u n d :   # 1 1 1 8 2 7 ;   c o l o r :   w h i t e ;   }  
- 
+
+/* ---- Accessibility ---------------------------------------------------------------------- */
+
+/* Checkboxes are drawn as switches: 50x30 is a comfortable touch target (the native box was
+   16x16), and the knob's position shows the state without relying on colour. Specificity is
+   raised so .form-group input's field styling can't apply to them. */
+html body input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    flex-shrink: 0;
+    width: 50px;
+    height: 30px;
+    /* A switch has exactly this size - nothing may stretch it (see .form-group input). */
+    min-width: 50px;
+    min-height: 30px;
+    max-height: 30px;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border-radius: 15px;
+    border: 1px solid var(--outline);
+    background: var(--fill-strong);
+    cursor: pointer;
+    vertical-align: middle;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+html body input[type="checkbox"]::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 3px var(--shadow);
+    transition: transform 0.2s;
+}
+
+html body input[type="checkbox"]:checked {
+    background: var(--primary);
+    border-color: var(--primary);
+}
+
+html body input[type="checkbox"]:checked::after {
+    transform: translateX(20px);
+}
+
+html body input[type="checkbox"]:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Every text button and dropdown is at least 44px tall, whatever padding an inline style sets. */
+.effect-btn,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+select,
+input[type="text"],
+input[type="number"],
+input[type="password"] {
+    min-height: 44px;
+}
+
+/* Small icon buttons in the segment card header, and the dialog's close button. */
+.seg-icon-btn {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 10px;
+    background: var(--surface-2);
+}
+
+/* On/off: "on" is a filled button, "off" an outline - readable without telling colours apart. */
+.power-btn.on {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--on-primary);
+}
+
+.power-btn.on svg {
+    filter: none;
+}
+
+/* The chosen effect and the chosen segment carry a check mark, not just a tint. */
+.effect-btn.active::before,
+.seg-row-btn.active::before {
+    content: '\2713';
+    margin-right: 6px;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+/* A visible focus ring for keyboard use. !important because many inline styles set outline:none. */
+:focus-visible {
+    outline: 2px solid var(--primary) !important;
+    outline-offset: 2px;
+}
+
+/* Phones: 16px keeps iOS from zooming into a field when it is tapped, now that zoom is allowed. */
+@media (max-width: 600px) {
+    input:not([type="checkbox"]):not([type="range"]):not([type="color"]),
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
+}
+
+/* --- Shared building blocks ---------------------------------------------------
+   These replace the inline styles that were repeated across index.html and app.js. Having them
+   in one place is also what makes the sizes below true everywhere: a control is at least 44px
+   high wherever it appears, not just on the dashboard. */
+.field {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    background: var(--fill);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-main);
+    font-size: var(--text-body);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.field:focus {
+    border-color: var(--primary);
+}
+
+/* Narrow numeric fields (pixel sizes, durations) - still 44px high. */
+.field-narrow {
+    width: 88px;
+    min-width: 88px;
+}
+
+.field-flex {
+    flex: 1;
+    width: auto;
+    min-width: 96px;
+}
+
+.field-auto {
+    width: auto;
+}
+
+.field-color {
+    width: 56px;
+    min-width: 56px;
+    height: 44px;
+    padding: 4px;
+    background: var(--fill);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+/* A row in a list: preset, playlist entry, schedule, panel, segment. */
+.list-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--separator);
+    border-radius: 10px;
+}
+
+.list-row-wrap {
+    flex-wrap: wrap;
+}
+
+.list-row-title {
+    flex: 1;
+    min-width: 80px;
+    font-size: var(--text-body);
+    font-weight: 600;
+}
+
+/* Weekday picker of a schedule: seven small buttons, each still a 44px target. */
+.day-btn {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--outline);
+    border-radius: 10px;
+    color: var(--text-main);
+    font-size: var(--text-caption);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.day-btn.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--on-primary);
+}
+
+/* Secondary actions inside a row ("Anwenden", "Überschreiben", "Speichern"). */
+/* A field with its own button. It wraps instead of squeezing the field to a few characters,
+   which is what happened on a phone. */
+.row-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.row-inline .field-flex {
+    min-width: 160px;
+}
+
+.row-inline .btn-chip {
+    flex: 1 1 auto;
+}
+
+.btn-chip {
+    width: auto;
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: var(--text-body);
+}
+
+.btn-row {
+    flex: 1;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: var(--text-body);
+}
+
+.icon-btn-danger {
+    color: var(--danger);
+    background: var(--danger-tint);
+    border-color: var(--danger);
+}
+
+.icon-btn-danger:hover {
+    background: rgba(255, 107, 107, 0.2);
+}
+
+.hint {
+    font-size: var(--text-caption);
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.empty-note {
+    padding: 12px 0;
+    color: var(--text-muted);
+    font-size: var(--text-body);
+}
+
+/* A part of a card, separated from the one above it. */
+.subsection {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--separator);
+}
+
+.section-head {
+    margin-bottom: 12px;
+}
+
+/* The fixed HUB75 pinout of a device: a quiet box of facts, not a control. */
+.pinout-box {
+    padding: 12px;
+    background: var(--fill);
+    border: 1px solid var(--separator);
+    border-radius: 10px;
+    margin-bottom: 8px;
+}
+
+.pinout-title {
+    font-size: var(--text-caption);
+    margin-bottom: 8px;
+}
+
+/* A quieter card inside a card (the blocks in "System"). */
+.card-inset {
+    background: var(--fill);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: none;
+}
+
+/* The heading of a device card: a name, not a status colour - the words carry the state. */
+.device-card-title {
+    font-size: var(--text-headline);
+    margin-bottom: 0;
+}
+
+/* A small factual label: how the device is attached, for example. */
+.badge {
+    padding: 3px 8px;
+    border: 1px solid var(--outline);
+    border-radius: 999px;
+    color: var(--text-muted);
+    font-size: var(--text-caption);
+    white-space: nowrap;
+}
+
+/* Removes one element of the panel. Text "x", but a full-size target. */
+.btn-remove {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    border-radius: 10px;
+    color: var(--danger);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.btn-remove:hover {
+    background: var(--danger-tint);
+}
+
+/* One found device, one element of the panel. */
+.device-card {
+    padding: 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--separator);
+    border-radius: 12px;
+}
+
+.widget-card {
+    margin-bottom: 0;
+    padding: 12px;
+    background: var(--fill);
+    box-shadow: none;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* A card heading with controls next to it: the heading keeps no bottom margin here, and the
+   gap of .row-between keeps the title and the controls apart. */
+.card-header h2 {
+    margin-bottom: 0;
+}
+
+.switch-label {
+    font-size: var(--text-caption);
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.row-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* --- Live strip ----------------------------------------------------------------
+   The signature of the page: the light of the selected segment, as it is right now. It is the
+   only place with colour of its own; the accent elsewhere is taken from it (see app.js). */
+.live-card {
+    margin-bottom: 15px;
+}
+
+.live-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.live-name {
+    font-size: var(--text-headline);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.live-state {
+    flex: none;
+    color: var(--text-muted);
+    font-size: var(--text-body);
+    font-variant-numeric: tabular-nums;
+}
+
+/* The one motion of the page: switching the light fades the strip out and back in. The global
+   reduced-motion rule turns this into an instant change. */
+.live-body {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: opacity 0.35s ease, filter 0.35s ease;
+}
+
+.live-card.is-off .live-body {
+    opacity: 0.25;
+    filter: grayscale(1);
+}
+
+.live-strip {
+    display: block;
+    width: 100%;
+    height: 32px;
+    border-radius: 8px;
+    background: #000;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+.live-panel {
+    display: block;
+    width: 96px;
+    height: 96px;
+    border-radius: 8px;
+    background: #000;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+.live-note {
+    margin-top: 10px;
+}
+
+/* display:block above would otherwise win over the hidden attribute. */
+.live-card [hidden],
+.live-card[hidden] {
+    display: none;
+}
+
+/* --- Shell ---------------------------------------------------------------------
+   Four areas - Licht, Szenen, Panel, Geräte - instead of a dashboard plus an eight-tab
+   dialog. On a desktop they are a sidebar next to the content; on a phone the same four
+   sit in a bottom bar, where a thumb reaches them. */
+.app-shell {
+    display: flex;
+    align-items: flex-start;
+    gap: 24px;
+    width: 100%;
+}
+
+.app-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.side-nav {
+    display: none;            /* phones use the bottom bar */
+    flex: 0 0 216px;
+    position: sticky;
+    top: 20px;
+}
+
+.side-nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px 20px 12px;
+    font-size: var(--text-headline);
+    font-weight: 700;
+}
+
+.side-nav-brand img {
+    height: 28px;
+}
+
+.side-nav-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* One navigation item, used in both the sidebar and the bottom bar. */
+.nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 10px 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    color: var(--text-muted);
+    font-size: var(--text-body);
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.nav-btn svg {
+    flex: none;
+}
+
+.nav-btn:hover {
+    background: var(--surface-2);
+    color: var(--text-main);
+}
+
+/* The current area is named by its label, marked by aria-current, and tinted - never by
+   colour alone. */
+.nav-btn.active {
+    background: var(--primary-tint);
+    border-color: var(--primary);
+    color: var(--text-main);
+}
+
+.nav-btn.active svg {
+    color: var(--primary);
+    transition: color 0.35s ease;
+}
+
+.bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 90;
+    display: flex;
+    background: var(--surface);
+    border-top: 1px solid var(--separator);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+}
+
+.bottom-nav .nav-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 52px;
+    /* Five labels share 375px; "Einstellungen" needs about 67px of them. */
+    padding: 6px 1px;
+    border-radius: 10px;
+    font-size: 11px;
+    text-align: center;
+}
+
+.bottom-nav .nav-btn span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bottom-nav .nav-btn.active {
+    background: transparent;
+    border-color: transparent;
+    color: var(--primary);
+}
+
+.area {
+    display: none;
+}
+
+.area.active {
+    display: block;
+}
+
+.area-title {
+    font-size: var(--text-large);
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 16px;
+}
+
+.header-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: var(--text-headline);
+    font-weight: 700;
+}
+
+.header-brand img {
+    height: 28px;
+}
+
+.muted {
+    color: var(--text-muted);
+    font-size: var(--text-body);
+}
+
+/* An area with nothing in it yet says so and offers the next step. */
+#panelEmptyState {
+    text-align: center;
+}
+
+#panelEmptyState .btn {
+    margin-top: 16px;
+    max-width: 280px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#panelWidgetsHint {
+    margin-bottom: 20px;
+}
+
+@media (min-width: 900px) {
+    .side-nav {
+        display: block;
+    }
+
+    .bottom-nav {
+        display: none;
+    }
+
+    .header-brand {
+        display: none;
+    }
+
+    #mainHeader {
+        justify-content: flex-end;
+        margin-bottom: 16px;
+    }
+}
+
+@media (max-width: 899px) {
+    /* Room for the bottom bar, so the last card is never trapped under it. */
+    body {
+        padding-bottom: calc(76px + env(safe-area-inset-bottom));
+    }
+}
+
+/* --- Feedback -----------------------------------------------------------------
+   Short messages appear above the content instead of in a browser alert(): they say what
+   happened without taking the interface away. One accent means one thing, so a confirmation
+   uses the accent colour only on its edge and an error the danger colour on its edge. */
+.toast-host {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    z-index: 200;
+    width: calc(100% - 32px);
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 12px 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--separator);
+    border-left: 4px solid var(--outline);
+    border-radius: 12px;
+    box-shadow: 0 10px 25px var(--shadow);
+    color: var(--text-main);
+    font-size: var(--text-body);
+    line-height: 1.35;
+    pointer-events: auto;
+    animation: toast-in 0.2s ease-out;
+}
+
+.toast-ok {
+    border-left-color: var(--primary);
+}
+
+.toast-error {
+    border-left-color: var(--danger);
+}
+
+.toast-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.toast-close {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    margin: -4px -4px -4px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.toast-close:hover {
+    background: var(--surface-hover);
+    color: var(--text-main);
+}
+
+.toast-leaving {
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+/* Only the position is animated, never the opacity: a message that arrives while the tab is in
+   the background would otherwise sit at its invisible first frame until the tab is drawn again. */
+@keyframes toast-in {
+    from { transform: translateY(8px); }
+    to   { transform: translateY(0); }
+}
+
+/* The button that started something says how it went, for a moment. */
+.btn-flash-ok {
+    background: var(--primary) !important;
+    border-color: var(--primary) !important;
+    color: var(--on-primary) !important;
+}
+
+.btn-flash-failed {
+    background: var(--danger-tint) !important;
+    border-color: var(--danger) !important;
+    color: var(--danger) !important;
+}
+
+/* A state, not an action: "Firmware is up to date" is a line of text, not a dead button. */
+.status-line {
+    font-size: var(--text-body);
+    color: var(--text-muted);
+}
+
+/* --- Confirmation dialog ------------------------------------------------------
+   Only for the questions that really need an answer. Cancel sits left and holds the focus;
+   the confirming button carries the verb of the action. */
+.confirm-modal {
+    z-index: 300;
+}
+
+.confirm-card {
+    background: var(--surface);
+    border: 1px solid var(--separator);
+    border-radius: 16px;
+    box-shadow: 0 10px 25px var(--shadow);
+    padding: 22px;
+    width: 90%;
+    max-width: 380px;
+    margin: auto;
+}
+
+.confirm-card h3 {
+    font-size: var(--text-headline);
+    margin-bottom: 8px;
+}
+
+.confirm-card p {
+    font-size: var(--text-body);
+    color: var(--text-muted);
+    margin-bottom: 20px;
+}
+
+.confirm-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.confirm-actions .btn {
+    flex: 1;
+    min-height: 44px;
+}
+
+/* --- Slider values -----------------------------------------------------------
+   Written by app.js into a data attribute so translating the label cannot wipe it. */
+.slider-wrapper label[data-slider-value]::after {
+    content: attr(data-slider-value);
+    color: var(--text-muted);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- Segment rows ------------------------------------------------------------
+   The name people chose comes first; the size is the quiet second line. */
+.seg-row-name {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.seg-row-meta {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--text-caption);
+    font-weight: 400;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    .btn-primary:hover,
+    .btn-secondary:hover,
+    .btn-danger:hover,
+    .color-swatch:hover,
+    input[type="range"]::-webkit-slider-thumb:hover {
+        transform: none !important;
+    }
+
+    .toast {
+        animation: none !important;
+    }
+}

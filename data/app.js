@@ -8,10 +8,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return name;
     }
-    
+
     // UI Elements
     const btnPower = document.getElementById('btnPower');
-    const btnSettings = document.getElementById('btnSettings');
+    const navButtons = document.querySelectorAll('.nav-btn');
     const briSlider = document.getElementById('briSlider');
     const whiteSlider = document.getElementById('whiteSlider');
     const speedSlider = document.getElementById('speedSlider');
@@ -24,11 +24,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnOpenTextWidgets = document.getElementById('btnOpenTextWidgets');
 
     const EFFECT_NAMES = [
-        "Solid", "Breathe", "Rainbow", "Chase", "Fire", "Color Wipe", "Scanner", "Twinkle", "Meteor", "Matrix Rain", "Nur Weiß",
+        "Solid", "Breathe", "Rainbow", "Chase", "Fire", "Color Wipe", "Scanner", "Twinkle", "Meteor", "Matrix Rain", "White Only",
         "Strobe", "Bounce", "Palette Rainbow",
         "Sinelon", "Confetti", "Juggle", "BPM", "Theater Chase Rainbow", "Running Lights", "Color Waves",
-        "Plasma", "Ripple", "Fire 2D", "Pacifica", "Bild",
-        "Fireworks", "Starfield", "Bouncing Balls", "Uhr / Text"
+        "Plasma", "Ripple", "Fire (2D)", "Pacifica", "Image",
+        "Fireworks", "Starfield", "Bouncing Balls", "Clock / Text"
     ];
     const EFFECT_TEXT_ID = 29;
 
@@ -56,17 +56,41 @@ document.addEventListener('DOMContentLoaded', () => {
     // in LEDManager.h.
     const EFFECT_HUB75_SHOWCASE_START = 26;
 
-    // Generate effect buttons
+    // Generate effect buttons. Thirty identical buttons in one block told nobody which of
+    // them need a panel, so they come in the two groups the firmware itself distinguishes (see
+    // EFFECT_HUB75_SHOWCASE_START in LEDManager.h).
     effectsGrid.innerHTML = '';
+
+    function effectGroup(titleKey, id) {
+        const wrap = document.createElement('div');
+        wrap.className = 'effects-group-wrap';
+        if (id) wrap.id = id;
+        const title = document.createElement('h3');
+        title.className = 'effects-group-title';
+        title.dataset.i18n = titleKey;
+        title.innerText = typeof t === 'function' ? t(titleKey) : titleKey;
+        const grid = document.createElement('div');
+        grid.className = 'effects-group';
+        wrap.appendChild(title);
+        wrap.appendChild(grid);
+        effectsGrid.appendChild(wrap);
+        return grid;
+    }
+
+    const groupAll = effectGroup('eff_group_all');
+    const groupPanel = effectGroup('eff_group_panel', 'effectGroupPanel');
+
     EFFECT_NAMES.forEach((name, idx) => {
         const btn = document.createElement('button');
+        btn.type = 'button';
         btn.className = 'effect-btn';
+        btn.setAttribute('aria-pressed', 'false');
         btn.dataset.id = idx;
         const key = 'eff_' + idx;
         btn.dataset.i18n = key;
         const translated = typeof t === 'function' ? t(key) : key;
         btn.innerText = translated === key ? name : translated;
-        effectsGrid.appendChild(btn);
+        (idx >= EFFECT_HUB75_SHOWCASE_START ? groupPanel : groupAll).appendChild(btn);
     });
 
     const effectBtns = document.querySelectorAll('.effect-btn');
@@ -79,11 +103,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // A HUB75 panel on a Slave counts too - otherwise the clock, text and showcase effects
         // stayed hidden for exactly the hardware they were written for.
         const isHub75 = lastMasterLedType === 60 || !!activeSegmentPanel();
-        effectBtns.forEach(btn => {
-            if (parseInt(btn.dataset.id) >= EFFECT_HUB75_SHOWCASE_START) {
-                btn.style.display = isHub75 ? '' : 'none';
-            }
-        });
+        // Without a panel the whole group goes, heading included - an empty labelled box is
+        // worse than no box.
+        const panelGroup = document.getElementById('effectGroupPanel');
+        if (panelGroup) panelGroup.style.display = isHub75 ? '' : 'none';
     }
     updateEffectVisibility(0); // hidden by default until fetchConfig() reports the real type
 
@@ -95,20 +118,17 @@ document.addEventListener('DOMContentLoaded', () => {
         PALETTE_NAMES.forEach((name, idx) => {
             const opt = document.createElement('option');
             opt.value = idx;
-            opt.style.background = '#1f2937';
-            opt.style.color = 'white';
             const key = 'pal_' + idx;
             const translated = typeof t === 'function' ? t(key) : key;
             opt.innerText = translated === key ? name : translated;
             paletteSelect.appendChild(opt);
         });
     }
-    
+
     // Screens & Modals
     const mainControls = document.getElementById('mainControls');
     const apSetupScreen = document.getElementById('apSetupScreen');
-    const settingsModal = document.getElementById('settingsModal');
-    const closeSettings = document.getElementById('closeSettings');
+    const areas = document.querySelectorAll('.area');
     const apWifiContainer = document.getElementById('apWifiContainer');
     const modalWifiContainer = document.getElementById('modalWifiContainer');
     const mqttSettingsSection = document.getElementById('mqttSettingsSection');
@@ -121,12 +141,425 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnUploadImage = document.getElementById('btnUploadImage');
     const pixelCanvas = document.getElementById('pixelCanvas');
     const btnStreamMatrix = document.getElementById('btnStreamMatrix');
-    
+
     // Tabs
     const tabBtns = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
     const settingsTabsEl = document.getElementById('settingsTabs');
-    const tabsWrapperEl = settingsTabsEl ? settingsTabsEl.closest('.tabs-wrapper') : null;
+
+    // --- Feedback ------------------------------------------------------------
+    // A browser alert() stops everything and says nothing about where the problem is, so
+    // confirmations and errors appear as a short message in the interface instead.
+    const toastHost = document.getElementById('toastHost');
+
+    function showToast(message, kind) {
+        if (!message) return null;
+        if (!toastHost) { console.log(message); return null; }
+        const toast = document.createElement('div');
+        toast.className = 'toast toast-' + (kind || 'info');
+        // An error interrupts the screen reader; a confirmation waits its turn.
+        if (kind === 'error') toast.setAttribute('role', 'alert');
+        const text = document.createElement('span');
+        text.className = 'toast-text';
+        text.innerText = message;
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'toast-close';
+        close.setAttribute('aria-label', t('aria_toast_close'));
+        close.innerHTML = '&times;';
+        const dismiss = () => {
+            clearTimeout(toast._timer);
+            toast.classList.add('toast-leaving');
+            setTimeout(() => toast.remove(), 200);
+        };
+        close.addEventListener('click', dismiss);
+        toast.appendChild(text);
+        toast.appendChild(close);
+        toastHost.appendChild(toast);
+        // Errors stay long enough to be read and acted on; confirmations get out of the way.
+        const life = kind === 'error' ? 8000 : 4000;
+        if (kind !== 'sticky') toast._timer = setTimeout(dismiss, life);
+        return { element: toast, dismiss };
+    }
+
+    // The button that started an action is where its result belongs: it says what happened for
+    // a moment and then goes back to its own label.
+    function flashButton(btn, label, opts) {
+        if (!btn) return;
+        const o = opts || {};
+        const previous = btn.dataset.flashLabel !== undefined ? btn.dataset.flashLabel : btn.innerText;
+        btn.dataset.flashLabel = previous;
+        btn.innerText = label;
+        btn.classList.remove('btn-flash-ok', 'btn-flash-failed');
+        btn.classList.add(o.failed ? 'btn-flash-failed' : 'btn-flash-ok');
+        clearTimeout(btn._flashTimer);
+        btn._flashTimer = setTimeout(() => {
+            // Restore the button's real label: several of these buttons say "Speichere ..." while
+            // they work, and that interim text must not become their name.
+            const restored = btn.dataset.i18n ? t(btn.dataset.i18n)
+                                              : (btn.dataset.flashLabel !== undefined ? btn.dataset.flashLabel : previous);
+            btn.innerText = restored;
+            delete btn.dataset.flashLabel;
+            btn.classList.remove('btn-flash-ok', 'btn-flash-failed');
+            if (typeof o.then === 'function') o.then();
+        }, o.duration || 1400);
+    }
+
+    function saveFailed(btn) {
+        flashButton(btn, t('btn_save_failed'), { failed: true });
+        showToast(t('dyn_save_failed'), 'error');
+    }
+
+    // One dialog for the questions that really need an answer. Cancel is the default and Escape
+    // means cancel; the confirming button carries the verb of the action, red when it destroys
+    // something. Returns a promise that resolves to true only when the person confirms.
+    const confirmModal = document.getElementById('confirmModal');
+    const confirmTitle = document.getElementById('confirmTitle');
+    const confirmBody = document.getElementById('confirmBody');
+    const confirmOk = document.getElementById('confirmOk');
+    const confirmCancel = document.getElementById('confirmCancel');
+    let confirmResolve = null;
+
+    function closeConfirm(result) {
+        if (!confirmResolve) return;
+        const resolve = confirmResolve;
+        confirmResolve = null;
+        confirmModal.classList.remove('show');
+        resolve(result);
+    }
+
+    function askConfirm(options) {
+        const o = options || {};
+        if (!confirmModal) return Promise.resolve(window.confirm(o.body || o.title || ''));
+        closeConfirm(false);
+        confirmTitle.innerText = o.title || '';
+        confirmBody.innerText = o.body || '';
+        confirmBody.style.display = o.body ? '' : 'none';
+        confirmOk.innerText = o.ok || t('confirm_reset_ok');
+        confirmCancel.innerText = o.cancel || t('confirm_cancel');
+        confirmOk.className = 'btn ' + (o.destructive ? 'btn-danger' : 'btn-primary');
+        confirmModal.classList.add('show');
+        // Cancel carries the focus, so Enter cannot destroy anything by accident.
+        setTimeout(() => confirmCancel.focus({ preventScroll: true }), 30);
+        return new Promise(resolve => { confirmResolve = resolve; });
+    }
+
+    if (confirmModal) {
+        confirmOk.addEventListener('click', () => closeConfirm(true));
+        confirmCancel.addEventListener('click', () => closeConfirm(false));
+        confirmModal.addEventListener('click', (e) => {
+            if (e.target === confirmModal) closeConfirm(false);
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && confirmResolve) {
+                e.stopPropagation();
+                closeConfirm(false);
+            }
+        }, true);
+    }
+
+    // --- Slider values -------------------------------------------------------
+    // A slider with no number leaves people guessing what 0-255 means. The value is written into
+    // a data attribute and drawn by CSS after the label, so applyTranslations() can keep
+    // replacing the label text without wiping it.
+    const sliderRenderers = [];
+
+    function attachSliderValue(slider, format) {
+        if (!slider) return;
+        const wrapper = slider.closest('.slider-wrapper') || slider.parentElement;
+        if (!wrapper) return;
+        const label = wrapper.querySelector('label[for="' + slider.id + '"]') || wrapper.querySelector('label');
+        if (!label) return;
+        const render = () => label.setAttribute('data-slider-value', format(parseInt(slider.value, 10) || 0));
+        slider.addEventListener('input', render);
+        slider.addEventListener('change', render);
+        sliderRenderers.push(render);
+        render();
+    }
+
+    function refreshSliderValues() {
+        sliderRenderers.forEach(render => render());
+    }
+
+    const asPercent = value => ' \u00b7 ' + Math.round(value * 100 / 255) + ' %';
+
+    // --- Live strip and accent -------------------------------------------------
+    // The dashboard shows the light of the selected segment as it is right now, and the
+    // interface borrows its colour as the accent. Both are deliberately cheap for the Master:
+    // one thinned request per second (a few dozen values, see ?s= in /api/matrix_preview), only
+    // while the "Licht" area is on screen and the tab is visible.
+    const liveCard = document.getElementById('liveCard');
+    const liveStrip = document.getElementById('liveStrip');
+    const livePanel = document.getElementById('livePanel');
+    const liveName = document.getElementById('liveName');
+    const liveState = document.getElementById('liveState');
+    const liveNote = document.getElementById('liveNote');
+    const LIVE_POINTS = 60;
+    const LIVE_PANEL_CELLS = 16;
+    const LIVE_INTERVAL_MS = 1000;
+    // A Slave that renders an effect itself leaves the Master's copy dark. After this many dark
+    // answers in a row the strip shows the configured colours instead - and says so.
+    const LIVE_DARK_LIMIT = 3;
+    let liveTimer = null;
+    let liveInFlight = false;
+    let liveDarkRuns = 0;
+    let liveSegment = -1;
+
+    function hexToRgb(hex) {
+        const h = String(hex || '').replace('#', '');
+        if (h.length !== 6) return null;
+        const n = parseInt(h, 16);
+        if (isNaN(n)) return null;
+        return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+    }
+
+    function rgbToHex(c) {
+        return '#' + [c.r, c.g, c.b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+    }
+
+    function relLuminance(c) {
+        const f = v => {
+            v /= 255;
+            return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+        };
+        return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+    }
+
+    function rgbToHsl(c) {
+        const r = c.r / 255, g = c.g / 255, b = c.b / 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        const l = (max + min) / 2;
+        if (max === min) return { h: 0, s: 0, l };
+        const d = max - min;
+        const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        let h;
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        return { h: h * 60, s, l };
+    }
+
+    function hslToRgb(hsl) {
+        const { h, s, l } = hsl;
+        const k = n => (n + h / 30) % 12;
+        const a = s * Math.min(l, 1 - l);
+        const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+        return { r: f(0) * 255, g: f(8) * 255, b: f(4) * 255 };
+    }
+
+    // Labels on the accent are near-black (--on-primary), so the accent has to be light enough
+    // for 4.5:1 against it - which also keeps it well clear of the dark surfaces.
+    const ON_ACCENT = { r: 11, g: 11, b: 12 };
+
+    // In the light appearance the label on the accent is white (see style.css), so there the
+    // accent has to be dark enough instead - which also keeps it at least 4:1 from the light
+    // surfaces.
+    const lightScheme = window.matchMedia('(prefers-color-scheme: light)');
+
+    function accentFromLight(hex) {
+        const rgb = hexToRgb(hex);
+        if (!rgb) return null;
+        const hsl = rgbToHsl(rgb);
+        // White or grey light would make the accent look like plain text; red would say
+        // "danger". Both keep the default accent.
+        if (hsl.s < 0.3) return null;
+        if (hsl.h <= 20 || hsl.h >= 340) return null;
+        let candidate = rgb;
+        let l = hsl.l;
+        const light = lightScheme.matches;
+        const contrast = light
+            ? c => 1.05 / (relLuminance(c) + 0.05)
+            : c => (relLuminance(c) + 0.05) / (relLuminance(ON_ACCENT) + 0.05);
+        // Not readable yet: move along the same hue - lighter on dark, darker on light.
+        while (contrast(candidate) < 4.5 && l > 0.12 && l < 0.86) {
+            l += light ? -0.02 : 0.04;
+            candidate = hslToRgb({ h: hsl.h, s: hsl.s, l });
+        }
+        if (contrast(candidate) < 4.5) return null;
+        const hexOut = rgbToHex(candidate);
+        return {
+            hex: hexOut,
+            tint: 'rgba(' + [candidate.r, candidate.g, candidate.b].map(Math.round).join(', ') + ', 0.14)'
+        };
+    }
+
+    // Coalesced with a timer, not requestAnimationFrame: a tab that is not being drawn never
+    // runs animation frames, and the accent must still be right when it comes back.
+    let accentTimer = 0;
+    function applyLightAccent() {
+        clearTimeout(accentTimer);
+        accentTimer = setTimeout(() => {
+            const seg = segments[currentSegmentId];
+            const on = seg ? !!seg.on : !!state.on;
+            const accent = on ? accentFromLight(state.color) : null;
+            const root = document.documentElement.style;
+            if (accent) {
+                root.setProperty('--primary', accent.hex);
+                root.setProperty('--primary-tint', accent.tint);
+            } else {
+                // Off, white, red or unreadable: back to the default accent from style.css.
+                root.removeProperty('--primary');
+                root.removeProperty('--primary-tint');
+            }
+        }, 0);
+    }
+
+    // Switching the system appearance changes which accent is readable.
+    if (lightScheme.addEventListener) lightScheme.addEventListener('change', applyLightAccent);
+
+    function liveTarget() {
+        const seg = segments[currentSegmentId];
+        if (!seg) return null;
+        const count = Math.max(0, (seg.stop || 0) - (seg.start || 0));
+        let panel = activeSegmentPanel();
+        if (!panel && !seg.isSlave && matrixEnable && matrixEnable.checked) {
+            const w = parseInt(matrixWidth.value) || 0;
+            const h = parseInt(matrixHeight.value) || 0;
+            if (w > 0 && h > 0 && w * h === count) panel = { w, h };
+        }
+        return { seg, count, panel };
+    }
+
+    function effectLabel(id) {
+        const key = 'eff_' + id;
+        const translated = t(key);
+        return translated === key ? (EFFECT_NAMES[id] || '') : translated;
+    }
+
+    function updateLiveText(tg) {
+        if (!liveCard) return;
+        // Nothing selected (no segments yet): no empty box.
+        liveCard.hidden = !tg;
+        if (!tg) return;
+        const name = translateSegmentName(tg.seg.name) || (t('dyn_segment') + ' ' + currentSegmentId);
+        const on = !!tg.seg.on;
+        const pct = Math.round((state.bri || 0) * 100 / 255);
+        const text = on ? pct + ' % · ' + effectLabel(state.effect) : t('live_off');
+        liveName.innerText = name;
+        liveState.innerText = text;
+        liveCard.classList.toggle('is-off', !on);
+        const label = t('live_aria', { name: name, state: text });
+        liveStrip.setAttribute('aria-label', label);
+        livePanel.setAttribute('aria-label', label);
+        // Panels get a square thumbnail, strips the full-width bar.
+        liveStrip.hidden = !!tg.panel;
+        livePanel.hidden = !tg.panel;
+    }
+
+    function paintStrip(colors) {
+        const n = colors.length;
+        if (!n) return;
+        // Old firmware ignores ?s= and sends every pixel - thin it here then.
+        const points = Math.min(n, LIVE_POINTS);
+        liveStrip.width = points;
+        liveStrip.height = 1;
+        const ctx = liveStrip.getContext('2d');
+        const img = ctx.createImageData(points, 1);
+        for (let i = 0; i < points; i++) {
+            const c = colors[Math.floor(i * n / points)] || 0;
+            img.data[i * 4] = (c >> 16) & 255;
+            img.data[i * 4 + 1] = (c >> 8) & 255;
+            img.data[i * 4 + 2] = c & 255;
+            img.data[i * 4 + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+    }
+
+    function paintPanel(colors, panel) {
+        const step = Math.max(1, Math.ceil(panel.w / LIVE_PANEL_CELLS));
+        const full = colors.length === panel.w * panel.h;
+        const cols = full ? panel.w : Math.ceil(panel.w / step);
+        const rows = Math.max(1, Math.ceil(colors.length / cols));
+        livePanel.width = cols;
+        livePanel.height = rows;
+        const ctx = livePanel.getContext('2d');
+        const img = ctx.createImageData(cols, rows);
+        for (let i = 0; i < cols * rows; i++) {
+            const c = colors[i] || 0;
+            img.data[i * 4] = (c >> 16) & 255;
+            img.data[i * 4 + 1] = (c >> 8) & 255;
+            img.data[i * 4 + 2] = c & 255;
+            img.data[i * 4 + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+    }
+
+    // Used where the Master has no pixels to show: the configured colour(s), as a gradient.
+    function paintFromSettings(tg) {
+        const c1 = hexToRgb(state.color) || { r: 0, g: 0, b: 0 };
+        const c2 = state.color2Enabled ? (hexToRgb(state.color2) || c1) : c1;
+        const mix = (a, b, f) => ((Math.round(a.r + (b.r - a.r) * f) << 16) |
+                                  (Math.round(a.g + (b.g - a.g) * f) << 8) |
+                                  Math.round(a.b + (b.b - a.b) * f));
+        if (tg.panel) {
+            const colors = [];
+            for (let y = 0; y < LIVE_PANEL_CELLS; y++) {
+                for (let x = 0; x < LIVE_PANEL_CELLS; x++) colors.push(mix(c1, c2, x / (LIVE_PANEL_CELLS - 1)));
+            }
+            paintPanel(colors, { w: LIVE_PANEL_CELLS, h: LIVE_PANEL_CELLS });
+        } else {
+            const colors = [];
+            for (let i = 0; i < LIVE_POINTS; i++) colors.push(mix(c1, c2, i / (LIVE_POINTS - 1)));
+            paintStrip(colors);
+        }
+    }
+
+    function fetchLive() {
+        if (!liveCard || liveInFlight || document.hidden || activeArea !== 'light') return;
+        const tg = liveTarget();
+        updateLiveText(tg);
+        if (!tg || !tg.count) return;
+        if (currentSegmentId !== liveSegment) {
+            liveSegment = currentSegmentId;
+            liveDarkRuns = 0;
+        }
+        // Switched off: the strip keeps its last picture and fades (see .is-off), no request.
+        if (!tg.seg.on) return;
+        let url = '/api/matrix_preview?seg=' + currentSegmentId;
+        if (tg.panel) {
+            url += '&w=' + tg.panel.w + '&s=' + Math.max(1, Math.ceil(tg.panel.w / LIVE_PANEL_CELLS));
+        } else {
+            url += '&s=' + Math.max(1, Math.ceil(tg.count / LIVE_POINTS));
+        }
+        liveInFlight = true;
+        fetch(url, { cache: 'no-store' })
+            .then(res => res.json())
+            .then(colors => {
+                if (currentSegmentId !== liveSegment) return;   // selection changed meanwhile
+                const list = Array.isArray(colors) ? colors : [];
+                const dark = !list.some(c => c);
+                liveDarkRuns = dark ? liveDarkRuns + 1 : 0;
+                const fromSettings = dark && tg.seg.isSlave && liveDarkRuns >= LIVE_DARK_LIMIT;
+                liveNote.hidden = !fromSettings;
+                if (fromSettings) {
+                    paintFromSettings(tg);
+                } else if (!dark || liveDarkRuns >= LIVE_DARK_LIMIT) {
+                    const shown = brightenForPreview(list);
+                    if (tg.panel) paintPanel(shown, tg.panel);
+                    else paintStrip(shown);
+                }
+            })
+            .catch(() => {})
+            .finally(() => { liveInFlight = false; });
+    }
+
+    function startLiveStrip() {
+        if (!liveCard || liveTimer) return;
+        fetchLive();
+        liveTimer = setInterval(fetchLive, LIVE_INTERVAL_MS);
+    }
+
+    function stopLiveStrip() {
+        if (!liveTimer) return;
+        clearInterval(liveTimer);
+        liveTimer = null;
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopLiveStrip();
+        else if (activeArea === 'light' && !isAPMode) startLiveStrip();
+    });
+    const tabsWrapperEl = settingsTabsEl ? settingsTabsEl.closest('.subnav-wrapper') : null;
 
     // Shows a fade hint on whichever side of the scrollable tab bar has more
     // tabs hidden, so users notice there's more to scroll to (e.g. WLAN/MQTT).
@@ -166,7 +599,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('groupPin4')
     ];
     const btnSaveConfig = document.getElementById('btnSaveConfig');
-    
+
     // WiFi Elements
     const btnScanNetworks = document.getElementById('btnScanNetworks');
     const wifiList = document.getElementById('wifiList');
@@ -236,10 +669,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.files.length > 0) {
             let names = Array.from(e.target.files).map(f => f.name).join(' + ');
             fileUploadLabel.innerText = names;
-            fileUploadLabel.style.color = '#10b981';
-            fileUploadLabel.style.borderColor = '#10b981';
+            fileUploadLabel.style.color = 'var(--text-main)';
+            fileUploadLabel.style.borderColor = 'var(--primary)';
         } else {
-            fileUploadLabel.innerText = 'Datei auswählen';
+            fileUploadLabel.innerText = t('file_select');
             fileUploadLabel.style.color = '';
             fileUploadLabel.style.borderColor = '';
         }
@@ -248,7 +681,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // State
     let segments = [];
     let currentSegmentId = 0;
-    
+
     let state = {
         on: true,
         bri: 255,
@@ -261,7 +694,7 @@ document.addEventListener('DOMContentLoaded', () => {
         color2: '#0000ff',
         color2Enabled: false
     };
-    
+
     let isAPMode = false;
     let isInteracting = false;
 
@@ -293,9 +726,14 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchStatus().then(() => {
         if (isAPMode) {
             mainControls.style.display = 'none';
-            btnSettings.style.display = 'none';
+            mainControls.classList.remove('active');
+            // Nothing to navigate to before the device is on the network.
+            document.querySelectorAll('.side-nav, .bottom-nav').forEach(nav => {
+                nav.style.display = 'none';
+            });
             btnPower.style.display = 'none';
             apSetupScreen.style.display = 'block';
+            apSetupScreen.classList.add('active');
             apWifiContainer.appendChild(modalWifiContainer);
             modalWifiContainer.style.display = 'block';
             // MQTT can only be set up meaningfully once the device is on the real network,
@@ -305,6 +743,7 @@ document.addEventListener('DOMContentLoaded', () => {
             apSetupScreen.style.display = 'none';
             fetchState();
             setInterval(fetchState, 2000);
+            startLiveStrip();
             fetchConfig();
             fetchMqtt();
             fetchStatusLed();
@@ -326,7 +765,7 @@ document.addEventListener('DOMContentLoaded', () => {
         width: 250,
         color: state.color,
         borderWidth: 2,
-        borderColor: "rgba(255,255,255,0.2)",
+        borderColor: "rgba(128,128,128,0.4)",
         layout: [
             { component: iro.ui.Wheel }
         ]
@@ -338,9 +777,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     colorWheel.on('input:start', setInteracting);
-    
+
     colorWheel.on('color:change', (color) => {
         state.color = color.hexString;
+        applyLightAccent();
         // ensure throttle is defined before this is called!
         // wait, we defined throttle below... we need to move throttle up!
         if (typeof throttledSendState !== 'undefined') {
@@ -361,7 +801,7 @@ document.addEventListener('DOMContentLoaded', () => {
         width: 180,
         color: state.color2,
         borderWidth: 2,
-        borderColor: "rgba(255,255,255,0.2)",
+        borderColor: "rgba(128,128,128,0.4)",
         layout: [
             { component: iro.ui.Wheel }
         ]
@@ -390,12 +830,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    attachSliderValue(briSlider, asPercent);
+    attachSliderValue(whiteSlider, asPercent);
+    attachSliderValue(speedSlider, asPercent);
+    attachSliderValue(intensitySlider, asPercent);
+    attachSliderValue(document.getElementById('statusLedBri'), asPercent);
+
     briSlider.addEventListener('mousedown', setInteracting);
     briSlider.addEventListener('touchstart', setInteracting, {passive: true});
-    
+
     whiteSlider.addEventListener('mousedown', setInteracting);
     whiteSlider.addEventListener('touchstart', setInteracting, {passive: true});
-    
+
     speedSlider.addEventListener('mousedown', setInteracting);
     speedSlider.addEventListener('touchstart', setInteracting, {passive: true});
 
@@ -406,7 +852,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const swatches = document.querySelectorAll('.color-swatch');
     swatches.forEach(swatch => {
         swatch.addEventListener('click', (e) => {
-            const newColor = e.target.getAttribute('data-color');
+            const newColor = e.currentTarget.getAttribute('data-color');
             colorWheel.color.hexString = newColor;
             state.color = newColor;
             sendState({ color: state.color });
@@ -417,14 +863,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const whiteTypes = [30, 32, 33, 34, 35, 36, 37, 41, 42, 44, 45];
         return whiteTypes.includes(type);
     }
-    
+
     function hasDualWhiteChannel(type) {
         return type == 34 || type == 35 || type == 42 || type == 45; // WS2805, SM16825, PWM CCT, PWM RGB+CCT
     }
 
         function updatePinUI() {
         const type = parseInt(ledType.value);
-        
+
         // Toggle white slider
         const whiteSliderWrapper = document.getElementById('whiteSliderWrapper');
         if (whiteSliderWrapper) {
@@ -434,7 +880,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (nurWeissBtn) {
             nurWeissBtn.style.display = hasWhiteChannel(type) ? 'inline-block' : 'none';
         }
-        
+
                 const groupingGroup = document.getElementById('groupingGroup');
         if (groupingGroup) {
             // Grouping makes sense for digital strips (types < 40 or >= 50), not for PWM/Analog
@@ -460,7 +906,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (type >= 50 && type <= 54) { // 2-Wire SPI LEDs
             numPins = 2;
             labels = [t('lbl_data_pin'), t('lbl_clk_pin')];
-        } 
+        }
         else if (type == 40) { numPins = 1; labels = [t('lbl_on_off')]; }
         else if (type == 41) { numPins = 1; labels = [t('lbl_white_pin')]; }
         else if (type == 42) { numPins = 2; labels = [t('lbl_warm'), t('lbl_kalt')]; }
@@ -510,7 +956,7 @@ document.addEventListener('DOMContentLoaded', () => {
             sig.style.color = 'var(--text-muted)';
             sig.innerText = signal;
             const pin = document.createElement('div');
-            pin.style.color = 'white';
+            pin.style.color = 'var(--text-main)';
             pin.innerText = 'GPIO ' + gpio;
             table.appendChild(sig);
             table.appendChild(pin);
@@ -522,7 +968,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateAblUI() {
         let count = parseInt(ledCount.value) || 30;
         let additionalEspPower = 0;
-        
+
         if (segments && segments.length > 0) {
             segments.forEach(seg => {
                 if (seg.isSlave && seg.sharesPower) {
@@ -531,19 +977,143 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         }
-        
+
         const totalA = (((count * 55) / 1000) + additionalEspPower).toFixed(1);
-        ablRecommendedText.innerHTML = `${t('abl_total_leds_slaves')}: ${count}<br>${t('abl_recommended_psu')}: <strong style="color: #fff;">~${totalA} A</strong>`;
+        ablRecommendedText.innerHTML = `${t('abl_total_leds_slaves')}: ${count}<br>${t('abl_recommended_psu')}: <strong style="color: var(--text-main);">~${totalA} A</strong>`;
     }
-    
+
     ledCount.addEventListener('input', updateAblUI);
     ledCount.addEventListener('change', updateAblUI);
 
-    // Modal Logic
-    btnSettings.addEventListener('click', () => {
-        settingsModal.classList.add('show');
-        setTimeout(updateTabScrollShadow, 50);
+    // Switching the language translates everything carrying data-i18n, but the lists this file
+    // builds itself (segments, presets, schedules, panels, elements) keep whatever text they were
+    // born with - so they are built again. i18n.js fires this event for exactly that.
+    document.addEventListener('languageChanged', () => {
+        [renderSegmentsSelector, renderSegmentsSettings, renderPresetsList, renderPlaylistList,
+         renderSchedulesList, renderCanvasPanelsList, renderTextWidgetEditor, updateAblUI,
+         refreshSliderValues].forEach(render => {
+            try {
+                render();
+            } catch (e) {
+                console.log('re-render after language change failed', e);
+            }
+        });
+        if (activeArea === 'devices' && slavesList && slavesList.children.length) {
+            fetchSlaves();
+        }
     });
+
+    // --- Navigation ----------------------------------------------------------
+    // Four areas, one visible at a time. The sidebar (desktop) and the bottom bar (phone) hold
+    // the same four buttons, so both are updated from one place - and each area loads what it
+    // shows when it appears, which is what the eight tab buttons used to do one by one.
+    let activeArea = 'light';
+
+    function areaElement(name) {
+        return document.querySelector('.area[data-area="' + name + '"]');
+    }
+
+    function loadArea(name) {
+        if (name === 'scenes') {
+            fetchPresets();
+            fetchPlaylist();
+            fetchSchedules();
+        } else if (name === 'panel') {
+            fetchHardwareLimitsForSegments(() => updatePanelArea());
+            initEditorCanvas();
+            startMatrixPreview();
+            fetchWeatherStatus();
+            fetch('/api/segments').then(res => res.json()).then(data => {
+                if (Array.isArray(data)) segments = data;
+                renderTextWidgetEditor();
+                updatePanelArea();
+            }).catch(() => {});
+        } else if (name === 'devices' || name === 'settings') {
+            const current = areaElement(name).querySelector('.tab-btn.active');
+            if (current) loadDeviceView(current.getAttribute('data-tab'));
+            setTimeout(updateTabScrollShadow, 50);
+        }
+    }
+
+    function showArea(name, options) {
+        const target = areaElement(name);
+        if (!target) return;
+        const o = options || {};
+        // Leaving a form with unsaved edits asks first - the same promise the dialog used to make.
+        if (!o.force && settingsDirty && name !== activeArea) {
+            askConfirm({
+                title: t('confirm_discard_title'),
+                body: t('confirm_discard_body'),
+                ok: t('confirm_discard_ok'),
+                destructive: true
+            }).then(discard => {
+                if (discard) showArea(name, { force: true });
+            });
+            return;
+        }
+        settingsDirty = false;
+        if (name !== 'panel') stopMatrixPreview();
+        if (name === 'light') startLiveStrip();
+        else stopLiveStrip();
+        areas.forEach(area => area.classList.toggle('active', area === target));
+        navButtons.forEach(btn => {
+            const on = btn.getAttribute('data-area') === name;
+            btn.classList.toggle('active', on);
+            if (on) btn.setAttribute('aria-current', 'page');
+            else btn.removeAttribute('aria-current');
+        });
+        activeArea = name;
+        window.scrollTo({ top: 0, behavior: scrollBehavior() });
+        loadArea(name);
+    }
+
+    navButtons.forEach(btn => {
+        btn.addEventListener('click', () => showArea(btn.getAttribute('data-area')));
+    });
+
+    // Jumping straight to a sub-view (from the update banner, from the gear next to the
+    // segments, from the empty "Panel" area) - into whichever area holds it.
+    function showDeviceView(tabId) {
+        const pane = document.getElementById(tabId);
+        const area = pane ? pane.closest('.area') : null;
+        if (!area) return;
+        const name = area.getAttribute('data-area');
+        showArea(name);
+        if (activeArea !== name) return;   // the discard question was asked instead
+        const btn = area.querySelector('.tab-btn[data-tab="' + tabId + '"]');
+        if (btn) btn.click();
+    }
+
+    const updateBanner = document.getElementById('updateBanner');
+    if (updateBanner) {
+        updateBanner.addEventListener('click', () => showDeviceView('tab-system'));
+    }
+
+    const btnGoToPanelSetup = document.getElementById('btnGoToPanelSetup');
+    if (btnGoToPanelSetup) {
+        btnGoToPanelSetup.addEventListener('click', () => showDeviceView('tab-led'));
+    }
+
+    // The "Panel" area only makes sense with a panel behind it: without one it says so and
+    // offers the way to set one up. With one, the element editor needs the "Uhr / Text" effect,
+    // which is worth saying out loud instead of showing an empty box.
+    function updatePanelArea() {
+        const empty = document.getElementById('panelEmptyState');
+        const content = document.getElementById('panelContent');
+        const hint = document.getElementById('panelWidgetsHint');
+        const elements = document.getElementById('panelElementsCard');
+        if (!empty || !content) return;
+        const slavePanels = ((window.hardwareLimits && window.hardwareLimits.slaves) || [])
+            .some(sl => sl.ledType === 60 && sl.matrixWidth && sl.matrixHeight);
+        const hasPanel = !!(matrixEnable && matrixEnable.checked) || slavePanels;
+        empty.style.display = hasPanel ? 'none' : 'block';
+        content.style.display = hasPanel ? 'block' : 'none';
+        if (hint && elements) {
+            const editing = textWidgetEditor && textWidgetEditor.style.display !== 'none';
+            hint.style.display = hasPanel && !editing ? 'block' : 'none';
+            elements.style.display = editing ? 'block' : 'none';
+        }
+    }
 
     if (settingsTabsEl) {
         settingsTabsEl.addEventListener('scroll', updateTabScrollShadow);
@@ -558,69 +1128,77 @@ document.addEventListener('DOMContentLoaded', () => {
         }, { passive: false });
     }
 
+    function scrollBehavior() {
+        return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    }
+
     const tabsScrollLeftBtn = document.getElementById('tabsScrollLeft');
     const tabsScrollRightBtn = document.getElementById('tabsScrollRight');
     if (tabsScrollLeftBtn && settingsTabsEl) {
         tabsScrollLeftBtn.addEventListener('click', () => {
-            settingsTabsEl.scrollBy({ left: -140, behavior: 'smooth' });
+            settingsTabsEl.scrollBy({ left: -140, behavior: scrollBehavior() });
         });
     }
     if (tabsScrollRightBtn && settingsTabsEl) {
         tabsScrollRightBtn.addEventListener('click', () => {
-            settingsTabsEl.scrollBy({ left: 140, behavior: 'smooth' });
+            settingsTabsEl.scrollBy({ left: 140, behavior: scrollBehavior() });
         });
     }
 
-    closeSettings.addEventListener('click', () => {
-        settingsModal.classList.remove('show');
-        stopMatrixPreview();
+    // Most settings only reach the device when a Save button is pressed, so closing the dialog
+    // by accident - a click next to it, or Escape - used to throw the edits away silently. The
+    // dialog now knows whether anything is unsaved and asks before it does that.
+    let settingsDirty = false;
+
+    // Tabs whose fields wait for a Save button. The other tabs (presets, the widget editor, the
+    // onboard LED) apply immediately and have nothing to lose.
+    ['tab-led', 'tab-segments', 'tab-schedules', 'modalWifiContainer'].forEach(id => {
+        const pane = document.getElementById(id);
+        if (!pane) return;
+        const mark = () => { settingsDirty = true; };
+        pane.addEventListener('input', mark);
+        pane.addEventListener('change', mark);
     });
 
-    window.addEventListener('click', (e) => {
-        if (e.target === settingsModal) {
-            settingsModal.classList.remove('show');
-            stopMatrixPreview();
+    // A Save button settles the account, wherever it sits - including the ones built per
+    // device at runtime.
+    document.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('button') : null;
+        if (btn && btn.id && btn.id.indexOf('btnSave') === 0) settingsDirty = false;
+    }, true);
+
+    // Saving keeps you where you are now, so the only thing left to do is forget the edits.
+    function markSettingsSaved() {
+        settingsDirty = false;
+    }
+
+    // --- Sub-views of "Geräte" -----------------------------------------------
+    function loadDeviceView(targetId) {
+        if (targetId === 'tab-slaves') {
+            fetchSlaves();
+        } else if (targetId === 'tab-segments') {
+            fetchHardwareLimitsForSegments(() => renderSegmentsSettings());
+        } else if (targetId === 'tab-led') {
+            fetchHardwareLimitsForSegments(() => renderCanvasPanelsList());
+        } else if (targetId === 'modalWifiContainer') {
+            fetchWlanStatus();
         }
-    });
+    }
 
-    // Tab Logic
     tabBtns.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            tabBtns.forEach(btn => btn.classList.remove('active'));
-            tabContents.forEach(content => content.classList.remove('active'));
-
-            e.target.classList.add('active');
-            const targetId = e.target.getAttribute('data-tab');
-            document.getElementById(targetId).classList.add('active');
-
-            if (targetId !== 'tab-matrix') stopMatrixPreview();
-
-            if (targetId === 'tab-slaves') {
-                fetchSlaves();
-            }
-            if (targetId === 'tab-segments') {
-                fetchHardwareLimitsForSegments(() => renderSegmentsSettings());
-            }
-            if (targetId === 'tab-matrix') {
-                fetchHardwareLimitsForSegments(() => renderCanvasPanelsList());
-                initEditorCanvas();
-                startMatrixPreview();
-                fetchWeatherStatus();
-                fetch('/api/segments').then(res => res.json()).then(data => {
-                    if (Array.isArray(data)) segments = data;
-                    renderTextWidgetEditor();
-                }).catch(() => {});
-            }
-            if (targetId === 'modalWifiContainer') {
-                fetchWlanStatus();
-            }
-            if (targetId === 'tab-presets') {
-                fetchPresets();
-                fetchPlaylist();
-            }
-            if (targetId === 'tab-schedules') {
-                fetchSchedules();
-            }
+        btn.addEventListener('click', () => {
+            const targetId = btn.getAttribute('data-tab');
+            const area = btn.closest('.area');
+            area.querySelectorAll('.tab-btn').forEach(other => {
+                const on = other === btn;
+                other.classList.toggle('active', on);
+                if (on) other.setAttribute('aria-current', 'page');
+                else other.removeAttribute('aria-current');
+            });
+            area.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.toggle('active', content.id === targetId);
+            });
+            loadDeviceView(targetId);
         });
     });
 
@@ -635,20 +1213,24 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch(() => { console.error("Could not fetch slaves limits"); });
     }
 
+    // Toggles the "on" look and tells screen readers the state at the same time.
+    function setPowerState(button, on) {
+        if (!button) return;
+        button.classList.toggle('on', !!on);
+        button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+
     // Event Listeners - State
     btnPower.addEventListener('click', () => {
         const anyOn = segments.some(s => s.on);
         const newState = !anyOn;
-        
+
         segments.forEach(s => s.on = newState);
         state.on = newState;
         updateUI();
-        
-        if (btnSegPower) {
-            if (segments[currentSegmentId].on) btnSegPower.classList.add('on');
-            else btnSegPower.classList.remove('on');
-        }
-        
+
+        setPowerState(btnSegPower, segments[currentSegmentId].on);
+
         const updates = segments.map((s, idx) => ({ id: idx, on: newState }));
         fetch('/api/state', {
             method: 'POST',
@@ -666,16 +1248,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (btnSegSettings) {
-        btnSegSettings.addEventListener('click', () => {
-            fetchHardwareLimitsForSegments(() => {
-                renderSegmentsSettings();
-                settingsModal.classList.add('show');
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                document.querySelector('.tab-btn[data-tab="tab-segments"]').classList.add('active');
-                document.getElementById('tab-segments').classList.add('active');
-            });
-        });
+        btnSegSettings.addEventListener('click', () => showDeviceView('tab-segments'));
     }
 
     const syncCheckbox = document.getElementById('syncSegments');
@@ -684,7 +1257,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target.checked) {
                 const activeSeg = segments[currentSegmentId];
                 if (!activeSeg) return;
-                
+
                 let segUpdates = [];
                 for (let i = 0; i < segments.length; i++) {
                     if (segments[i].syncEnabled === false) continue; // opted out of the group
@@ -693,7 +1266,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     segments[i].effect = activeSeg.effect;
                     segments[i].speed = activeSeg.speed !== undefined ? activeSeg.speed : 128;
                     segments[i].color = activeSeg.color;
-                    
+
                     // Convert color to hex for sending if it's stored as int
                     let c = segments[i].color;
                     if (typeof c === 'number') {
@@ -701,7 +1274,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         while(c.length < 6) c = "0" + c;
                         c = "#" + c.substring(c.length - 6);
                     }
-                    
+
                     segUpdates.push({
                         id: i,
                         on: segments[i].on,
@@ -711,13 +1284,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         color: c
                     });
                 }
-                
+
                 fetch('/api/state', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ sync: true, seg: segUpdates })
                 });
-                
+
                 updateUI();
             }
             renderSegmentsSelector(); // the per-segment boxes appear and disappear with the switch
@@ -728,12 +1301,12 @@ document.addEventListener('DOMContentLoaded', () => {
         state.bri = parseInt(e.target.value);
         throttledSendState({ bri: state.bri });
     });
-    
+
     briSlider.addEventListener('change', (e) => {
         state.bri = parseInt(e.target.value);
         sendState({ bri: state.bri });
     });
-    
+
     whiteSlider.addEventListener('input', (e) => {
         if (state.effect === 10) {
             state.cct = parseInt(e.target.value);
@@ -743,7 +1316,7 @@ document.addEventListener('DOMContentLoaded', () => {
             throttledSendState({ white: state.white });
         }
     });
-    
+
     whiteSlider.addEventListener('change', (e) => {
         if (state.effect === 10) {
             state.cct = parseInt(e.target.value);
@@ -753,7 +1326,7 @@ document.addEventListener('DOMContentLoaded', () => {
             sendState({ white: state.white });
         }
     });
-    
+
     const whiteOnlyToggle = document.getElementById('whiteOnlyToggle');
     if (whiteOnlyToggle) {
         whiteOnlyToggle.addEventListener('change', (e) => {
@@ -769,15 +1342,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (btnOpenTextWidgets) {
-        btnOpenTextWidgets.addEventListener('click', () => {
-            settingsModal.classList.add('show');
-            document.querySelector('.tab-btn[data-tab="tab-matrix"]').click();
-        });
+        btnOpenTextWidgets.addEventListener('click', () => showArea('panel'));
     }
 
     effectsGrid.addEventListener('click', (e) => {
-        if(e.target.classList.contains('effect-btn')) {
-            state.effect = parseInt(e.target.dataset.id);
+        const btn = e.target && e.target.closest ? e.target.closest('.effect-btn') : null;
+        if (btn) {
+            state.effect = parseInt(btn.dataset.id);
             updateUI();
             sendState({ effect: state.effect });
         }
@@ -792,7 +1363,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.speed = parseInt(e.target.value);
         throttledSendState({ speed: state.speed });
     });
-    
+
     speedSlider.addEventListener('change', (e) => {
         state.speed = parseInt(e.target.value);
         sendState({ speed: state.speed });
@@ -835,22 +1406,17 @@ document.addEventListener('DOMContentLoaded', () => {
             body: JSON.stringify(payload)
         }).then(res => {
             if(res.ok) {
-                const originalText = btnSaveConfig.innerText;
-                const originalBg = btnSaveConfig.style.backgroundColor;
-                btnSaveConfig.innerText = 'Gespeichert!';
-                btnSaveConfig.style.backgroundColor = '#10b981';
-                setTimeout(() => {
-                    btnSaveConfig.innerText = originalText;
-                    btnSaveConfig.style.backgroundColor = originalBg || '';
-                    settingsModal.classList.remove('show');
-                }, 1000);
+                markSettingsSaved();
+                flashButton(btnSaveConfig, t('btn_saved'));
+            } else {
+                saveFailed(btnSaveConfig);
             }
-        });
+        }).catch(() => saveFailed(btnSaveConfig));
     });
 
     // Event Listeners - WiFi
     btnScanNetworks.addEventListener('click', () => {
-        btnScanNetworks.innerText = 'Scanne...';
+        btnScanNetworks.innerText = t('btn_scanning');
         btnScanNetworks.disabled = true;
         fetch('/api/scan').then(() => {
             setTimeout(fetchScanResults, 3000);
@@ -865,10 +1431,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     setTimeout(fetchScanResults, 2000);
                     return;
                 }
-                btnScanNetworks.innerText = 'Netzwerke Scannen';
+                btnScanNetworks.innerText = t('btn_scan_networks');
                 btnScanNetworks.disabled = false;
-                
-                let html = '<option>Wähle...</option>';
+
+                wifiSelect.innerHTML = '<option value="">' + t('dyn_choose') + '</option>';
                 data.forEach(net => {
                     const opt = document.createElement('option');
                     opt.value = net.ssid;
@@ -880,7 +1446,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     wifiSelect.addEventListener('change', (e) => {
-        if(e.target.value !== 'Wähle...') {
+        if (e.target.value) {
             wifiSsid.value = e.target.value;
         }
     });
@@ -894,9 +1460,9 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(res => res.json())
             .then(data => {
                 if (data.state === 'success') {
-                    apConnectStatus.style.background = 'rgba(16, 185, 129, 0.1)';
-                    apConnectStatus.style.border = '1px solid rgba(16, 185, 129, 0.3)';
-                    apConnectMessage.style.color = '#10b981';
+                    apConnectStatus.style.background = 'var(--surface-2)';
+                    apConnectStatus.style.border = '1px solid var(--separator)';
+                    apConnectMessage.style.color = 'var(--text-main)';
                     apConnectMessage.innerText = t('ap_connect_success') + (data.ssid ? ' (' + data.ssid + ')' : '');
                     apConnectIp.innerText = 'http://' + data.ip;
                     apConnectResult.style.display = 'block';
@@ -907,7 +1473,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.state === 'failed') {
                     apConnectStatus.style.background = 'rgba(239, 68, 68, 0.1)';
                     apConnectStatus.style.border = '1px solid rgba(239, 68, 68, 0.5)';
-                    apConnectMessage.style.color = '#ef4444';
+                    apConnectMessage.style.color = 'var(--danger)';
                     apConnectMessage.innerText = t('ap_connect_failed');
                     apConnectResult.style.display = 'none';
                     btnSaveWifi.innerText = t('btn_save_wlan');
@@ -931,8 +1497,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isAPMode) {
             btnSaveWifi.disabled = true;
             apConnectStatus.style.display = 'block';
-            apConnectStatus.style.background = 'rgba(255,255,255,0.05)';
-            apConnectStatus.style.border = '1px solid rgba(255,255,255,0.1)';
+            apConnectStatus.style.background = 'var(--fill-subtle)';
+            apConnectStatus.style.border = '1px solid var(--separator)';
             apConnectMessage.style.color = 'var(--text-muted)';
             apConnectMessage.innerText = t('ap_connect_testing');
             apConnectResult.style.display = 'none';
@@ -949,15 +1515,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 pollWifiSetupStatus(Date.now() + 40000);
                 return;
             }
-            const originalText = btnSaveWifi.innerText;
-            btnSaveWifi.innerText = 'Gespeichert!';
-            btnSaveWifi.style.backgroundColor = '#10b981';
-            setTimeout(() => {
-                btnSaveWifi.innerText = originalText;
-                btnSaveWifi.style.backgroundColor = '';
-                settingsModal.classList.remove('show');
-            }, 1500);
-        });
+            markSettingsSaved();
+            flashButton(btnSaveWifi, t('btn_saved'), { duration: 1500 });
+        }).catch(() => saveFailed(btnSaveWifi));
     });
 
     if (btnApFinish) {
@@ -978,34 +1538,27 @@ document.addEventListener('DOMContentLoaded', () => {
         payload.append('user', mqttUser.value);
         payload.append('pass', mqttPass.value);
         payload.append('topic', mqttTopic.value);
-        
+
         btnSaveMqtt.innerText = t('btn_saving');
         fetch('/api/mqtt', {
             method: 'POST',
             body: payload
         }).then(res => {
-            if(res.ok) {
-                const originalText = btnSaveMqtt.innerText;
-                btnSaveMqtt.innerText = 'Gespeichert! Neustart...';
-                btnSaveMqtt.style.backgroundColor = '#10b981';
-                setTimeout(() => {
-                    btnSaveMqtt.innerText = originalText;
-                    btnSaveMqtt.style.backgroundColor = '';
-                    settingsModal.classList.remove('show');
-                    location.reload();
-                }, 2000);
+            if (res.ok) {
+                mqttSaved();
+            } else {
+                saveFailed(btnSaveMqtt);
             }
-        }).catch(e => {
-            const originalText = btnSaveMqtt.innerText;
-            btnSaveMqtt.innerText = 'Gespeichert! Neustart...';
-            btnSaveMqtt.style.backgroundColor = '#10b981';
-            setTimeout(() => {
-                btnSaveMqtt.innerText = originalText;
-                btnSaveMqtt.style.backgroundColor = '';
-                settingsModal.classList.remove('show');
-                location.reload();
-            }, 2000);
-        });
+        // The device restarts on save, so a dropped answer means the same as a good one.
+        }).catch(() => mqttSaved());
+
+        function mqttSaved() {
+            markSettingsSaved();
+            flashButton(btnSaveMqtt, t('btn_saved_restart'), {
+                duration: 2000,
+                then: () => location.reload()
+            });
+        }
     });
 
     // Event Listeners - Segments
@@ -1014,17 +1567,17 @@ document.addEventListener('DOMContentLoaded', () => {
         segments.forEach((seg, idx) => {
             const div = document.createElement('div');
             div.style.padding = '10px';
-            div.style.background = 'rgba(255,255,255,0.05)';
+            div.style.background = 'var(--fill-subtle)';
             div.style.borderRadius = '8px';
             div.style.display = 'flex';
             div.style.alignItems = 'center';
             div.style.gap = '10px';
             div.style.flexWrap = 'wrap';
-            
+
             let minStart = 1;
             let maxStop = window.hardwareLimits.master || 30;
             let currentTarget = "master";
-            
+
             if (seg.isSlave) {
                 currentTarget = "slave_" + seg.slaveId;
                 let offset = window.hardwareLimits.master || 30;
@@ -1038,36 +1591,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     offset += s.ledCount;
                 }
             }
-            
-            let targetOptions = `<option style="background: #1f2937; color: white;" value="master" ${currentTarget === 'master' ? 'selected' : ''}>${t('dyn_master')}</option>`;
+
+            let targetOptions = `<option style="background: var(--surface-2); color: var(--text-main);" value="master" ${currentTarget === 'master' ? 'selected' : ''}>${t('dyn_master')}</option>`;
             if (window.hardwareLimits && window.hardwareLimits.slaves) {
                 window.hardwareLimits.slaves.forEach(s => {
                     const val = "slave_" + s.id;
                     const displayName = s.name !== 'Unknown' && s.name ? s.name : t('dyn_slave') + ' ' + s.id;
-                    targetOptions += `<option style="background: #1f2937; color: white;" value="${val}" ${currentTarget === val ? 'selected' : ''}>${displayName}</option>`;
+                    targetOptions += `<option style="background: var(--surface-2); color: var(--text-main);" value="${val}" ${currentTarget === val ? 'selected' : ''}>${displayName}</option>`;
                 });
             }
-            
+
             div.innerHTML = `
                 <div style="flex: 1; min-width: 120px;">
-                    <label style="font-size: 12px; margin-bottom: 2px;">${t('seg_target')}</label>
-                    <select class="seg-target" data-idx="${idx}" style="padding: 8px; width: 100%; min-width: 0; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;">
+                    <label style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_target')}</label>
+                    <select class="seg-target field" data-idx="${idx}">
                         ${targetOptions}
                     </select>
                 </div>
                 <div style="flex: 2; min-width: 120px;">
-                    <label style="font-size: 12px; margin-bottom: 2px;">${t('seg_name')}</label>
-                    <input type="text" class="seg-name" data-idx="${idx}" value="${translateSegmentName(seg.name) || (t('dyn_segment') + ' ' + idx)}" style="padding: 8px; width: 100%; min-width: 0; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;">
+                    <label style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_name')}</label>
+                    <input type="text" class="seg-name field" data-idx="${idx}" value="${translateSegmentName(seg.name) || (t('dyn_segment') + ' ' + idx)}">
                 </div>
                 <div style="flex: 1; min-width: 80px;">
-                    <label style="font-size: 12px; margin-bottom: 2px;">${t('seg_start')} (${minStart}-${maxStop})</label>
-                    <input type="number" class="seg-start" data-idx="${idx}" min="${minStart}" max="${maxStop}" value="${seg.start + 1}" style="padding: 8px; width: 100%; min-width: 0; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;">
+                    <label style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_start')} (${minStart}-${maxStop})</label>
+                    <input type="number" class="seg-start field" data-idx="${idx}" min="${minStart}" max="${maxStop}" value="${seg.start + 1}">
                 </div>
                 <div style="flex: 1; min-width: 80px;">
-                    <label style="font-size: 12px; margin-bottom: 2px;">${t('seg_stop')} (${minStart}-${maxStop})</label>
-                    <input type="number" class="seg-stop" data-idx="${idx}" min="${minStart}" max="${maxStop}" value="${seg.stop}" style="padding: 8px; width: 100%; min-width: 0; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;">
+                    <label style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_stop')} (${minStart}-${maxStop})</label>
+                    <input type="number" class="seg-stop field" data-idx="${idx}" min="${minStart}" max="${maxStop}" value="${seg.stop}">
                 </div>
-                <button class="icon-btn btn-del-seg" data-idx="${idx}" style="color: #ff4757; background: rgba(255,71,87,0.1); margin-top: 15px; width: 34px; height: 34px; flex-shrink: 0;">
+                <button class="icon-btn icon-btn-danger btn-del-seg" data-idx="${idx}" style="margin-top: 15px; flex-shrink: 0;">
                     <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
                         <polyline points="3 6 5 6 21 6"></polyline>
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -1076,7 +1629,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ` + (seg.isSlave ? `
                 <div style="flex: 100%; margin-top: 10px; margin-bottom: 5px;">
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); cursor: pointer;">
-                        <input type="checkbox" class="seg-shares-power" data-idx="${idx}" ${seg.sharesPower ? 'checked' : ''} style="transform: scale(1.2);">
+                        <input type="checkbox" class="seg-shares-power" data-idx="${idx}" ${seg.sharesPower ? 'checked' : ''}>
                         ${t('seg_shares')}
                     </label>
                 </div>
@@ -1084,7 +1637,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
             segmentsListContainer.appendChild(div);
         });
-        
+
         document.querySelectorAll('.seg-target').forEach(i => i.addEventListener('change', e => {
             const idx = e.target.dataset.idx;
             const val = e.target.value;
@@ -1097,7 +1650,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 segments[idx].isSlave = true;
                 const newId = parseInt(val.replace('slave_', ''));
                 segments[idx].slaveId = newId;
-                
+
                 let offset = window.hardwareLimits.master || 30;
                 for (let j = 0; j < window.hardwareLimits.slaves.length; j++) {
                     const s = window.hardwareLimits.slaves[j];
@@ -1151,18 +1704,13 @@ document.addEventListener('DOMContentLoaded', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(segments)
         }).then(res => {
-            if(res.ok) {
-                const originalText = btnSaveSegments.innerText;
-                btnSaveSegments.innerText = 'Gespeichert!';
-                btnSaveSegments.style.backgroundColor = '#10b981';
-                setTimeout(() => {
-                    btnSaveSegments.innerText = originalText;
-                    btnSaveSegments.style.backgroundColor = '';
-                    settingsModal.classList.remove('show');
-                    fetchState();
-                }, 1000);
+            if (res.ok) {
+                markSettingsSaved();
+                flashButton(btnSaveSegments, t('btn_saved'), { then: () => fetchState() });
+            } else {
+                saveFailed(btnSaveSegments);
             }
-        });
+        }).catch(() => saveFailed(btnSaveSegments));
     });
 
     // --- Presets ---
@@ -1183,7 +1731,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (ids.length === 0) {
             const empty = document.createElement('div');
-            empty.style.cssText = 'color: var(--text-muted); font-size: 13px; padding: 10px 0;';
+            empty.className = 'empty-note';
             empty.setAttribute('data-i18n', 'preset_none');
             empty.innerText = t('preset_none') || 'Noch keine Presets gespeichert.';
             presetsListContainer.appendChild(empty);
@@ -1193,16 +1741,16 @@ document.addEventListener('DOMContentLoaded', () => {
         ids.forEach(id => {
             const preset = currentPresets[id];
             const row = document.createElement('div');
-            row.style.cssText = 'display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 8px 10px;';
+            row.className = 'list-row';
 
             const nameSpan = document.createElement('span');
-            nameSpan.style.cssText = 'flex: 1; font-size: 14px;';
+            nameSpan.className = 'list-row-title';
             nameSpan.innerText = preset.name || ('Preset ' + id);
             row.appendChild(nameSpan);
 
             const btnApply = document.createElement('button');
             btnApply.className = 'btn btn-secondary';
-            btnApply.style.cssText = 'padding: 5px 10px; font-size: 12px;';
+            btnApply.classList.add('btn-chip');
             btnApply.innerText = t('preset_btn_apply') || 'Anwenden';
             btnApply.addEventListener('click', () => {
                 fetch('/api/presets/apply', {
@@ -1215,7 +1763,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const btnOverwrite = document.createElement('button');
             btnOverwrite.className = 'btn btn-secondary';
-            btnOverwrite.style.cssText = 'padding: 5px 10px; font-size: 12px;';
+            btnOverwrite.classList.add('btn-chip');
             btnOverwrite.innerText = t('preset_btn_overwrite') || 'Überschreiben';
             btnOverwrite.addEventListener('click', () => {
                 fetch('/api/presets/save', {
@@ -1227,8 +1775,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.appendChild(btnOverwrite);
 
             const btnDelete = document.createElement('button');
-            btnDelete.className = 'icon-btn';
-            btnDelete.style.cssText = 'color: #ff4757; background: rgba(255,71,87,0.1); width: 30px; height: 30px; flex-shrink: 0;';
+            btnDelete.className = 'icon-btn icon-btn-danger';
             btnDelete.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
             btnDelete.addEventListener('click', () => {
                 fetch('/api/presets/delete', {
@@ -1285,10 +1832,9 @@ document.addEventListener('DOMContentLoaded', () => {
             row.style.cssText = 'display: flex; align-items: center; gap: 8px;';
 
             const select = document.createElement('select');
-            select.style.cssText = 'flex: 1; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;';
+            select.className = 'field field-flex';
             presetIds.forEach(id => {
                 const opt = document.createElement('option');
-                opt.style.cssText = 'background: #1f2937; color: white;';
                 opt.value = id;
                 opt.innerText = currentPresets[id].name || ('Preset ' + id);
                 if (parseInt(id) === entry.id) opt.selected = true;
@@ -1301,18 +1847,17 @@ document.addEventListener('DOMContentLoaded', () => {
             durationInput.type = 'number';
             durationInput.min = '1';
             durationInput.value = entry.duration;
-            durationInput.style.cssText = 'width: 70px; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;';
+            durationInput.className = 'field field-narrow';
             durationInput.addEventListener('change', (e) => { entry.duration = parseInt(e.target.value) || 10; });
             row.appendChild(durationInput);
 
             const secLabel = document.createElement('span');
-            secLabel.style.cssText = 'font-size: 12px; color: var(--text-muted);';
+            secLabel.className = 'hint';
             secLabel.innerText = 's';
             row.appendChild(secLabel);
 
             const btnRemove = document.createElement('button');
-            btnRemove.className = 'icon-btn';
-            btnRemove.style.cssText = 'color: #ff4757; background: rgba(255,71,87,0.1); width: 30px; height: 30px; flex-shrink: 0;';
+            btnRemove.className = 'icon-btn icon-btn-danger';
             btnRemove.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
             btnRemove.addEventListener('click', () => {
                 currentPlaylist.entries.splice(idx, 1);
@@ -1328,7 +1873,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnAddPlaylistEntry.addEventListener('click', () => {
             const presetIds = Object.keys(currentPresets);
             if (presetIds.length === 0) {
-                alert(t('preset_none') || 'Noch keine Presets gespeichert.');
+                showToast(t('preset_none'), 'info');
                 return;
             }
             currentPlaylist.entries.push({ id: parseInt(presetIds[0]), duration: 10 });
@@ -1345,15 +1890,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(currentPlaylist)
             }).then(res => {
                 if (res.ok) {
-                    const originalText = btnSavePlaylist.innerText;
-                    btnSavePlaylist.innerText = 'Gespeichert!';
-                    btnSavePlaylist.style.backgroundColor = '#10b981';
-                    setTimeout(() => {
-                        btnSavePlaylist.innerText = originalText;
-                        btnSavePlaylist.style.backgroundColor = '';
-                    }, 1000);
+                    flashButton(btnSavePlaylist, t('btn_saved'));
+                } else {
+                    saveFailed(btnSavePlaylist);
                 }
-            });
+            }).catch(() => saveFailed(btnSavePlaylist));
         });
     }
 
@@ -1396,19 +1937,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         currentSchedules.entries.forEach((entry, idx) => {
             const row = document.createElement('div');
-            row.style.cssText = 'display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 8px 10px; flex-wrap: wrap;';
+            row.className = 'list-row list-row-wrap';
 
             const enabledCb = document.createElement('input');
             enabledCb.type = 'checkbox';
             enabledCb.checked = entry.enabled !== false;
-            enabledCb.style.cssText = 'transform: scale(1.2); flex-shrink: 0;';
+            enabledCb.style.cssText = 'flex-shrink: 0;';
             enabledCb.addEventListener('change', (e) => { entry.enabled = e.target.checked; });
             row.appendChild(enabledCb);
 
             const timeInput = document.createElement('input');
             timeInput.type = 'time';
             timeInput.value = String(entry.hour).padStart(2, '0') + ':' + String(entry.minute).padStart(2, '0');
-            timeInput.style.cssText = 'padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;';
+            timeInput.className = 'field field-auto';
             timeInput.addEventListener('change', (e) => {
                 const parts = e.target.value.split(':');
                 entry.hour = parseInt(parts[0]) || 0;
@@ -1424,7 +1965,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 dayBtn.type = 'button';
                 dayBtn.innerText = (t('day_' + wday) || ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][wday]);
                 const active = (entry.days & dayBit) !== 0;
-                dayBtn.style.cssText = 'padding: 5px 7px; font-size: 11px; border-radius: 5px; border: 1px solid var(--border-color); cursor: pointer; background: ' + (active ? 'var(--primary)' : 'rgba(0,0,0,0.2)') + '; color: white;';
+                // A day is a 44px target, and the chosen ones say so through aria-pressed as
+                // well as through the accent colour.
+                dayBtn.className = active ? 'day-btn active' : 'day-btn';
+                dayBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
                 dayBtn.addEventListener('click', () => {
                     entry.days = entry.days ^ dayBit;
                     renderSchedulesList();
@@ -1434,10 +1978,9 @@ document.addEventListener('DOMContentLoaded', () => {
             row.appendChild(daysWrapper);
 
             const actionSelect = document.createElement('select');
-            actionSelect.style.cssText = 'padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;';
+            actionSelect.className = 'field field-auto';
             [[0, 'schedule_action_on', 'An'], [1, 'schedule_action_off', 'Aus'], [2, 'schedule_action_preset', 'Preset']].forEach(([val, key, fallback]) => {
                 const opt = document.createElement('option');
-                opt.style.cssText = 'background: #1f2937; color: white;';
                 opt.value = val;
                 opt.innerText = t(key) || fallback;
                 if (entry.action === val) opt.selected = true;
@@ -1451,7 +1994,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (entry.action === 2) {
                 const presetSelect = document.createElement('select');
-                presetSelect.style.cssText = 'flex: 1; min-width: 100px; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none;';
+                presetSelect.className = 'field field-flex';
                 if (presetIds.length === 0) {
                     const opt = document.createElement('option');
                     opt.innerText = t('preset_none') || 'Noch keine Presets gespeichert.';
@@ -1459,7 +2002,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     presetIds.forEach(id => {
                         const opt = document.createElement('option');
-                        opt.style.cssText = 'background: #1f2937; color: white;';
                         opt.value = id;
                         opt.innerText = currentPresets[id].name || ('Preset ' + id);
                         if (parseInt(id) === entry.presetId) opt.selected = true;
@@ -1471,8 +2013,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const btnRemove = document.createElement('button');
-            btnRemove.className = 'icon-btn';
-            btnRemove.style.cssText = 'color: #ff4757; background: rgba(255,71,87,0.1); width: 30px; height: 30px; flex-shrink: 0;';
+            btnRemove.className = 'icon-btn icon-btn-danger';
             btnRemove.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
             btnRemove.addEventListener('click', () => {
                 currentSchedules.entries.splice(idx, 1);
@@ -1500,16 +2041,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(currentSchedules)
             }).then(res => {
                 if (res.ok) {
-                    const originalText = btnSaveSchedules.innerText;
-                    btnSaveSchedules.innerText = 'Gespeichert!';
-                    btnSaveSchedules.style.backgroundColor = '#10b981';
-                    setTimeout(() => {
-                        btnSaveSchedules.innerText = originalText;
-                        btnSaveSchedules.style.backgroundColor = '';
-                    }, 1000);
+                    flashButton(btnSaveSchedules, t('btn_saved'));
                     fetchScheduleTime();
+                } else {
+                    saveFailed(btnSaveSchedules);
                 }
-            });
+            }).catch(() => saveFailed(btnSaveSchedules));
         });
     }
 
@@ -1533,7 +2070,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (currentCanvasPanels.length === 0) {
             const empty = document.createElement('div');
-            empty.style.cssText = 'color: var(--text-muted); font-size: 12px; padding: 5px 0;';
+            empty.className = 'empty-note';
             empty.setAttribute('data-i18n', 'canvas_none');
             empty.innerText = t('canvas_none') || 'Keine zusätzlichen Panels konfiguriert.';
             canvasPanelsList.appendChild(empty);
@@ -1542,10 +2079,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         currentCanvasPanels.forEach((panel, idx) => {
             const row = document.createElement('div');
-            row.style.cssText = 'background: rgba(255,255,255,0.05); border-radius: 8px; padding: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end;';
+            row.className = 'list-row list-row-wrap';
 
             const slaveSelect = document.createElement('select');
-            slaveSelect.style.cssText = 'flex: 1; min-width: 100px; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none; font-size: 12px;';
+            slaveSelect.className = 'field field-flex';
             if (slaves.length === 0) {
                 const opt = document.createElement('option');
                 opt.innerText = t('dyn_slave') || 'Slave';
@@ -1553,7 +2090,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 slaves.forEach(s => {
                     const opt = document.createElement('option');
-                    opt.style.cssText = 'background: #1f2937; color: white;';
                     opt.value = s.id;
                     opt.innerText = (s.name && s.name !== 'Unknown') ? s.name : ((t('dyn_slave') || 'Slave') + ' ' + s.id);
                     if (panel.slaveId === s.id) opt.selected = true;
@@ -1574,7 +2110,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 input.type = 'number';
                 input.min = '0';
                 input.value = value;
-                input.style.cssText = 'width: 100%; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none; font-size: 12px;';
+                input.className = 'field';
                 input.addEventListener('change', (e) => onChange(parseInt(e.target.value) || 0));
                 wrap.appendChild(input);
                 return wrap;
@@ -1586,10 +2122,9 @@ document.addEventListener('DOMContentLoaded', () => {
             row.appendChild(makeNumberInput('Y', panel.offsetY, v => panel.offsetY = v, 50));
 
             const layoutSelect = document.createElement('select');
-            layoutSelect.style.cssText = 'padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; color: white; outline: none; font-size: 12px;';
+            layoutSelect.className = 'field field-auto';
             [[0, t('matrix_layout_serpentine') || 'Serpentine'], [1, t('matrix_layout_progressive') || 'Linear']].forEach(([val, label]) => {
                 const opt = document.createElement('option');
-                opt.style.cssText = 'background: #1f2937; color: white;';
                 opt.value = val;
                 opt.innerText = label;
                 if (panel.layout === val) opt.selected = true;
@@ -1599,8 +2134,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.appendChild(layoutSelect);
 
             const btnRemove = document.createElement('button');
-            btnRemove.className = 'icon-btn';
-            btnRemove.style.cssText = 'color: #ff4757; background: rgba(255,71,87,0.1); width: 30px; height: 30px; flex-shrink: 0;';
+            btnRemove.className = 'icon-btn icon-btn-danger';
             btnRemove.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
             btnRemove.addEventListener('click', () => {
                 currentCanvasPanels.splice(idx, 1);
@@ -1629,15 +2163,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(currentCanvasPanels)
             }).then(res => {
                 if (res.ok) {
-                    const originalText = btnSaveCanvasPanels.innerText;
-                    btnSaveCanvasPanels.innerText = 'Gespeichert!';
-                    btnSaveCanvasPanels.style.backgroundColor = '#10b981';
-                    setTimeout(() => {
-                        btnSaveCanvasPanels.innerText = originalText;
-                        btnSaveCanvasPanels.style.backgroundColor = '';
-                    }, 1000);
+                    flashButton(btnSaveCanvasPanels, t('btn_saved'));
+                } else {
+                    saveFailed(btnSaveCanvasPanels);
                 }
-            });
+            }).catch(() => saveFailed(btnSaveCanvasPanels));
         });
     }
 
@@ -1652,18 +2182,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             }).then(res => {
-                if(res.ok) {
-                    const originalText = btnSaveButtons.innerText;
-                    btnSaveButtons.innerText = 'Gespeichert! Neustart...';
-                    btnSaveButtons.style.backgroundColor = '#10b981';
-                    setTimeout(() => {
-                        btnSaveButtons.innerText = originalText;
-                        btnSaveButtons.style.backgroundColor = '';
-                        settingsModal.classList.remove('show');
-                        location.reload();
-                    }, 2000);
+                if (res.ok) {
+                    markSettingsSaved();
+                    flashButton(btnSaveButtons, t('btn_saved_restart'), {
+                        duration: 2000,
+                        then: () => location.reload()
+                    });
+                } else {
+                    saveFailed(btnSaveButtons);
                 }
-            });
+            }).catch(() => saveFailed(btnSaveButtons));
         });
     }
 
@@ -1677,19 +2205,28 @@ document.addEventListener('DOMContentLoaded', () => {
         const syncOn = !!(syncBox && syncBox.checked);
         if (syncOn) {
             const hint = document.createElement('div');
-            hint.style.cssText = 'font-size: 11px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.4;';
+            hint.className = 'hint';
             hint.innerText = t('seg_sync_hint');
             segmentSelector.appendChild(hint);
         }
 
         segments.forEach((seg, idx) => {
             const btn = document.createElement('button');
-            btn.className = idx === currentSegmentId ? 'effect-btn active' : 'btn btn-primary';
-            btn.style.width = '100%';
-            btn.style.textAlign = 'left';
-            btn.style.cursor = 'grab';
-            btn.innerText = `${translateSegmentName(seg.name) || (t('dyn_segment') + ' ' + idx)} (${seg.start + 1} - ${seg.stop})`;
-            
+            btn.type = 'button';
+            btn.className = idx === currentSegmentId ? 'seg-row-btn active' : 'seg-row-btn';
+            if (idx === currentSegmentId) btn.setAttribute('aria-current', 'true');
+            // The name is what people chose; how many LEDs it covers is the useful detail.
+            // The raw pixel range belongs in the segment editor, not on the main screen.
+            btn.innerHTML = '';
+            const rowName = document.createElement('span');
+            rowName.className = 'seg-row-name';
+            rowName.innerText = translateSegmentName(seg.name) || (t('dyn_segment') + ' ' + idx);
+            const rowMeta = document.createElement('span');
+            rowMeta.className = 'seg-row-meta';
+            rowMeta.innerText = t('seg_row_leds', { n: Math.max(0, seg.stop - seg.start) });
+            btn.appendChild(rowName);
+            btn.appendChild(rowMeta);
+
             // Drag and Drop Logic
             btn.draggable = true;
             btn.addEventListener('dragstart', (e) => {
@@ -1701,7 +2238,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             btn.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                btn.style.borderTop = '2px solid #10b981';
+                btn.style.borderTop = '2px solid var(--primary)';
             });
             btn.addEventListener('dragleave', () => {
                 btn.style.borderTop = '';
@@ -1713,7 +2250,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (fromIdx !== idx) {
                     const movedItem = segments.splice(fromIdx, 1)[0];
                     segments.splice(idx, 0, movedItem);
-                    
+
                     // Adjust currentSegmentId
                     if (currentSegmentId === fromIdx) {
                         currentSegmentId = idx;
@@ -1722,7 +2259,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else if (fromIdx > currentSegmentId && idx <= currentSegmentId) {
                         currentSegmentId++;
                     }
-                    
+
                     // Recalculate start/stop logically so backend sorts them correctly
                     let currentPos = 0;
                     segments.forEach(s => {
@@ -1731,9 +2268,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         s.stop = currentPos + len;
                         currentPos = s.stop;
                     });
-                    
+
                     renderSegmentsSelector();
-                    
+
                     // Save to backend instantly
                     fetch('/api/segments', {
                         method: 'POST',
@@ -1762,7 +2299,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cb.type = 'checkbox';
                 cb.checked = isMember;
                 cb.title = t('seg_sync_member');
-                cb.style.cssText = 'transform: scale(1.2); cursor: pointer; flex-shrink: 0; margin: 0;';
+                cb.setAttribute('aria-label', t('seg_sync_member'));
                 cb.addEventListener('click', (e) => e.stopPropagation());
                 cb.addEventListener('change', () => {
                     segments[idx].syncEnabled = cb.checked;
@@ -1794,6 +2331,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateStateFromSegment() {
+        // Values written straight into the sliders below - keep the numbers next to the labels
+        // in step with them.
+        setTimeout(refreshSliderValues, 0);
         // Which effects are offered depends on the selected segment: a HUB75 panel on a Slave
         // unlocks the clock, text and showcase effects even when the Master drives a plain strip.
         if (typeof updateEffectVisibility === 'function') updateEffectVisibility();
@@ -1834,19 +2374,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     cwEl.style.pointerEvents = 'auto';
                 }
             }
-            
-            if (btnSegPower) {
-                if (s.on) btnSegPower.classList.add('on');
-                else btnSegPower.classList.remove('on');
-            }
-            
+
+            setPowerState(btnSegPower, s.on);
+
             if (s.color !== undefined && s.color !== null) {
                 let c = s.color.toString(16);
                 while (c.length < 6) c = "0" + c;
                 state.color = "#" + c.substring(c.length - 6);
                 state.white = (s.color >> 24) & 0xFF;
             }
-            
+
             updateUI();
         }
     }
@@ -1861,22 +2398,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function fetchSlaves() {
         if (!slavesList) return;
-        slavesList.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">Scanne Netzwerk...</div>';
-        
+        slavesList.innerHTML = `<div class="empty-note" style="text-align: center;">${t('dyn_scan_network')}</div>`;
+
         fetch('/api/slaves')
             .then(res => res.json())
             .then(data => {
                 slavesList.innerHTML = '';
                 if (data.length === 0) {
-                    slavesList.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text-muted);">${t('dyn_no_slaves_found')}</div>`;
+                    slavesList.innerHTML = `<div class="empty-note" style="text-align: center;">${t('dyn_no_slaves_found')}</div>`;
                     return;
                 }
-                
+
                 data.forEach(slave => {
                     const isConfigured = slave.id !== 254;
                     const card = document.createElement('div');
-                    card.style.cssText = 'background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);';
-                    
+                    card.className = 'device-card';
+
                     // Excludes GPIO16/17/18/38 (HyperBus UART, always active regardless of LED
                     // type) and the board's other reserved pins (strapping, native USB, PSRAM,
                     // onboard WS2812, debug UART0 - see include/Config.h). HUB75's own pins
@@ -1887,19 +2424,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     freePins.forEach(p => {
                         pinOptions += `<option value="${p}" ${p === 4 ? 'selected' : ''}>GPIO ${p}</option>`;
                     });
-                    
+
                     const typeOptions = document.getElementById('ledType').innerHTML;
-                    
+
                     card.innerHTML = `
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <div style="display: flex; align-items: center; gap: 10px;">
-                                <h4 style="margin: 0; color: ${isConfigured ? 'var(--primary)' : '#fbbf24'};">${isConfigured ? t('dyn_slave_configured') + ' (ID ' + slave.id + ')' : t('dyn_slave_new')}</h4>
-                                <span style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: ${slave.isWireless ? 'rgba(59, 130, 246, 0.2)' : 'rgba(99, 102, 241, 0.2)'}; color: ${slave.isWireless ? '#60a5fa' : '#818cf8'}; border: 1px solid ${slave.isWireless ? 'rgba(59, 130, 246, 0.4)' : 'rgba(99, 102, 241, 0.4)'};">${slave.isWireless ? 'Wifi' : 'UART'}</span>
+                                <h3 class="device-card-title">${isConfigured ? t('dyn_slave_configured') + ' (ID ' + slave.id + ')' : t('dyn_slave_new')}</h3>
+                                <span class="badge">${slave.isWireless ? t('dyn_link_wireless') : t('dyn_link_cable')}</span>
                             </div>
-                            <span style="font-size: 12px; color: var(--text-muted);">${t('dyn_slave_seen')}${Math.round(slave.lastSeenAge / 1000)}${t('dyn_slave_seen_suffix')}</span>
+                            <span style="font-size: var(--text-caption); color: var(--text-muted);">${t('dyn_slave_seen')}${Math.round(slave.lastSeenAge / 1000)}${t('dyn_slave_seen_suffix')}</span>
                         </div>
-                        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
-                            ${t('dyn_slave_version')} <strong style="color: white;">${slave.version || t('dyn_slave_unknown_ver')}</strong>
+                        <div style="font-size: var(--text-caption); color: var(--text-muted); margin-bottom: 10px;">
+                            ${t('dyn_slave_version')} <strong style="color: var(--text-main);">${slave.version || t('dyn_slave_unknown_ver')}</strong>
                         </div>
                         <div class="form-group" style="margin-bottom: 10px;">
                             <label>${t('dyn_slave_name')}</label>
@@ -1930,10 +2467,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                         </div>
                         <div id="groupSlaveHub75_${slave.id}" style="display: none; margin-bottom: 10px;">
-                            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">${t('dyn_slave_hub75_hint')}</p>
-                            <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px; margin-bottom: 10px;">
-                                <h5 style="margin: 0 0 8px 0; color: var(--primary); font-size: 13px;">${t('hub75_pinout_title')}</h5>
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 12px; font-family: monospace;" id="slaveHub75Pinout_${slave.id}">
+                            <p style="font-size: var(--text-caption); color: var(--text-muted); margin-bottom: 8px;">${t('dyn_slave_hub75_hint')}</p>
+                            <div class="pinout-box">
+                                <h3 class="pinout-title">${t('hub75_pinout_title')}</h3>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: var(--text-caption); font-family: monospace;" id="slaveHub75Pinout_${slave.id}">
                                     <!-- Filled below from the same fixed HUB75_PIN_* list as the Master -->
                                 </div>
                             </div>
@@ -1961,16 +2498,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <button id="btnSaveSlave_${slave.id}" class="btn-primary" onclick="configureSlave(${slave.id})" style="width: 100%; padding: 8px;">${t('dyn_send_config')}</button>
 
-                        <div style="margin-top: 15px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <div style="margin-top: 15px; padding-top: 12px; border-top: 1px solid var(--separator);">
                             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                                 <label for="slaveLedOn_${slave.id}" style="margin: 0; font-size: 14px;">${t('slave_led_title')}</label>
-                                <input type="checkbox" id="slaveLedOn_${slave.id}" checked style="width: auto; transform: scale(1.3);" onchange="sendSlaveStatusLed(${slave.id})">
+                                <input type="checkbox" id="slaveLedOn_${slave.id}" checked onchange="sendSlaveStatusLed(${slave.id})">
                             </div>
                             <div style="display: flex; gap: 10px; align-items: center;">
                                 <input type="color" id="slaveLedColor_${slave.id}" value="#00ff00" style="width: 50px; height: 34px; padding: 3px; cursor: pointer;" onchange="sendSlaveStatusLed(${slave.id})">
                                 <input type="range" id="slaveLedBri_${slave.id}" min="1" max="255" value="40" style="flex: 1;" onchange="sendSlaveStatusLed(${slave.id})">
                             </div>
-                            <p style="font-size: 11px; color: var(--text-muted); margin: 8px 0 0 0;">${t('slave_led_hint')}</p>
+                            <p style="font-size: var(--text-caption); color: var(--text-muted); margin: 8px 0 0 0;">${t('slave_led_hint')}</p>
                         </div>
                     `;
                     slavesList.appendChild(card);
@@ -1991,7 +2528,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     if (slave.configPending) {
                         const pending = document.createElement('p');
-                        pending.style.cssText = 'font-size: 12px; color: var(--primary); margin: 8px 0 0 0;';
+                        pending.className = 'hint';
                         pending.innerText = t('slave_config_pending');
                         card.appendChild(pending);
                     }
@@ -2000,7 +2537,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             })
             .catch(err => {
-                slavesList.innerHTML = `<div style="text-align: center; padding: 20px; color: #ef4444;">${t('dyn_err_load_slaves')}</div>`;
+                slavesList.innerHTML = `<div class="empty-note" style="text-align: center; color: var(--danger);">${t('dyn_err_load_slaves')}</div>`;
             });
     }
 
@@ -2062,37 +2599,35 @@ document.addEventListener('DOMContentLoaded', () => {
         }).then(res => {
             const btn = document.getElementById(`btnSaveSlave_${currentId}`);
             if (res.ok) {
-                const originalText = btn.innerText;
-                btn.innerText = 'Gesendet!';
-                btn.style.backgroundColor = '#10b981';
-                setTimeout(() => {
-                    btn.innerText = originalText;
-                    btn.style.backgroundColor = '';
-                    settingsModal.classList.remove('show');
-                    fetchSlaves();
-                }, 1000);
+                markSettingsSaved();
+                flashButton(btn, t('dyn_sent'), { then: () => fetchSlaves() });
             } else {
-                const originalText = btn.innerText;
-                btn.innerText = 'Fehler!';
-                btn.style.backgroundColor = '#ef4444';
-                setTimeout(() => {
-                    btn.innerText = originalText;
-                    btn.style.backgroundColor = '';
-                }, 1000);
+                saveFailed(btn);
             }
-        });
+        }).catch(() => saveFailed(btn));
     };
 
     // Event Listeners - System / OTA
     const btnUpdateSlaves = document.getElementById('btnUpdateSlaves');
     if (btnUpdateSlaves) {
         btnUpdateSlaves.addEventListener('click', () => {
-            if (confirm("Möchtest du allen Slaves das Kommando für ein WLAN-Update (GitHub) senden?")) {
-                btnUpdateSlaves.innerText = "Suche Update...";
+            askConfirm({
+                title: t('confirm_slave_ota_title'),
+                body: t('confirm_slave_ota_body'),
+                ok: t('confirm_slave_ota_ok')
+            }).then(confirmed => {
+                if (!confirmed) return;
+
+                const done = () => {
+                    btnUpdateSlaves.innerText = t('btn_update_slaves');
+                    btnUpdateSlaves.disabled = false;
+                };
+
+                btnUpdateSlaves.innerText = t('dyn_searching_update');
                 btnUpdateSlaves.disabled = true;
-                
+
                 fetch('https://api.github.com/repos/KaelanTesseract/HyperLED-Slave/releases/latest')
-                    .then(r => { if(r.ok) return r.json(); throw new Error('No release found'); })
+                    .then(r => { if (r.ok) return r.json(); throw new Error('No release found'); })
                     .then(ghData => {
                         let downloadUrl = "";
                         if (ghData.assets && ghData.assets.length > 0) {
@@ -2100,49 +2635,51 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (!asset) asset = ghData.assets[0];
                             downloadUrl = asset.browser_download_url;
                         }
-                        
+
                         if (!downloadUrl) {
-                            alert("Konnte keine firmware.bin im aktuellsten Release finden!");
-                            btnUpdateSlaves.innerText = "Slaves jetzt aktualisieren";
-                            btnUpdateSlaves.disabled = false;
+                            showToast(t('dyn_no_bin'), 'error');
+                            done();
                             return;
                         }
-                        
-                        btnUpdateSlaves.innerText = "Sende Kommando...";
-                        fetch('/api/slaves/update', { 
+
+                        btnUpdateSlaves.innerText = t('dyn_sending_cmd');
+                        fetch('/api/slaves/update', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ url: downloadUrl })
                         })
                         .then(res => {
-                            if (res.ok) alert("Kommando gesendet! Die Slaves werden sich nun mit dem WLAN verbinden und das Update laden.");
-                            else alert("Fehler beim Senden des Kommandos an den Master.");
-                            btnUpdateSlaves.innerText = "Slaves jetzt aktualisieren";
-                            btnUpdateSlaves.disabled = false;
+                            if (res.ok) showToast(t('dyn_cmd_sent'), 'ok');
+                            else showToast(t('dyn_cmd_err'), 'error');
+                            done();
                         })
                         .catch(() => {
-                            alert("Verbindungsfehler.");
-                            btnUpdateSlaves.innerText = "Slaves jetzt aktualisieren";
-                            btnUpdateSlaves.disabled = false;
+                            showToast(t('dyn_conn_err'), 'error');
+                            done();
                         });
                     })
-                    .catch(e => {
-                        alert("Konnte neuestes Release auf GitHub nicht finden. Hast du ein Release erstellt?");
-                        btnUpdateSlaves.innerText = "Slaves jetzt aktualisieren";
-                        btnUpdateSlaves.disabled = false;
+                    .catch(() => {
+                        showToast(t('dyn_no_release'), 'error');
+                        done();
                     });
-            }
+            });
         });
     }
 
     if (btnFactoryReset) {
         btnFactoryReset.addEventListener('click', () => {
-            if (confirm("Wirklich auf Werkseinstellungen zurücksetzen? Alle Konfigurationen gehen verloren!")) {
+            askConfirm({
+                title: t('confirm_reset_title'),
+                body: t('confirm_reset_body'),
+                ok: t('confirm_reset_ok'),
+                destructive: true
+            }).then(confirmed => {
+                if (!confirmed) return;
                 fetch('/api/factory_reset', { method: 'POST' }).then(() => {
-                    alert("System wird zurückgesetzt und startet neu...");
+                    showToast(t('dyn_resetting'), 'sticky');
                     setTimeout(() => location.reload(), 3000);
-                });
-            }
+                }).catch(() => showToast(t('dyn_conn_err'), 'error'));
+            });
         });
     }
 
@@ -2160,7 +2697,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function fetchVersion() {
-        sysVersion.innerText = 'Lade...';
+        sysVersion.innerText = t('sys_loading');
+        const stateLine = document.getElementById('updateStateLine');
+        // "Up to date" is a state, not an action - it belongs in a line of text, and the button
+        // only exists while there is actually something to install.
+        const showState = (text) => {
+            if (stateLine) {
+                stateLine.innerText = text;
+                stateLine.style.display = '';
+            }
+            btnCheckUpdate.style.display = 'none';
+        };
+        const offerUpdate = (label, run) => {
+            if (stateLine) stateLine.style.display = 'none';
+            btnCheckUpdate.style.display = '';
+            btnCheckUpdate.disabled = false;
+            btnCheckUpdate.innerText = label;
+            btnCheckUpdate.onclick = run;
+        };
+        showState(t('sys_checking_update'));
         fetch('/api/info')
             .then(res => res.json())
             .then(data => {
@@ -2168,74 +2723,73 @@ document.addEventListener('DOMContentLoaded', () => {
                 sysVersion.innerText = currentVer;
                 const mainVer = document.getElementById('mainVersionDisplay');
                 if (mainVer) mainVer.innerText = currentVer;
-                
+
                 // GitHub OTA Check
                 const GITHUB_USER = 'KaelanTesseract';
                 const GITHUB_REPO = 'HyperLED';
-                
+
                 fetch(`https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/latest`)
                     .then(r => { if(r.ok) return r.json(); throw new Error('No release found'); })
                     .then(ghData => {
                         let latestVer = ghData.tag_name;
                         let displayVer = latestVer;
                         if (displayVer.startsWith('v')) displayVer = displayVer.substring(1);
-                        
+
                         if (compareVersions(displayVer, currentVer) > 0) {
-                            sysVersion.innerHTML = `<span style="color: #ef4444;">${currentVer}</span> <span style="color: var(--text-muted);">(${t('dyn_latest')}${latestVer})</span>`;
-                            btnCheckUpdate.innerText = `Update auf ${latestVer}`;
-                            btnCheckUpdate.disabled = false;
-                            btnCheckUpdate.onclick = () => startOnlineUpdate(latestVer);
-                            
-                            // Show update banner
+                            sysVersion.innerHTML = `<span style="color: var(--text-main);">${currentVer}</span> <span style="color: var(--text-muted);">(${t('dyn_latest')}${latestVer})</span>`;
+                            offerUpdate(t('dyn_update_to', { ver: latestVer }),
+                                        () => startOnlineUpdate(latestVer));
+
                             const banner = document.getElementById('updateBanner');
                             const bannerTitle = document.getElementById('updateBannerTitle');
                             const bannerText = document.getElementById('updateBannerText');
                             if (banner && bannerTitle && bannerText) {
-                                bannerTitle.innerText = `Update ${latestVer} verfügbar!`;
-                                bannerText.innerText = 'Klicke hier, um das Update zu starten.';
+                                bannerTitle.innerText = t('dyn_update_banner_title', { ver: latestVer });
+                                bannerText.innerText = t('update_banner_text');
                                 banner.style.display = 'block';
                             }
                         } else {
-                            sysVersion.innerHTML = `<span style="color: #10b981;">${currentVer}</span>`;
-                            btnCheckUpdate.innerText = t('dyn_firmware_up_to_date');
-                            btnCheckUpdate.disabled = true;
+                            sysVersion.innerHTML = `<span style="color: var(--text-main);">${currentVer}</span>`;
+                            showState(t('dyn_firmware_up_to_date'));
                         }
                     })
                     .catch(err => {
                         console.log('GitHub API error or no releases yet', err);
-                        sysVersion.innerHTML = `<span style="color: #10b981;">${currentVer}</span>`;
-                        btnCheckUpdate.innerText = t('dyn_firmware_up_to_date');
-                        btnCheckUpdate.disabled = true;
+                        sysVersion.innerHTML = `<span style="color: var(--text-main);">${currentVer}</span>`;
+                        showState(t('dyn_firmware_up_to_date'));
                     });
             })
-            .catch(() => { sysVersion.innerText = 'Fehler'; });
+            .catch(() => {
+                sysVersion.innerText = t('dyn_version_error');
+                showState(t('dyn_version_error'));
+            });
     }
-    
+
     function checkSlaveUpdates() {
         fetch('/api/slaves')
             .then(res => res.json())
             .then(slaves => {
                 const activeSlaves = slaves.filter(s => s.id !== 254);
                 if (activeSlaves.length === 0) return;
-                
+
                 fetch('https://api.github.com/repos/KaelanTesseract/HyperLED-Slave/releases/latest')
                     .then(r => { if(r.ok) return r.json(); throw new Error('No release found'); })
                     .then(ghData => {
                         let latestVer = ghData.tag_name;
                         let displayVer = latestVer;
                         if (displayVer.startsWith('v')) displayVer = displayVer.substring(1);
-                        
+
                         let needsUpdate = activeSlaves.some(s => s.version && compareVersions(displayVer, s.version) > 0);
                         if (needsUpdate) {
                             const banner = document.getElementById('updateBanner');
                             if (banner) {
                                 if (banner.style.display === 'block') {
-                                    document.getElementById('updateBannerTitle').innerText = 'System Updates verfügbar!';
-                                    document.getElementById('updateBannerText').innerText = 'Es gibt Updates für Master & Slave. Klicke hier.';
+                                    document.getElementById('updateBannerTitle').innerText = t('dyn_update_banner_both_title');
+                                    document.getElementById('updateBannerText').innerText = t('dyn_update_banner_both_text');
                                 } else {
                                     banner.style.display = 'block';
-                                    document.getElementById('updateBannerTitle').innerText = 'Slave Update verfügbar!';
-                                    document.getElementById('updateBannerText').innerText = `Slave Version ${displayVer} ist bereit zur Installation.`;
+                                    document.getElementById('updateBannerTitle').innerText = t('dyn_update_banner_slave_title');
+                                    document.getElementById('updateBannerText').innerText = t('dyn_update_banner_slave_text', { ver: displayVer });
                                 }
                             }
                         }
@@ -2244,17 +2798,17 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch(e => console.log("Failed to fetch slaves for update check"));
     }
-    
+
     if (!isAPMode) {
         fetchVersion();
         checkSlaveUpdates();
     }
-    
+
     function startOnlineUpdate(version) {
         btnCheckUpdate.disabled = true;
-        btnCheckUpdate.innerText = 'Starte Update...';
+        btnCheckUpdate.innerText = t('dyn_update_starting');
         document.getElementById('onlineProgressContainer').style.display = 'block';
-        
+
         fetch('/api/update_online', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2263,7 +2817,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if(res.ok) {
                 pollUpdateProgress();
             } else {
-                alert(t('dyn_err_update_start'));
+                showToast(t('dyn_err_update_start'), 'error');
                 btnCheckUpdate.disabled = false;
                 btnCheckUpdate.innerText = 'Update installieren';
                 document.getElementById('onlineProgressContainer').style.display = 'none';
@@ -2277,16 +2831,16 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(data => {
                 const bar = document.getElementById('onlineProgressBar');
                 bar.style.width = data.progress + '%';
-                updateStatus.innerText = data.status || `Lade herunter... ${data.progress}%`;
-                
+                updateStatus.innerText = data.status || t('dyn_update_downloading', { p: data.progress });
+
                 if (data.progress < 100 && data.status !== 'error') {
                     setTimeout(pollUpdateProgress, 1000);
                 } else if (data.status === 'error') {
-                    alert(t('dyn_update_failed'));
+                    showToast(t('dyn_update_failed'), 'error');
                     btnCheckUpdate.disabled = false;
-                    btnCheckUpdate.innerText = 'Update installieren';
+                    btnCheckUpdate.innerText = t('btn_start_update');
                 } else {
-                    updateStatus.innerText = 'Update erfolgreich! Neustart...';
+                    updateStatus.innerText = t('dyn_update_success');
                     setTimeout(() => location.reload(), 5000);
                 }
             })
@@ -2295,12 +2849,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnUpdateLocal.addEventListener('click', () => {
         if (updateFile.files.length === 0) {
-            alert(t('dyn_choose_bin'));
+            showToast(t('dyn_choose_bin'), 'error');
+            updateFile.focus({ preventScroll: true });
             return;
         }
 
         btnUpdateLocal.disabled = true;
-        btnUpdateLocal.innerText = 'Wird hochgeladen...';
+        btnUpdateLocal.innerText = t('dyn_uploading');
         const formData = new FormData();
         for (let i = 0; i < updateFile.files.length; i++) {
             const file = updateFile.files[i];
@@ -2309,7 +2864,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const request = new XMLHttpRequest();
         request.open('POST', '/update');
-        
+
         otaProgressContainer.style.display = 'block';
 
         request.upload.addEventListener('progress', (e) => {
@@ -2319,16 +2874,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         request.addEventListener('load', () => {
             if (request.status === 200) {
-                btnUpdateLocal.innerText = 'Update erfolgreich! Neustart...';
+                btnUpdateLocal.innerText = t('dyn_update_success');
                 setTimeout(() => {
                     location.reload();
                 }, 3000);
             } else {
-                alert(t('dyn_update_failed'));
+                showToast(t('dyn_update_failed'), 'error');
                 otaProgressContainer.style.display = 'none';
                 otaProgressBar.style.width = '0%';
                 btnUpdateLocal.disabled = false;
-                btnUpdateLocal.innerText = 'Update starten';
+                btnUpdateLocal.innerText = t('btn_update_local');
             }
         });
 
@@ -2348,8 +2903,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function fetchState() {
         if (isInteracting) return;
-        if (settingsModal.classList.contains('show')) return;
-        
+        // The forms in "Geräte" and "Szenen" must not be overwritten while they are being
+        // filled in; the light and panel areas want the fresh state.
+        if (activeArea === 'devices' || activeArea === 'scenes' || activeArea === 'settings') return;
+
         fetch('/api/state', { cache: 'no-store' })
             .then(res => res.json())
             .then(data => {
@@ -2386,7 +2943,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateEffectVisibility(data.type);
                 if(data.abl_en !== undefined) ablEnable.checked = data.abl_en;
                 if(data.abl_ma !== undefined) ablMaxMa.value = data.abl_ma;
-                
+
                 if(data.matrix_en !== undefined) {
                     matrixEnable.checked = data.matrix_en;
                     matrixWidth.value = data.matrix_w;
@@ -2423,7 +2980,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error("MQTT config fetch error:", e);
         }
     }
-    
+
     // --- Onboard status LED ---
     async function fetchStatusLed() {
         try {
@@ -2459,7 +3016,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // fetchZigbee removed
-    
+
     function fetchWlanStatus() {
         fetch('/api/wifi/status')
             .then(res => {
@@ -2476,11 +3033,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
-    btnSettings.addEventListener('click', fetchWlanStatus);
+    // The WLAN view fetches its own status when it opens (see loadDeviceView).
 
     function sendState(updates) {
         if (isAPMode) return;
-        
+
         // Apply local state updates immediately
         if (updates.on !== undefined) state.on = updates.on;
         if (updates.bri !== undefined) state.bri = updates.bri;
@@ -2495,7 +3052,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let segUpdates = [];
         const syncCheckbox = document.getElementById('syncSegments');
-        
+
         // A change spreads across the sync group only when the segment being edited belongs to it.
         // Editing a segment that opted out must stay local - otherwise picking an effect for an
         // unsynchronised panel would still reset every other segment, which is what happened.
@@ -2533,14 +3090,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (updates.color2Enabled !== undefined) segments[currentSegmentId].color2Enabled = updates.color2Enabled;
             }
         }
-        
+
         const payload = {
             // Reflects the switch itself, not whether this particular change was spread - editing
             // an unsynchronised segment must not silently turn sync off for everything else.
             sync: (syncCheckbox && syncCheckbox.checked) ? true : false,
             seg: segUpdates
         };
-        
+
         fetch('/api/state', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2550,12 +3107,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateUI() {
         const anyOn = segments.length > 0 ? segments.some(s => s.on) : state.on;
-        if (anyOn) {
-            btnPower.classList.add('on');
-        } else {
-            btnPower.classList.remove('on');
-        }
-        
+        setPowerState(btnPower, anyOn);
+
         colorWheel.color.hexString = state.color;
         briSlider.value = state.bri;
         if (speedSlider) speedSlider.value = state.speed;
@@ -2566,17 +3119,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (color2WheelWrapper) color2WheelWrapper.style.display = state.color2Enabled ? 'flex' : 'none';
 
         effectBtns.forEach(btn => {
-            if (parseInt(btn.dataset.id) === state.effect) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
+            const active = parseInt(btn.dataset.id) === state.effect;
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-pressed', active ? 'true' : 'false');
         });
 
         if (textEffectControls) {
             textEffectControls.style.display = state.effect === EFFECT_TEXT_ID ? 'block' : 'none';
         }
         if (typeof renderTextWidgetEditor === 'function') renderTextWidgetEditor();
+        if (typeof updatePanelArea === 'function') updatePanelArea();
+        updateLiveText(liveTarget());
+        applyLightAccent();
     }
 
     // Matrix & Pixel Art UI Logic
@@ -2616,7 +3170,7 @@ document.addEventListener('DOMContentLoaded', () => {
             img.onload = () => {
                 const w = parseInt(matrixWidth.value) || 16;
                 const h = parseInt(matrixHeight.value) || 16;
-                
+
                 pixelCanvas.width = w;
                 pixelCanvas.height = h;
                 const ctx = pixelCanvas.getContext('2d');
@@ -2625,7 +3179,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.fillRect(0, 0, w, h);
                 ctx.imageSmoothingEnabled = false; // crisp per-pixel sampling instead of a blurred average
                 ctx.drawImage(img, 0, 0, w, h);
-                
+
                 pixelCanvas.style.display = 'block';
                 btnStreamMatrix.style.display = 'block';
                 btnStreamMatrix.disabled = false;
@@ -2655,13 +3209,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         streamToBackgroundWidget(pixelArray, w, h).then(() => {
-            btnStreamMatrix.innerText = 'Übernommen!';
+            btnStreamMatrix.innerText = t('dyn_applied');
             setTimeout(() => {
                 btnStreamMatrix.innerText = original;
                 btnStreamMatrix.disabled = false;
             }, 2000);
-        }).catch(() => {
-            btnStreamMatrix.innerText = 'Fehler!';
+        }).catch((err) => {
+            btnStreamMatrix.innerText = t('dyn_apply_failed');
+            showToast((err && err.message) || t('dyn_apply_failed'), 'error');
             setTimeout(() => {
                 btnStreamMatrix.innerText = original;
                 btnStreamMatrix.disabled = false;
@@ -2804,8 +3359,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let dragStart = { mx: 0, my: 0, ox: 0, oy: 0 };
 
     function widgetTypeLabel(type) {
-        const keys = ['widget_type_clock', 'widget_type_date', 'widget_type_text', 'widget_type_image', 'widget_type_analog', 'widget_type_weather'];
-        const fallback = ['Uhrzeit', 'Datum', 'Text', 'Bild', 'Analoguhr', 'Wetter'];
+        const keys = ['widget_type_clock', 'widget_type_date', 'widget_type_text', 'widget_type_image', 'widget_type_analog', 'widget_type_weather', 'widget_type_marquee'];
+        const fallback = ['Uhrzeit', 'Datum', 'Text', 'Bild', 'Analoguhr', 'Wetter', 'Lauftext'];
         const key = keys[type] || keys[0];
         const translated = typeof t === 'function' ? t(key) : key;
         return translated === key ? (fallback[type] || fallback[0]) : translated;
@@ -2815,13 +3370,15 @@ document.addEventListener('DOMContentLoaded', () => {
         0: ['widget_fmt_c0', 'widget_fmt_c1', 'widget_fmt_c2'],
         1: ['widget_fmt_d0', 'widget_fmt_d1', 'widget_fmt_d2', 'widget_fmt_d3', 'widget_fmt_d4', 'widget_fmt_d5'],
         4: ['widget_fmt_a0', 'widget_fmt_a1', 'widget_fmt_a2', 'widget_fmt_a3'],
-        5: ['widget_fmt_w0', 'widget_fmt_w1', 'widget_fmt_w2']
+        5: ['widget_fmt_w0', 'widget_fmt_w1', 'widget_fmt_w2'],
+        6: ['widget_fmt_m0', 'widget_fmt_m1']
     };
     const WIDGET_FORMAT_FALLBACK = {
         0: ['14:32', '14:32:05', '02:32PM'],
         1: ['13.11.', '13.11.2026', '13.11.26', '2026-11-13', '11/13/2026', 'FR 13.11.'],
         4: ['Klassisch', 'Minimal', 'Punkte + Sekunde', 'Kreuz'],
-        5: ['Symbol + Temperatur', 'Nur Symbol', 'Nur Temperatur']
+        5: ['Symbol + Temperatur', 'Nur Symbol', 'Nur Temperatur'],
+        6: ['Nach links', 'Nach rechts']
     };
     function widgetFormatLabel(type, format) {
         const keys = WIDGET_FORMAT_KEYS[type];
@@ -2839,7 +3396,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `<option value="${idx}" ${current === idx ? 'selected' : ''}>${widgetFormatLabel(w.type, idx)}</option>`
         ).join('');
         return `<div class="form-group" style="margin-bottom:8px;">
-            <select data-field="format" style="padding:6px; background: rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; color:white;">${opts}</select>
+            <select data-field="format" class="field field-auto">${opts}</select>
         </div>`;
     }
     function widgetFontLabel(key, fallback) {
@@ -2847,10 +3404,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return translated === key ? fallback : translated;
     }
     function widgetFontOptionsHtml(w) {
-        if (w.type !== 0 && w.type !== 1 && w.type !== 2 && w.type !== 5) return '';
+        if (w.type !== 0 && w.type !== 1 && w.type !== 2 && w.type !== 5 && w.type !== 6) return '';
         const current = w.font || 0;
         return `<div class="form-group" style="margin-bottom:8px;">
-            <select data-field="font" style="padding:6px; background: rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; color:white;">
+            <select data-field="font" class="field field-auto">
                 <option value="0" ${current === 0 ? 'selected' : ''}>${widgetFontLabel('widget_font_normal', 'Normal (5x7)')}</option>
                 <option value="1" ${current === 1 ? 'selected' : ''}>${widgetFontLabel('widget_font_mini', 'Mini (3x5)')}</option>
             </select>
@@ -2877,6 +3434,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function widgetPixelWidth(w) {
         if (w.type === 4) return w.w || 16; // Analoguhr: diameter, no scale
+        if (w.type === 6) return w.w || 32; // Lauftext: fixed window width, not text length
         const scale = widgetScale(w);
         if (w.type === 3) return (w.w || 1) * scale;
         const cell = widgetGlyphCell(w);
@@ -2906,7 +3464,7 @@ document.addEventListener('DOMContentLoaded', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 seg: currentSegmentId,
-                widgets: widgets.map(w => ({ id: w.id || 0, type: w.type, x: w.x, y: w.y, color: w.color, text: w.text || '', w: w.w || 0, h: w.h || 0, scale: w.scale || 1, format: w.format || 0, font: w.font || 0 }))
+                widgets: widgets.map(w => ({ id: w.id || 0, type: w.type, x: w.x, y: w.y, color: w.color, text: w.text || '', w: w.w || 0, h: w.h || 0, scale: w.scale || 1, format: w.format || 0, font: w.font || 0, speed: w.speed !== undefined ? w.speed : 128 }))
             })
         }).then(() => fetch('/api/segments')).then(res => res.json()).then(data => {
             if (Array.isArray(data)) segments = data;
@@ -2941,6 +3499,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const show = state.effect === EFFECT_TEXT_ID;
         textWidgetEditor.style.display = show ? 'block' : 'none';
         if (widgetOverlayCanvas) widgetOverlayCanvas.style.display = show ? 'block' : 'none';
+        // The "Panel" area shows either the elements or the line explaining how to get them.
+        updatePanelArea();
         if (!show) return;
 
         const widgets = currentWidgets();
@@ -2948,41 +3508,51 @@ document.addEventListener('DOMContentLoaded', () => {
         widgets.forEach((w) => {
             const card = document.createElement('div');
             card.className = 'card glass';
-            card.style.cssText = 'margin-bottom: 0; padding: 12px; background: rgba(0,0,0,0.2); box-shadow: none;';
+            card.classList.add('widget-card');
             const hexColor = '#' + (w.color !== undefined ? w.color : 0xFFFFFF).toString(16).padStart(6, '0');
             const safeText = (w.text || '').replace(/"/g, '&quot;');
             card.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
-                    <select data-field="type" style="flex:1; padding:6px; background: rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; color:white;">
+                    <select data-field="type" class="field field-auto">
                         <option value="0" ${w.type === 0 ? 'selected' : ''}>${widgetTypeLabel(0)}</option>
                         <option value="1" ${w.type === 1 ? 'selected' : ''}>${widgetTypeLabel(1)}</option>
                         <option value="2" ${w.type === 2 ? 'selected' : ''}>${widgetTypeLabel(2)}</option>
                         <option value="3" ${w.type === 3 ? 'selected' : ''}>${widgetTypeLabel(3)}</option>
                         <option value="4" ${w.type === 4 ? 'selected' : ''}>${widgetTypeLabel(4)}</option>
                         <option value="5" ${w.type === 5 ? 'selected' : ''}>${widgetTypeLabel(5)}</option>
+                        <option value="6" ${w.type === 6 ? 'selected' : ''}>${widgetTypeLabel(6)}</option>
                     </select>
-                    <span style="font-size:12px; color: var(--text-muted); white-space:nowrap;" id="widgetPos_${w.id}">X:${w.x} Y:${w.y}</span>
-                    <button type="button" data-action="remove" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:18px; line-height:1; padding:0 4px;">&times;</button>
+                    <span style="font-size:var(--text-caption); color: var(--text-muted); white-space:nowrap;" id="widgetPos_${w.id}">X:${w.x} Y:${w.y}</span>
+                    <button type="button" data-action="remove" class="btn-remove" aria-label="${t('aria_widget_remove')}">&times;</button>
                 </div>
                 ${w.type !== 4 ? `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                    <label style="font-size:12px; color:var(--text-muted);" data-i18n="widget_size">Größe</label>
-                    <input type="number" data-field="scale" min="1" max="8" value="${widgetScale(w)}" style="width:55px; padding:4px; background: rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; color:white;">
-                    <span style="font-size:11px; color:var(--text-muted);">x</span>
+                    <label style="font-size:var(--text-caption); color:var(--text-muted);" data-i18n="widget_size">Größe</label>
+                    <input type="number" data-field="scale" min="1" max="8" value="${widgetScale(w)}" class="field field-auto">
+                    <span style="font-size:var(--text-caption); color:var(--text-muted);">x</span>
                 </div>` : ''}
                 ${widgetFontOptionsHtml(w)}
                 ${widgetFormatOptionsHtml(w)}
-                ${w.type === 2 ? `<input type="text" data-field="text" maxlength="64" value="${safeText}" placeholder="HELLO" style="width:100%; padding:6px; margin-bottom:8px; background: rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; color:white;">` : ''}
-                ${w.type !== 3 ? `<input type="color" data-field="color" value="${hexColor}" style="width:40px; height:28px; padding:2px; border-radius:6px; border:1px solid var(--border-color); background: rgba(0,0,0,0.2);">` : ''}
+                ${w.type === 6 ? `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                    <label style="font-size:var(--text-caption); color:var(--text-muted);" data-i18n="widget_marquee_width">Länge</label>
+                    <input type="number" data-field="marqueeWidth" min="4" max="255" value="${w.w || 32}" class="field field-auto">
+                    <span style="font-size:var(--text-caption); color:var(--text-muted);">px</span>
+                </div>` : ''}
+                ${w.type === 6 ? `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                    <label style="font-size:var(--text-caption); color:var(--text-muted); white-space:nowrap;" data-i18n="widget_marquee_speed">Geschwindigkeit</label>
+                    <input type="range" data-field="marqueeSpeed" min="0" max="255" value="${w.speed !== undefined ? w.speed : 128}" style="flex:1;">
+                </div>` : ''}
+                ${(w.type === 2 || w.type === 6) ? `<input type="text" data-field="text" maxlength="64" value="${safeText}" placeholder="HELLO" class="field field-auto">` : ''}
+                ${w.type !== 3 ? `<input type="color" data-field="color" value="${hexColor}" class="field field-auto">` : ''}
                 ${w.type === 3 ? `<input type="file" data-field="image" accept="image/*" style="display:none;">
                     <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
-                        <input type="number" data-field="imgW" min="1" max="64" value="${w.w || 8}" style="width:55px; padding:4px; background: rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; color:white;">
+                        <input type="number" data-field="imgW" min="1" max="64" value="${w.w || 8}" class="field field-auto">
                         <span style="color:var(--text-muted);">x</span>
-                        <input type="number" data-field="imgH" min="1" max="64" value="${w.h || 8}" style="width:55px; padding:4px; background: rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; color:white;">
-                        <button type="button" data-action="upload" class="btn btn-secondary" style="flex:1; font-size:12px; padding:6px;" data-i18n="widget_img_select">Bild wählen</button>
+                        <input type="number" data-field="imgH" min="1" max="64" value="${w.h || 8}" class="field field-auto">
+                        <button type="button" data-action="upload" class="btn btn-secondary" style="flex:1; font-size:var(--text-caption); padding:6px;" data-i18n="widget_img_select">Bild wählen</button>
                     </div>` : ''}
                 ${w.type === 4 ? `<div style="display:flex; align-items:center; gap:8px;">
-                        <label style="font-size:12px; color:var(--text-muted);" data-i18n="widget_diameter">Durchmesser</label>
-                        <input type="number" data-field="diameter" min="8" max="64" value="${w.w || 16}" style="width:55px; padding:4px; background: rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; color:white;">
+                        <label style="font-size:var(--text-caption); color:var(--text-muted);" data-i18n="widget_diameter">Durchmesser</label>
+                        <input type="number" data-field="diameter" min="8" max="64" value="${w.w || 16}" class="field field-auto">
                     </div>` : ''}
             `;
             textWidgetList.appendChild(card);
@@ -3012,6 +3582,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     const d = Math.max(8, Math.min(64, parseInt(diameterInput.value) || 16));
                     w.w = d;
                     w.h = d;
+                    saveWidgets(widgets);
+                });
+            }
+            const marqueeWidthInput = card.querySelector('[data-field="marqueeWidth"]');
+            if (marqueeWidthInput) {
+                marqueeWidthInput.addEventListener('change', () => {
+                    w.w = Math.max(4, Math.min(255, parseInt(marqueeWidthInput.value) || 32));
+                    saveWidgets(widgets);
+                });
+            }
+            const marqueeSpeedInput = card.querySelector('[data-field="marqueeSpeed"]');
+            if (marqueeSpeedInput) {
+                marqueeSpeedInput.addEventListener('change', () => {
+                    w.speed = Math.max(0, Math.min(255, parseInt(marqueeSpeedInput.value) || 0));
                     saveWidgets(widgets);
                 });
             }
@@ -3175,7 +3759,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnSaveWeatherLocation = document.getElementById('btnSaveWeatherLocation');
     const weatherStatus = document.getElementById('weatherStatus');
     const WEATHER_ICON_NAMES = ['weather_icon_sun', 'weather_icon_cloud', 'weather_icon_rain', 'weather_icon_snow', 'weather_icon_thunder'];
-    const WEATHER_ICON_FALLBACK = ['Sonne', 'Bewölkt', 'Regen', 'Schnee', 'Gewitter'];
+    // Only reached if a translation is missing - the labels themselves live in i18n.js.
+    const WEATHER_ICON_FALLBACK = ['Sun', 'Cloudy', 'Rain', 'Snow', 'Storm'];
 
     function weatherIconLabel(icon) {
         const key = WEATHER_ICON_NAMES[icon] || WEATHER_ICON_NAMES[1];
@@ -3321,14 +3906,15 @@ document.addEventListener('DOMContentLoaded', () => {
         btnEditorStream.addEventListener('click', () => {
             btnEditorStream.disabled = true;
             const original = btnEditorStream.innerText;
-            btnEditorStream.innerText = 'Sende...';
+            btnEditorStream.innerText = t('btn_saving');
             const { w, h } = editorDims();
             const pixelArray = editorPixels.map(hex => parseInt(hex.replace('#', ''), 16));
             streamToBackgroundWidget(pixelArray, w, h).then(() => {
-                btnEditorStream.innerText = 'Übernommen!';
+                btnEditorStream.innerText = t('dyn_applied');
                 setTimeout(() => { btnEditorStream.innerText = original; btnEditorStream.disabled = false; }, 2000);
-            }).catch(() => {
-                btnEditorStream.innerText = 'Fehler!';
+            }).catch((err) => {
+                btnEditorStream.innerText = t('dyn_apply_failed');
+                showToast((err && err.message) || t('dyn_apply_failed'), 'error');
                 setTimeout(() => { btnEditorStream.innerText = original; btnEditorStream.disabled = false; }, 2000);
             });
         });
@@ -3348,7 +3934,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function streamToBackgroundWidget(pixelArray, w, h) {
         if (w > 64 || h > 64) {
-            return Promise.reject(new Error('Hintergrundbilder sind auf 64x64 Pixel begrenzt - deine Matrix ist größer.'));
+            return Promise.reject(new Error(t('dyn_img_too_large')));
         }
         const uploadInto = (widgetId) => fetch('/api/text_widget_image', {
             method: 'POST',
