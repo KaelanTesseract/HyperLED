@@ -3422,40 +3422,59 @@ document.addEventListener('DOMContentLoaded', () => {
     function widgetScale(w) {
         return Math.max(1, Math.min(8, w.scale || 1));
     }
-    // Expected rendered character count for each Uhrzeit/Datum format, used only
-    // to size the drag/overlay hit-box - must mirror the snprintf layouts in
-    // LEDManagerClass::effectText (LEDManager.cpp).
-    const CLOCK_FORMAT_LEN = [5, 8, 7];         // HH:MM / HH:MM:SS / HH:MMAM|PM
-    const DATE_FORMAT_LEN = [6, 10, 8, 10, 10, 9]; // DD.MM. / DD.MM.YYYY / DD.MM.YY / ISO / US / Weekday DD.MM.
-    // Glyph cell size (width incl. 1px gap, height) per font - must mirror
-    // FONT5X7_GLYPH_WIDTH/HEIGHT and FONT3X5_GLYPH_WIDTH/HEIGHT in the firmware.
+    // The area each element occupies on the panel. Mirrors WidgetRender::bounds() in the firmware
+    // (include/WidgetRender.h), which both the Master and the Slave draw with - so the frames in the
+    // preview sit exactly around what the panel shows, and dragging hits what you see.
+    //
+    // Longest text of each Uhrzeit/Datum layout (the firmware keeps the area constant while the
+    // digits change): HH:MM / HH:MM:SS / HH:MMAM|PM, and DD.MM. / DD.MM.YYYY / DD.MM.YY / ISO /
+    // US / Weekday DD.MM.
+    const CLOCK_FORMAT_LEN = [5, 8, 7];
+    const DATE_FORMAT_LEN = [6, 10, 8, 10, 10, 9];
+    // Glyph cell (width incl. the 1px gap, height) per font - FONT5X7 / FONT3X5 in the firmware.
     function widgetGlyphCell(w) {
         return w.font === 1 ? { w: 4, h: 5 } : { w: 6, h: 7 };
     }
+    // Characters of the temperature the weather element shows right now ("12`C", "-3`C", "--`C").
+    // Taken from /api/weather_status; the frame hugs the real text rather than the longest one.
+    let weatherTextLen = 4;
+    function roundLikeFirmware(v) { // lroundf: halves away from zero
+        return v < 0 ? -Math.round(-v) : Math.round(v);
+    }
+    function analogDiameter(w) {
+        return Math.max(8, w.w || 16);
+    }
     function widgetPixelWidth(w) {
-        if (w.type === 4) return w.w || 16; // Analoguhr: diameter, no scale
-        if (w.type === 6) return w.w || 32; // Lauftext: fixed window width, not text length
         const scale = widgetScale(w);
-        if (w.type === 3) return (w.w || 1) * scale;
         const cell = widgetGlyphCell(w);
-        if (w.type === 5) {
-            let width = 0;
-            if (w.format !== 2) width += 8; // 7px icon + 1px gap
-            if (w.format !== 1) width += 3 * cell.w - 1; // ~3-char temperature, e.g. "18C"
-            return Math.max(width, 1) * scale;
+        const textWidth = (chars) => (chars > 0 ? (chars * cell.w - 1) * scale : 0);
+        switch (w.type) {
+            case 3: return (w.w || 1) * scale;                       // Bild
+            case 4: return analogDiameter(w) + 1;                     // Analoguhr, no scale
+            case 5: {                                                 // Wetter
+                let width = 0;
+                if (w.format !== 2) width += 7 * scale;               // icon
+                if (w.format !== 1) {
+                    if (w.format !== 2) width += scale;               // gap after the icon
+                    width += textWidth(weatherTextLen);
+                }
+                return width;
+            }
+            case 6: return (w.text || '').length ? (w.w || 32) : 0;  // Lauftext: its window
+            case 0: return textWidth(CLOCK_FORMAT_LEN[w.format] || CLOCK_FORMAT_LEN[0]);
+            case 1: return textWidth(DATE_FORMAT_LEN[w.format] || DATE_FORMAT_LEN[0]);
+            default: return textWidth((w.text || '').length);
         }
-        let len = 5;
-        if (w.type === 0) len = CLOCK_FORMAT_LEN[w.format] || CLOCK_FORMAT_LEN[0];
-        else if (w.type === 1) len = DATE_FORMAT_LEN[w.format] || DATE_FORMAT_LEN[0];
-        else if (w.type === 2) len = (w.text || '').length || 1;
-        return (len * cell.w - 1) * scale;
     }
     function widgetPixelHeight(w) {
-        if (w.type === 4) return w.h || 16; // Analoguhr: diameter, no scale
         const scale = widgetScale(w);
-        if (w.type === 3) return (w.h || 1) * scale;
-        if (w.type === 5) return Math.max(7, widgetGlyphCell(w).h) * scale;
-        return widgetGlyphCell(w).h * scale;
+        const cell = widgetGlyphCell(w);
+        switch (w.type) {
+            case 3: return (w.h || 1) * scale;
+            case 4: return analogDiameter(w) + 1;
+            case 5: return Math.max(w.format !== 2 ? 7 : 0, w.format !== 1 ? cell.h : 0) * scale;
+            default: return cell.h * scale;
+        }
     }
 
     function saveWidgets(widgets) {
@@ -3480,6 +3499,8 @@ document.addEventListener('DOMContentLoaded', () => {
         widgetOverlayCanvas.height = mh * cell;
         const ctx = widgetOverlayCanvas.getContext('2d');
         ctx.clearRect(0, 0, widgetOverlayCanvas.width, widgetOverlayCanvas.height);
+        const cw = widgetOverlayCanvas.width;
+        const ch = widgetOverlayCanvas.height;
         widgets.forEach((w, idx) => {
             const bw = Math.max(1, widgetPixelWidth(w)) * cell;
             const bh = Math.max(1, widgetPixelHeight(w)) * cell;
@@ -3487,10 +3508,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const by = w.y * cell;
             ctx.strokeStyle = w === draggingWidget ? '#34d399' : 'rgba(52, 211, 153, 0.75)';
             ctx.lineWidth = 2;
-            ctx.strokeRect(bx + 1, by + 1, Math.max(bw - 2, 1), Math.max(bh - 2, 1));
+            // A 2px line centred 1px outside the area, so it never covers the element's own
+            // pixels. Only where the panel ends does it move inside, to stay visible.
+            const left = Math.max(1, bx - 1);
+            const top = Math.max(1, by - 1);
+            const right = Math.min(cw - 1, bx + bw + 1);
+            const bottom = Math.min(ch - 1, by + bh + 1);
+            ctx.strokeRect(left, top, Math.max(right - left, 1), Math.max(bottom - top, 1));
+            // The number sits above the frame when there is room, otherwise inside it.
             ctx.fillStyle = 'rgba(52, 211, 153, 0.9)';
             ctx.font = '10px sans-serif';
-            ctx.fillText(String(idx + 1), bx + 2, by + 9);
+            const labelY = by >= 12 ? by - 3 : by + 9;
+            ctx.fillText(String(idx + 1), Math.max(1, bx), labelY);
         });
     }
 
@@ -3773,6 +3802,13 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch('/api/weather_status')
             .then(res => res.json())
             .then(data => {
+                const len = data.hasData ? (String(roundLikeFirmware(data.temperature)) + '`C').length : 4;
+                if (len !== weatherTextLen) {
+                    weatherTextLen = len;
+                    if (textWidgetEditor && textWidgetEditor.style.display !== 'none') {
+                        drawWidgetOverlay(currentWidgets());
+                    }
+                }
                 if (weatherCityInput && document.activeElement !== weatherCityInput) {
                     weatherCityInput.value = data.city || '';
                 }
