@@ -106,6 +106,9 @@ struct TextWidget {
     // with scroll speed, and multiple Lauftext widgets may want different speeds. Ignored by every
     // other widget type.
     uint8_t speed = 128;
+    // The element's own brightness (0-255), applied on top of the segment's - so one element can be
+    // dimmer than the rest of the panel. 255 = as bright as the segment. Every type, images too.
+    uint8_t bri = 255;
     // Pixel data for an image widget (RGB triplets, imgW*imgH*3 bytes) - kept
     // in RAM only; not part of the JSON round-trip that persists to NVS. Lazily
     // loaded from its LittleFS file on first use (see effectText).

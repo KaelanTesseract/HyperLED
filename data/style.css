@@ -1002,6 +1002,41 @@ input[type="password"] {
     flex: 1 1 auto;
 }
 
+/* Colour swatch and brightness of one element, side by side. */
+.widget-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.widget-bri {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 44px;
+}
+
+.widget-bri input[type="range"] {
+    flex: 1;
+    min-width: 0;
+}
+
+.widget-bri-label,
+.widget-bri-value {
+    font-size: var(--text-caption);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.widget-bri-value {
+    min-width: 3.5em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
 .widget-align {
     display: flex;
     flex-wrap: wrap;

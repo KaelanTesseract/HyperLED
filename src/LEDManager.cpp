@@ -204,6 +204,7 @@ void LEDManagerClass::loadSettings() {
                         tw.format = w["format"] | 0;
                         tw.font = w["font"] | 0;
                         tw.speed = w["speed"] | 128;
+                        tw.bri = w["bri"] | 255;
                         seg.textWidgets.push_back(tw);
                     }
                 }
@@ -305,6 +306,7 @@ void LEDManagerClass::saveSettings() {
                 w["format"] = tw.format;
                 w["font"] = tw.font;
                 w["speed"] = tw.speed;
+                w["bri"] = tw.bri;
             }
         }
         if (seg.isSlave) {
@@ -787,6 +789,7 @@ void LEDManagerClass::setSegmentsFromJson(JsonArray segmentsArray) {
                 tw.format = w["format"] | 0;
                 tw.font = w["font"] | 0;
                 tw.speed = w["speed"] | 128;
+                tw.bri = w["bri"] | 255;
                 seg.textWidgets.push_back(tw);
             }
         }
@@ -864,6 +867,7 @@ void LEDManagerClass::getSegmentsJson(JsonArray array) const {
                 w["format"] = tw.format;
                 w["font"] = tw.font;
                 w["speed"] = tw.speed;
+                w["bri"] = tw.bri;
             }
         }
         if (seg.isSlave) {
@@ -1456,6 +1460,7 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap, uint16_t skipMask
         spec.textLen = (uint16_t)tw.text.length();
         spec.img = tw.imgData.empty() ? nullptr : tw.imgData.data();
         spec.imgLen = tw.imgData.size();
+        spec.bri = tw.bri;
         WidgetRender::draw(spec, currentBri, cw, ch, clk, wx, nowMs, plot);
     }
 }
@@ -1563,6 +1568,7 @@ void LEDManagerClass::setTextWidgets(uint8_t segId, JsonArray widgets) {
         tw.format = w["format"] | 0;
         tw.font = w["font"] | 0;
         tw.speed = w["speed"] | 128;
+        tw.bri = w["bri"] | 255;
         if (tw.type == 3 && tw.imgW > 0 && tw.imgH > 0) {
             loadWidgetImageFromFs(tw); // re-associate with its existing image, if any
         }
@@ -1594,6 +1600,7 @@ void LEDManagerClass::getTextWidgetsJson(uint8_t segId, JsonArray array) const {
         w["format"] = tw.format;
         w["font"] = tw.font;
         w["speed"] = tw.speed;
+        w["bri"] = tw.bri;
     }
 }
 
@@ -1607,8 +1614,9 @@ uint16_t LEDManagerClass::localWidgetMask(const std::vector<TextWidget>& widgets
         // An old Slave draws only text and Lauftext; clock, weather and image need what only the
         // Master had until 0.2.004 (time, forecast, pixels).
         if (!allTypes && !textual) continue;
+        // +1: the element's brightness byte behind the entries (FLAG_ENTRY_BRIGHTNESS).
         size_t entrySize = (allTypes ? HYPERBUS_WIDGET_ENTRY_V2_FIXED_LEN : HYPERBUS_WIDGET_ENTRY_FIXED_LEN) +
-                           (textual ? tw.text.length() : 0);
+                           (textual ? tw.text.length() : 0) + 1;
         // Rare (a lot of text over ESP-NOW's 240-byte cap): stop rather than build a payload nothing
         // could send. Whatever already fit still goes over; the rest stays with the Master.
         if (total + entrySize > HYPERBUS_WIDGETS_MAX_PAYLOAD) break;
@@ -1624,20 +1632,23 @@ uint16_t LEDManagerClass::serializeWidgetsForSlave(const std::vector<TextWidget>
     uint16_t len = 0;
     out[len++] = (isOn ? HYPERBUS_WIDGET_FLAG_ON : 0) |
                  (masterLayer ? HYPERBUS_WIDGET_FLAG_MASTER_LAYER : 0) |
-                 (allTypes ? HYPERBUS_WIDGET_FLAG_ALL_TYPES : 0);
+                 (allTypes ? HYPERBUS_WIDGET_FLAG_ALL_TYPES : 0) |
+                 HYPERBUS_WIDGET_FLAG_ENTRY_BRIGHTNESS;
     out[len++] = brightness;
     uint16_t countPos = len++;
     uint8_t count = 0;
     const uint16_t fixedLen = allTypes ? HYPERBUS_WIDGET_ENTRY_V2_FIXED_LEN : HYPERBUS_WIDGET_ENTRY_FIXED_LEN;
     size_t n = widgets.size() < 16 ? widgets.size() : 16;
+    uint8_t bris[16];
     for (size_t i = 0; i < n; i++) {
         if (!(mask & (1u << i))) continue;
         const TextWidget& tw = widgets[i];
         bool textual = (tw.type == WidgetRender::TYPE_TEXT || tw.type == WidgetRender::TYPE_MARQUEE);
         uint8_t textLen = textual ? (uint8_t)tw.text.length() : 0;
         // localWidgetMask() already sized the selection to fit; this only guards against the list
-        // changing in between.
-        if (len + fixedLen + textLen > HYPERBUS_WIDGETS_MAX_PAYLOAD) break;
+        // changing in between. The brightness bytes of this and every earlier entry come after.
+        if (len + fixedLen + textLen + count + 1 > HYPERBUS_WIDGETS_MAX_PAYLOAD) break;
+        bris[count] = tw.bri;
         out[len++] = tw.id;
         out[len++] = tw.type;
         out[len++] = (uint8_t)(tw.x & 0xFF);
@@ -1669,6 +1680,8 @@ uint16_t LEDManagerClass::serializeWidgetsForSlave(const std::vector<TextWidget>
         count++;
     }
     out[countPos] = count;
+    memcpy(&out[len], bris, count);
+    len += count;
     return len;
 }
 

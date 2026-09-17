@@ -3430,6 +3430,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return (seg && Array.isArray(seg.widgets)) ? seg.widgets : [];
     }
 
+    // The element's own brightness as the percentage its slider shows (stored as 0-255).
+    function widgetBriPercent(w) {
+        const bri = w.bri !== undefined ? w.bri : 255;
+        return Math.max(5, Math.min(100, Math.round(bri * 100 / 255)));
+    }
     function widgetScale(w) {
         return Math.max(1, Math.min(8, w.scale || 1));
     }
@@ -3494,7 +3499,7 @@ document.addEventListener('DOMContentLoaded', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 seg: currentSegmentId,
-                widgets: widgets.map(w => ({ id: w.id || 0, type: w.type, x: w.x, y: w.y, color: w.color, text: w.text || '', w: w.w || 0, h: w.h || 0, scale: w.scale || 1, format: w.format || 0, font: w.font || 0, speed: w.speed !== undefined ? w.speed : 128 }))
+                widgets: widgets.map(w => ({ id: w.id || 0, type: w.type, x: w.x, y: w.y, color: w.color, text: w.text || '', w: w.w || 0, h: w.h || 0, scale: w.scale || 1, format: w.format || 0, font: w.font || 0, speed: w.speed !== undefined ? w.speed : 128, bri: w.bri !== undefined ? w.bri : 255 }))
             })
         }).then(() => fetch('/api/segments')).then(res => res.json()).then(data => {
             if (Array.isArray(data)) segments = data;
@@ -3651,7 +3656,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="range" data-field="marqueeSpeed" min="0" max="255" value="${w.speed !== undefined ? w.speed : 128}" style="flex:1;">
                 </div>` : ''}
                 ${(w.type === 2 || w.type === 6) ? `<input type="text" data-field="text" maxlength="64" value="${safeText}" placeholder="HELLO" class="field field-auto">` : ''}
-                ${w.type !== 3 ? `<input type="color" data-field="color" value="${hexColor}" class="field field-auto">` : ''}
+                <div class="widget-row">
+                    ${w.type !== 3 ? `<input type="color" data-field="color" value="${hexColor}" class="field-color" aria-label="${t('widget_color')}">` : ''}
+                    <label class="widget-bri">
+                        <span class="widget-bri-label">${t('widget_brightness')}</span>
+                        <input type="range" data-field="bri" min="5" max="100" value="${widgetBriPercent(w)}" aria-label="${t('widget_brightness')}">
+                        <span class="widget-bri-value" data-role="briValue">${widgetBriPercent(w)} %</span>
+                    </label>
+                </div>
                 ${w.type === 3 ? `<input type="file" data-field="image" accept="image/*" style="display:none;">
                     <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
                         <input type="number" data-field="imgW" min="1" max="64" value="${w.w || 8}" class="field field-auto">
@@ -3735,6 +3747,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     saveWidgets(widgets);
                 });
             }
+            const briInput = card.querySelector('[data-field="bri"]');
+            const briValue = card.querySelector('[data-role="briValue"]');
+            briInput.addEventListener('input', () => {
+                briValue.textContent = briInput.value + ' %';
+            });
+            briInput.addEventListener('change', () => {
+                const pct = Math.max(5, Math.min(100, parseInt(briInput.value) || 100));
+                w.bri = Math.round(pct * 255 / 100);
+                saveWidgets(widgets);
+            });
             const colorInput = card.querySelector('[data-field="color"]');
             if (colorInput) {
                 colorInput.addEventListener('input', () => {
@@ -3871,7 +3893,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnAddTextWidget.addEventListener('click', () => {
             const widgets = currentWidgets();
             if (widgets.length >= 12) return;
-            widgets.push({ id: 0, type: 0, x: 0, y: 0, color: 0xFFFFFF, text: '', w: 0, h: 0, scale: 1, format: 0, font: 0 });
+            widgets.push({ id: 0, type: 0, x: 0, y: 0, color: 0xFFFFFF, text: '', w: 0, h: 0, scale: 1, format: 0, font: 0, bri: 255 });
             saveWidgets(widgets);
         });
     }
