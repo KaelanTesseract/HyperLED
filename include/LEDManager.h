@@ -20,6 +20,8 @@
 
 #include <Arduino.h>
 #include "EffectEngine.h"
+#include "WidgetRender.h"
+#include "HyperBus.h"
 #include <vector>
 #include <map>
 #include <utility>
@@ -109,6 +111,9 @@ struct TextWidget {
     // The element's own brightness (0-255), applied on top of the segment's - so one element can be
     // dimmer than the rest of the panel. 255 = as bright as the segment. Every type, images too.
     uint8_t bri = 255;
+    // How the element stays readable in front of the panel's background effect
+    // (WidgetRender::LEGIBLE_*). An outline by default; without a background it changes nothing.
+    uint8_t legible = WidgetRender::LEGIBLE_OUTLINE;
     // Pixel data for an image widget (RGB triplets, imgW*imgH*3 bytes) - kept
     // in RAM only; not part of the JSON round-trip that persists to NVS. Lazily
     // loaded from its LittleFS file on first use (see effectText).
@@ -117,6 +122,19 @@ struct TextWidget {
     // compares it with what it holds and asks for the pixels when they differ - see
     // CMD_REQUEST_WIDGET_IMAGE. Kept in step with imgData wherever that changes.
     uint32_t imgCrc = 0;
+};
+
+// An effect drawn behind a panel's "Uhr / Text" elements.
+struct PanelBackground {
+    uint8_t effect = HYPERBUS_BACKGROUND_NONE;  // or an EffectEngine effect id
+    uint8_t bri = 77;          // relative to the segment's brightness, like an element's own
+    uint8_t speed = 128;
+    uint8_t intensity = 128;
+    uint8_t palette = 0;
+    uint32_t color = 0x0050FF;
+    uint32_t color2 = 0xFF0080;
+    bool color2Enabled = false;
+    bool active() const { return effect != HYPERBUS_BACKGROUND_NONE && EffectEngine::canRender(effect); }
 };
 
 struct Segment {
@@ -165,6 +183,12 @@ struct Segment {
     // fresh for each frame restarts those simulations every time, which showed up as Fire
     // lighting only the handful of pixels it had just sparked.
     EffectState renderState;
+
+    // The background behind the "Uhr / Text" elements, and its own render state and last frame
+    // (effects are free to leave pixels they did not change, so the frame has to persist).
+    PanelBackground background;
+    EffectState bgState;
+    std::vector<uint8_t> bgFrame;
 };
 
 class LEDManagerClass {
@@ -263,6 +287,11 @@ public:
     
     // Segment Management
     void setSegmentsFromJson(JsonArray segmentsArray);
+    // Background effect behind a panel's elements: { effect, bri, speed, intensity, palette,
+    // color, color2, color2Enabled }. effect 255 (or missing) turns it off.
+    void setPanelBackground(uint8_t segId, JsonObject bg);
+    // Writes the CMD_SET_BACKGROUND payload (HYPERBUS_BACKGROUND_PAYLOAD_LEN bytes).
+    static void serializeBackground(const PanelBackground& bg, uint8_t* out);
     void getSegmentsJson(JsonArray array) const;
     uint8_t getNumSegments() const;
     const Segment* getSegment(uint8_t segId) const;
@@ -420,7 +449,14 @@ private:
     // skipMask: widgets whose bit is set (bit i = seg.textWidgets[i]) are left undrawn, because the
     // Slave draws them itself (see localWidgetMask). The frame then carries only the Master's own
     // widgets, and the Slave keeps its widget rectangles out of it.
-    void effectText(Segment& seg, uint8_t ablCap, uint16_t skipMask = 0);
+    // allowBackground: draw seg.background behind the elements. Only where nothing has to be
+    // streamed - a moving background is far too much for the links (see loop()).
+    void effectText(Segment& seg, uint8_t ablCap, uint16_t skipMask = 0, bool allowBackground = false);
+    static void readBackgroundJson(JsonObject s, PanelBackground& bg);
+    static void writeBackgroundJson(JsonObject s, const PanelBackground& bg);
+    // Scratch space for composing elements over a background (loop task only).
+    std::vector<uint8_t> _composeFrame;
+    std::vector<uint8_t> _composeMask;
 
     // HUB75 showcase effects (see EFFECT_HUB75_SHOWCASE_START above).
 

@@ -58,6 +58,12 @@ dieser Datei gelöscht – hier steht nur, was noch offen ist.
   `|2·x + Breite − Panelbreite| ≤ 1` – passt die Größe nicht auf gerade/ungerade, zählen beide
   Positionen mit einem Pixel Versatz als mittig. Kein magnetisches Einrasten, damit jede Position
   erreichbar bleibt.
+- Hintergrund-Effekt hinter den Elementen: Abschnitt „Hintergrund-Effekt“ im Element-Editor, alle
+  Effekte wählbar, ruhige zuerst („Gut als Hintergrund“). Lesbarkeit pro Element, Standard ist der
+  dunkle Umriss (auch für bestehende Elemente). Die Helligkeit gilt im Verhältnis zur
+  Segment-Helligkeit, unabhängig von den Elementen – ausdrücklich so gewünscht, keine automatische
+  Kopplung. Bildpixel mit allen Kanälen unter 12 sind durchsichtig. Auf Gerät-Panels läuft der
+  Hintergrund nur, wenn das Gerät alle Elemente selbst zeichnet – nie als Pixelstrom.
 - Die einzige Bewegung ist das Ab-/Aufblenden des Streifens beim Ausschalten (0,35 s).
 - Helles und dunkles Erscheinungsbild folgen der Systemeinstellung (`prefers-color-scheme`); einen
   Umschalter in der App gibt es bewusst nicht. Farben stehen nur als Rollen-Token in `:root`

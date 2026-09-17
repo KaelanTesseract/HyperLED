@@ -8,6 +8,7 @@ Ein Controller agiert als **Master**, andere Controller in der Kette agieren als
 
 - **Effekte:** Der Master schickt nur die Einstellungen (Effekt, Farbe, Helligkeit, Tempo …), sobald sich etwas ändert, und der Slave berechnet die Animation selbst.
 - **„Uhr / Text" auf einem HUB75-Panel:** Ab Slave-Firmware 0.2.004 zeichnet der Slave alle Elemente selbst – Uhrzeit, Datum, Analoguhr, Text, Lauftext, Wetter und Bild. Der Master schickt die Elementliste, alle paar Sekunden die Uhrzeit, das Wetter bei Änderung und Bilder genau einmal: Fehlt einem Slave ein Bild (etwa nach einem Neustart), fordert er es selbst an und prüft es per Prüfsumme.
+- **Hintergrund-Effekt hinter den Elementen:** Ab Slave-Firmware 0.2.007 kann hinter den Elementen ein Effekt laufen. Der Slave zeichnet ihn selbst, der Master schickt nur die Einstellungen. Damit die Elemente lesbar bleiben, bekommt jedes einen dunklen Umriss (oder einen abgedunkelten Kasten); die Helligkeit des Hintergrunds gilt wie die der Elemente im Verhältnis zur Segment-Helligkeit. Der Hintergrund läuft nur, wenn der Slave alle Elemente selbst zeichnet – ein bewegter Hintergrund lässt sich nicht als Pixelstrom übertragen.
 - **Pixelstrom als Rückfall:** Nur was ein Slave nicht selbst kann (ältere Firmware, der Effekt „Bild", ein Element, das nicht mehr in ein Paket passt), berechnet der Master und überträgt die geänderten Pixel.
 
 So bleibt der Master frei für die Weboberfläche und die Koordination der Slaves, und die Funkverbindung wird nicht mit Bilddaten verstopft.

@@ -8,6 +8,7 @@ One controller acts as the **Master**, other controllers in the chain act as **S
 
 - **Effects:** The Master only sends the settings (effect, colour, brightness, speed …) when something changes, and the Slave runs the animation itself.
 - **"Clock / Text" on a HUB75 panel:** From Slave firmware 0.2.004 on, the Slave draws every element itself – time, date, analog clock, text, scrolling text, weather and image. The Master sends the element list, the time every few seconds, the weather when it changes, and images exactly once: a Slave that lacks an image (after a restart, for example) requests it on its own and verifies it by checksum.
+- **Background effect behind the elements:** From Slave firmware 0.2.007 on, an effect can run behind the elements. The Slave draws it itself; the Master only sends the settings. To keep the elements readable each one gets a dark outline (or a darkened box), and the background brightness is relative to the segment's, like the elements' own. The background only runs while the Slave draws every element itself – a moving background cannot be streamed as pixels.
 - **Pixel stream as a fallback:** Only what a Slave cannot do itself (older firmware, the "Image" effect, an element that no longer fits into one packet) is computed by the Master, which then sends the changed pixels.
 
 This keeps the Master free for the web interface and for coordinating the Slaves, and keeps the radio link from being flooded with picture data.

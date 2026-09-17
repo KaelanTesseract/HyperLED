@@ -3430,6 +3430,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return (seg && Array.isArray(seg.widgets)) ? seg.widgets : [];
     }
 
+    // How the element stays readable over a background effect (0 none, 1 outline, 2 box).
+    function legibleOf(w) {
+        return (w.legib === 0 || w.legib === 2) ? w.legib : 1;
+    }
     // The element's own brightness as the percentage its slider shows (stored as 0-255).
     function widgetBriPercent(w) {
         const bri = w.bri !== undefined ? w.bri : 255;
@@ -3499,7 +3503,7 @@ document.addEventListener('DOMContentLoaded', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 seg: currentSegmentId,
-                widgets: widgets.map(w => ({ id: w.id || 0, type: w.type, x: w.x, y: w.y, color: w.color, text: w.text || '', w: w.w || 0, h: w.h || 0, scale: w.scale || 1, format: w.format || 0, font: w.font || 0, speed: w.speed !== undefined ? w.speed : 128, bri: w.bri !== undefined ? w.bri : 255 }))
+                widgets: widgets.map(w => ({ id: w.id || 0, type: w.type, x: w.x, y: w.y, color: w.color, text: w.text || '', w: w.w || 0, h: w.h || 0, scale: w.scale || 1, format: w.format || 0, font: w.font || 0, speed: w.speed !== undefined ? w.speed : 128, bri: w.bri !== undefined ? w.bri : 255, legib: w.legib !== undefined ? w.legib : 1 }))
             })
         }).then(() => fetch('/api/segments')).then(res => res.json()).then(data => {
             if (Array.isArray(data)) segments = data;
@@ -3602,6 +3606,143 @@ document.addEventListener('DOMContentLoaded', () => {
         if (guided) drawCentreGuides(ctx, guided, cell);
     }
 
+    // --- Background effect behind the elements (seg.bg, see PanelBackground in LEDManager.h) ---
+    const BG_NONE = 255;
+    // Calm, full-area patterns first - the elements sit on them best. Then everything else the
+    // firmware can draw as a background (EffectEngine::canRender).
+    const BG_CALM_EFFECTS = [24, 21, 20, 13, 2, 27, 9, 1, 0];
+    const BG_OTHER_EFFECTS = [4, 23, 26, 28, 22, 15, 16, 17, 14, 7, 8, 3, 5, 6, 12, 18, 19, 11];
+    const bgEffectSelect = document.getElementById('bgEffectSelect');
+    const bgControls = document.getElementById('bgControls');
+    const bgBrightness = document.getElementById('bgBrightness');
+    const bgBrightnessValue = document.getElementById('bgBrightnessValue');
+    const bgSpeed = document.getElementById('bgSpeed');
+    const bgIntensity = document.getElementById('bgIntensity');
+    const bgPalette = document.getElementById('bgPalette');
+    const bgColor = document.getElementById('bgColor');
+    const bgColor2Enabled = document.getElementById('bgColor2Enabled');
+    const bgColor2 = document.getElementById('bgColor2');
+
+    function buildBackgroundOptions() {
+        if (!bgEffectSelect) return;
+        bgEffectSelect.innerHTML = '';
+        const none = document.createElement('option');
+        none.value = BG_NONE;
+        none.textContent = t('bg_none');
+        bgEffectSelect.appendChild(none);
+        [['bg_group_calm', BG_CALM_EFFECTS], ['bg_group_more', BG_OTHER_EFFECTS]].forEach(([key, ids]) => {
+            const group = document.createElement('optgroup');
+            group.label = t(key);
+            ids.forEach(id => {
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = effectLabel(id);
+                group.appendChild(opt);
+            });
+            bgEffectSelect.appendChild(group);
+        });
+        if (bgPalette) {
+            bgPalette.innerHTML = '';
+            PALETTE_NAMES.forEach((name, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx;
+                const key = 'pal_' + idx;
+                const translated = t(key);
+                opt.textContent = translated === key ? name : translated;
+                bgPalette.appendChild(opt);
+            });
+        }
+    }
+    buildBackgroundOptions();
+    document.addEventListener('languageChanged', () => {
+        buildBackgroundOptions();
+        renderPanelBackground();
+    });
+
+    function currentBackground() {
+        const seg = segments[currentSegmentId];
+        const bg = (seg && seg.bg) || {};
+        return {
+            fx: bg.fx !== undefined ? bg.fx : BG_NONE,
+            bri: bg.bri !== undefined ? bg.bri : 77,
+            sx: bg.sx !== undefined ? bg.sx : 128,
+            ix: bg.ix !== undefined ? bg.ix : 128,
+            pal: bg.pal !== undefined ? bg.pal : 0,
+            col: bg.col !== undefined ? bg.col : 0x0050FF,
+            col2: bg.col2 !== undefined ? bg.col2 : 0xFF0080,
+            c2: !!bg.c2
+        };
+    }
+    function backgroundActive() {
+        return currentBackground().fx !== BG_NONE;
+    }
+    const hexOf = (c) => '#' + (c >>> 0).toString(16).padStart(6, '0').slice(-6);
+    const bgPercent = (bri) => Math.max(5, Math.min(100, Math.round(bri * 100 / 255)));
+
+    // Fills the controls from the segment. A control being used keeps what the user is doing.
+    function renderPanelBackground() {
+        if (!bgEffectSelect) return;
+        const bg = currentBackground();
+        const set = (el, value, prop) => {
+            if (!el || document.activeElement === el) return;
+            el[prop || 'value'] = value;
+        };
+        set(bgEffectSelect, String(bg.fx));
+        set(bgBrightness, String(bgPercent(bg.bri)));
+        if (bgBrightnessValue && document.activeElement !== bgBrightness) {
+            bgBrightnessValue.textContent = bgPercent(bg.bri) + ' %';
+        }
+        set(bgSpeed, String(bg.sx));
+        set(bgIntensity, String(bg.ix));
+        set(bgPalette, String(bg.pal));
+        set(bgColor, hexOf(bg.col));
+        set(bgColor2, hexOf(bg.col2));
+        set(bgColor2Enabled, bg.c2, 'checked');
+        if (bgControls) bgControls.style.display = bg.fx !== BG_NONE ? '' : 'none';
+        if (bgColor2) bgColor2.style.display = bg.c2 ? '' : 'none';
+    }
+
+    function saveBackground(changes) {
+        const seg = segments[currentSegmentId];
+        if (!seg) return;
+        const bg = Object.assign(currentBackground(), changes);
+        seg.bg = bg; // shows at once; the device's answer replaces it below
+        renderPanelBackground();
+        fetch('/api/panel_background', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                seg: currentSegmentId, effect: bg.fx, bri: bg.bri, speed: bg.sx, intensity: bg.ix,
+                palette: bg.pal, color: bg.col, color2: bg.col2, color2Enabled: bg.c2
+            })
+        }).then(res => {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return fetch('/api/segments');
+        }).then(res => res.json()).then(data => {
+            if (Array.isArray(data)) segments = data;
+            renderTextWidgetEditor();
+        }).catch(() => showToast(t('bg_save_failed'), 'error'));
+    }
+
+    if (bgEffectSelect) {
+        bgEffectSelect.addEventListener('change', () => {
+            saveBackground({ fx: parseInt(bgEffectSelect.value, 10) });
+        });
+        bgBrightness.addEventListener('input', () => {
+            bgBrightnessValue.textContent = bgBrightness.value + ' %';
+        });
+        bgBrightness.addEventListener('change', () => {
+            const pct = Math.max(5, Math.min(100, parseInt(bgBrightness.value, 10) || 30));
+            saveBackground({ bri: Math.round(pct * 255 / 100) });
+        });
+        bgSpeed.addEventListener('change', () => saveBackground({ sx: parseInt(bgSpeed.value, 10) || 0 }));
+        bgIntensity.addEventListener('change', () => saveBackground({ ix: parseInt(bgIntensity.value, 10) || 0 }));
+        bgPalette.addEventListener('change', () => saveBackground({ pal: parseInt(bgPalette.value, 10) || 0 }));
+        bgColor.addEventListener('change', () => saveBackground({ col: parseInt(bgColor.value.slice(1), 16) }));
+        bgColor2.addEventListener('change', () => saveBackground({ col2: parseInt(bgColor2.value.slice(1), 16) }));
+        bgColor2Enabled.addEventListener('change', () => saveBackground({ c2: bgColor2Enabled.checked }));
+    }
+
     // What the element cards were last built from. The state poll calls the editor every two
     // seconds; rebuilding the cards each time threw away whatever was open in them - the colour
     // picker closed after a moment, a half-typed text vanished.
@@ -3625,10 +3766,12 @@ document.addEventListener('DOMContentLoaded', () => {
         updatePanelArea();
         if (!show) return;
 
+        renderPanelBackground();
         const widgets = currentWidgets();
         const dims = editorDims();
+        const bgOn = backgroundActive();
         const sig = JSON.stringify([currentSegmentId, dims.w, dims.h,
-            typeof currentLang !== 'undefined' ? currentLang : '', widgets]);
+            typeof currentLang !== 'undefined' ? currentLang : '', bgOn, widgets]);
         if (passive) {
             const editing = widgetPickerOpen || textWidgetList.contains(document.activeElement);
             if (editing || (sig === widgetEditorSig && textWidgetList.children.length > 0)) {
@@ -3680,6 +3823,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="range" data-field="marqueeSpeed" min="0" max="255" value="${w.speed !== undefined ? w.speed : 128}" style="flex:1;">
                 </div>` : ''}
                 ${(w.type === 2 || w.type === 6) ? `<input type="text" data-field="text" maxlength="64" value="${safeText}" placeholder="HELLO" class="field field-auto">` : ''}
+                ${bgOn ? `<div class="widget-row">
+                    <label class="widget-bri-label" for="widgetLegible_${w.id}">${t('widget_legible')}</label>
+                    <select id="widgetLegible_${w.id}" data-field="legible" class="field field-flex">
+                        <option value="1" ${legibleOf(w) === 1 ? 'selected' : ''}>${t('legible_outline')}</option>
+                        <option value="2" ${legibleOf(w) === 2 ? 'selected' : ''}>${t('legible_box')}</option>
+                        <option value="0" ${legibleOf(w) === 0 ? 'selected' : ''}>${t('legible_none')}</option>
+                    </select>
+                </div>` : ''}
                 <div class="widget-row">
                     ${w.type !== 3 ? `<input type="color" data-field="color" value="${hexColor}" class="field-color" aria-label="${t('widget_color')}">` : ''}
                     <label class="widget-bri">
@@ -3768,6 +3919,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (textInput) {
                 textInput.addEventListener('change', () => {
                     w.text = textInput.value;
+                    saveWidgets(widgets);
+                });
+            }
+            const legibleSelect = card.querySelector('[data-field="legible"]');
+            if (legibleSelect) {
+                legibleSelect.addEventListener('change', () => {
+                    w.legib = parseInt(legibleSelect.value, 10) || 0;
                     saveWidgets(widgets);
                 });
             }
@@ -3920,7 +4078,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnAddTextWidget.addEventListener('click', () => {
             const widgets = currentWidgets();
             if (widgets.length >= 12) return;
-            widgets.push({ id: 0, type: 0, x: 0, y: 0, color: 0xFFFFFF, text: '', w: 0, h: 0, scale: 1, format: 0, font: 0, bri: 255 });
+            widgets.push({ id: 0, type: 0, x: 0, y: 0, color: 0xFFFFFF, text: '', w: 0, h: 0, scale: 1, format: 0, font: 0, bri: 255, legib: 1 });
             saveWidgets(widgets);
         });
     }

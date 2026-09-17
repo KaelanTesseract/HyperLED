@@ -187,6 +187,7 @@ void LEDManagerClass::loadSettings() {
                 seg.effect = s["effect"] | 0;
                 seg.speed = s["speed"] | 128;
                 seg.color = s["color"] | 0xFF0000;
+                readBackgroundJson(s, seg.background);
                 seg.textWidgets.clear();
                 if (s["widgets"].is<JsonArray>()) {
                     for (JsonObject w : s["widgets"].as<JsonArray>()) {
@@ -205,6 +206,7 @@ void LEDManagerClass::loadSettings() {
                         tw.font = w["font"] | 0;
                         tw.speed = w["speed"] | 128;
                         tw.bri = w["bri"] | 255;
+                tw.legible = w["legib"] | (uint8_t)WidgetRender::LEGIBLE_OUTLINE;
                         seg.textWidgets.push_back(tw);
                     }
                 }
@@ -290,6 +292,7 @@ void LEDManagerClass::saveSettings() {
         s["effect"] = seg.effect;
         s["speed"] = seg.speed;
         s["color"] = seg.color;
+        writeBackgroundJson(s, seg.background);
         {
             JsonArray widgetsArr = s["widgets"].to<JsonArray>();
             for (const auto& tw : seg.textWidgets) {
@@ -307,6 +310,7 @@ void LEDManagerClass::saveSettings() {
                 w["font"] = tw.font;
                 w["speed"] = tw.speed;
                 w["bri"] = tw.bri;
+                w["legib"] = tw.legible;
             }
         }
         if (seg.isSlave) {
@@ -772,6 +776,7 @@ void LEDManagerClass::setSegmentsFromJson(JsonArray segmentsArray) {
         seg.effect = s["effect"] | 0;
         seg.speed = s["speed"] | 128;
         seg.color = s["color"] | 0xFF0000;
+        readBackgroundJson(s, seg.background);
         seg.textWidgets.clear();
         if (s["widgets"].is<JsonArray>()) {
             for (JsonObject w : s["widgets"].as<JsonArray>()) {
@@ -790,6 +795,7 @@ void LEDManagerClass::setSegmentsFromJson(JsonArray segmentsArray) {
                 tw.font = w["font"] | 0;
                 tw.speed = w["speed"] | 128;
                 tw.bri = w["bri"] | 255;
+                tw.legible = w["legib"] | (uint8_t)WidgetRender::LEGIBLE_OUTLINE;
                 seg.textWidgets.push_back(tw);
             }
         }
@@ -851,6 +857,7 @@ void LEDManagerClass::getSegmentsJson(JsonArray array) const {
         s["effect"] = seg.effect;
         s["speed"] = seg.speed;
         s["color"] = seg.color;
+        writeBackgroundJson(s, seg.background);
         {
             JsonArray widgetsArr = s["widgets"].to<JsonArray>();
             for (const auto& tw : seg.textWidgets) {
@@ -868,6 +875,7 @@ void LEDManagerClass::getSegmentsJson(JsonArray array) const {
                 w["font"] = tw.font;
                 w["speed"] = tw.speed;
                 w["bri"] = tw.bri;
+                w["legib"] = tw.legible;
             }
         }
         if (seg.isSlave) {
@@ -1130,6 +1138,13 @@ void LEDManagerClass::loop() {
 
             unsigned int delayMs = 500 - (seg.speed * 490 / 255);
             if (seg.effect == 0) delayMs = 100;
+            // A background effect is drawn here only where nothing is streamed: on this Master's own
+            // matrix, or for the preview of a panel whose Slave draws everything itself. It animates
+            // at its own pace, so the elements are redrawn often enough to show it.
+            bool slavePanel = seg.isSlave && seg.slaveId != 254;
+            bool backgroundHere = seg.effect == 29 && seg.background.active() &&
+                                  (!slavePanel || !masterWidgetLayer);
+            if (backgroundHere && delayMs > 20) delayMs = 20;
             // Safety floor for a "Uhr / Text" segment whose frame has to be streamed to a Slave -
             // a Slave too old for CMD_SET_WIDGETS, a widget list too big for one packet, or a
             // clock/weather/image widget alongside the Lauftext. At speed 255 the redraw would run
@@ -1154,7 +1169,7 @@ void LEDManagerClass::loop() {
                         renderWithEngine(seg, ablCap);
                     } else switch (seg.effect) {
                         case 25: effectImage(seg, ablCap); break;
-                        case 29: effectText(seg, ablCap, widgetSkipMask); break;
+                        case 29: effectText(seg, ablCap, widgetSkipMask, backgroundHere); break;
                         default: renderWithEngine(seg, ablCap); break;
                     }
                 }
@@ -1242,6 +1257,11 @@ void LEDManagerClass::loop() {
                                                                       src.isOn, masterLayer, allTypes,
                                                                       widgetPayload);
                         SlaveManager.sendWidgetConfig(seg.slaveId, widgetPayload, widgetLen);
+                        if (allTypes) {
+                            uint8_t bgPayload[HYPERBUS_BACKGROUND_PAYLOAD_LEN];
+                            serializeBackground(src.background, bgPayload);
+                            SlaveManager.sendBackgroundConfig(seg.slaveId, bgPayload, sizeof(bgPayload));
+                        }
 
                         // Who owns the rest of the panel just changed. Drop what is queued for the
                         // Slave: either nothing streams any more and leftover chunks would paint over
@@ -1395,7 +1415,7 @@ void LEDManagerClass::effectImage(Segment& seg, uint8_t ablCap) {
     (void)ablCap;
 }
 
-void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap, uint16_t skipMask) {
+void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap, uint16_t skipMask, bool allowBackground) {
     // Renders every widget in seg.textWidgets (clock/date/text/image) at its
     // own freely-positioned (x,y) using the built-in 5x7 bitmap font (see
     // Font5x7.h). Makes no sense on a plain 1D strip, so it no-ops there (like
@@ -1436,7 +1456,11 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap, uint16_t skipMask
         drawSurfacePixel(seg, (uint16_t)x, (uint16_t)y, r, g, b, 0);
     };
 
-    for (size_t widgetIndex = 0; widgetIndex < seg.textWidgets.size(); widgetIndex++) {
+    // The elements this side draws, in order.
+    WidgetRender::Spec specs[TEXT_WIDGET_MAX];
+    uint8_t legibles[TEXT_WIDGET_MAX];
+    size_t specCount = 0;
+    for (size_t widgetIndex = 0; widgetIndex < seg.textWidgets.size() && specCount < TEXT_WIDGET_MAX; widgetIndex++) {
         TextWidget& tw = seg.textWidgets[widgetIndex];
         if (widgetIndex < 16 && (skipMask & (1u << widgetIndex))) continue; // the Slave draws this one
 
@@ -1445,7 +1469,9 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap, uint16_t skipMask
             loadWidgetImageFromFs(tw);
         }
 
-        WidgetRender::Spec spec;
+        WidgetRender::Spec& spec = specs[specCount];
+        legibles[specCount] = tw.legible;
+        specCount++;
         spec.type = tw.type;
         spec.x = tw.x;
         spec.y = tw.y;
@@ -1461,8 +1487,117 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap, uint16_t skipMask
         spec.img = tw.imgData.empty() ? nullptr : tw.imgData.data();
         spec.imgLen = tw.imgData.size();
         spec.bri = tw.bri;
-        WidgetRender::draw(spec, currentBri, cw, ch, clk, wx, nowMs, plot);
     }
+
+    if (!(allowBackground && skipMask == 0 && seg.background.active())) {
+        for (size_t i = 0; i < specCount; i++) {
+            WidgetRender::draw(specs[i], currentBri, cw, ch, clk, wx, nowMs, plot);
+        }
+        return;
+    }
+
+    // Background effect, then the elements over it. The effect keeps its own frame and timing.
+    size_t px = (size_t)cw * ch;
+    if (seg.bgFrame.size() != px * 3) {
+        seg.bgFrame.assign(px * 3, 0);
+        seg.bgState = EffectState();
+    }
+    if (_composeFrame.size() != px * 3) _composeFrame.resize(px * 3);
+    if (_composeMask.size() != px) _composeMask.resize(px);
+
+    const PanelBackground& bg = seg.background;
+    EffectState& st = seg.bgState;
+    if (st.effect != bg.effect) {
+        st = EffectState(); // a different effect starts from a clean state
+        std::fill(seg.bgFrame.begin(), seg.bgFrame.end(), 0);
+    }
+    st.effect = bg.effect;
+    st.brightness = (uint8_t)(((uint16_t)currentBri * bg.bri + 127) / 255);
+    st.speed = bg.speed;
+    st.intensity = bg.intensity;
+    st.palette = bg.palette;
+    st.isOn = true;
+    st.color = bg.color;
+    st.color2 = bg.color2;
+    st.color2Enabled = bg.color2Enabled;
+    st.whiteOnly = false;
+    st.cct = 128;
+    RgbFrameSink bgSink;
+    bgSink.rgb = seg.bgFrame.data();
+    bgSink.w = cw;
+    bgSink.h = ch;
+    EffectEngine::render(st, bgSink, nowMs);
+
+    uint8_t* frame = _composeFrame.data();
+    memcpy(frame, seg.bgFrame.data(), px * 3);
+    WidgetRender::composeOver(frame, _composeMask.data(), cw, ch, specCount,
+                              [&](size_t i) { return specs[i]; },
+                              [&](size_t i) { return legibles[i]; },
+                              currentBri, clk, wx, nowMs);
+    for (uint16_t y = 0; y < ch; y++) {
+        for (uint16_t x = 0; x < cw; x++) {
+            size_t o = ((size_t)y * cw + x) * 3;
+            drawSurfacePixel(seg, x, y, frame[o], frame[o + 1], frame[o + 2], 0);
+        }
+    }
+}
+
+void LEDManagerClass::readBackgroundJson(JsonObject s, PanelBackground& bg) {
+    bg = PanelBackground();
+    JsonObject o = s["bg"];
+    if (o.isNull()) return;
+    uint8_t effect = o["fx"] | (uint8_t)HYPERBUS_BACKGROUND_NONE;
+    bg.effect = EffectEngine::canRender(effect) ? effect : (uint8_t)HYPERBUS_BACKGROUND_NONE;
+    bg.bri = o["bri"] | 77;
+    bg.speed = o["sx"] | 128;
+    bg.intensity = o["ix"] | 128;
+    bg.palette = o["pal"] | 0;
+    bg.color = o["col"] | 0x0050FF;
+    bg.color2 = o["col2"] | 0xFF0080;
+    bg.color2Enabled = o["c2"] | false;
+}
+
+void LEDManagerClass::writeBackgroundJson(JsonObject s, const PanelBackground& bg) {
+    JsonObject o = s["bg"].to<JsonObject>();
+    o["fx"] = bg.effect;
+    o["bri"] = bg.bri;
+    o["sx"] = bg.speed;
+    o["ix"] = bg.intensity;
+    o["pal"] = bg.palette;
+    o["col"] = bg.color;
+    o["col2"] = bg.color2;
+    o["c2"] = bg.color2Enabled;
+}
+
+void LEDManagerClass::setPanelBackground(uint8_t segId, JsonObject in) {
+    if (segId >= _segments.size()) return;
+    PanelBackground& bg = _segments[segId].background;
+    uint8_t effect = in["effect"] | (uint8_t)HYPERBUS_BACKGROUND_NONE;
+    bg.effect = EffectEngine::canRender(effect) ? effect : (uint8_t)HYPERBUS_BACKGROUND_NONE;
+    if (!in["bri"].isNull()) bg.bri = in["bri"].as<uint8_t>();
+    if (!in["speed"].isNull()) bg.speed = in["speed"].as<uint8_t>();
+    if (!in["intensity"].isNull()) bg.intensity = in["intensity"].as<uint8_t>();
+    if (!in["palette"].isNull()) bg.palette = in["palette"].as<uint8_t>();
+    if (!in["color"].isNull()) bg.color = in["color"].as<uint32_t>() & 0xFFFFFF;
+    if (!in["color2"].isNull()) bg.color2 = in["color2"].as<uint32_t>() & 0xFFFFFF;
+    if (!in["color2Enabled"].isNull()) bg.color2Enabled = in["color2Enabled"].as<bool>();
+    if (bg.bri < 1) bg.bri = 1;
+    triggerSave();
+}
+
+void LEDManagerClass::serializeBackground(const PanelBackground& bg, uint8_t* out) {
+    out[0] = bg.active() ? bg.effect : (uint8_t)HYPERBUS_BACKGROUND_NONE;
+    out[1] = bg.bri;
+    out[2] = bg.speed;
+    out[3] = bg.intensity;
+    out[4] = bg.palette;
+    out[5] = bg.color2Enabled ? 0x01 : 0;
+    out[6] = (uint8_t)((bg.color >> 16) & 0xFF);
+    out[7] = (uint8_t)((bg.color >> 8) & 0xFF);
+    out[8] = (uint8_t)(bg.color & 0xFF);
+    out[9] = (uint8_t)((bg.color2 >> 16) & 0xFF);
+    out[10] = (uint8_t)((bg.color2 >> 8) & 0xFF);
+    out[11] = (uint8_t)(bg.color2 & 0xFF);
 }
 
 void LEDManagerClass::setWhiteOnly(uint8_t segId, bool whiteOnly) {
@@ -1569,6 +1704,8 @@ void LEDManagerClass::setTextWidgets(uint8_t segId, JsonArray widgets) {
         tw.font = w["font"] | 0;
         tw.speed = w["speed"] | 128;
         tw.bri = w["bri"] | 255;
+        tw.legible = w["legib"] | (uint8_t)WidgetRender::LEGIBLE_OUTLINE;
+        if (tw.legible > WidgetRender::LEGIBLE_MAX) tw.legible = WidgetRender::LEGIBLE_OUTLINE;
         if (tw.type == 3 && tw.imgW > 0 && tw.imgH > 0) {
             loadWidgetImageFromFs(tw); // re-associate with its existing image, if any
         }
@@ -1601,6 +1738,7 @@ void LEDManagerClass::getTextWidgetsJson(uint8_t segId, JsonArray array) const {
         w["font"] = tw.font;
         w["speed"] = tw.speed;
         w["bri"] = tw.bri;
+        w["legib"] = tw.legible;
     }
 }
 
@@ -1614,9 +1752,9 @@ uint16_t LEDManagerClass::localWidgetMask(const std::vector<TextWidget>& widgets
         // An old Slave draws only text and Lauftext; clock, weather and image need what only the
         // Master had until 0.2.004 (time, forecast, pixels).
         if (!allTypes && !textual) continue;
-        // +1: the element's brightness byte behind the entries (FLAG_ENTRY_BRIGHTNESS).
+        // +2: the element's brightness and legibility bytes behind the entries.
         size_t entrySize = (allTypes ? HYPERBUS_WIDGET_ENTRY_V2_FIXED_LEN : HYPERBUS_WIDGET_ENTRY_FIXED_LEN) +
-                           (textual ? tw.text.length() : 0) + 1;
+                           (textual ? tw.text.length() : 0) + 2;
         // Rare (a lot of text over ESP-NOW's 240-byte cap): stop rather than build a payload nothing
         // could send. Whatever already fit still goes over; the rest stays with the Master.
         if (total + entrySize > HYPERBUS_WIDGETS_MAX_PAYLOAD) break;
@@ -1633,22 +1771,24 @@ uint16_t LEDManagerClass::serializeWidgetsForSlave(const std::vector<TextWidget>
     out[len++] = (isOn ? HYPERBUS_WIDGET_FLAG_ON : 0) |
                  (masterLayer ? HYPERBUS_WIDGET_FLAG_MASTER_LAYER : 0) |
                  (allTypes ? HYPERBUS_WIDGET_FLAG_ALL_TYPES : 0) |
-                 HYPERBUS_WIDGET_FLAG_ENTRY_BRIGHTNESS;
+                 HYPERBUS_WIDGET_FLAG_ENTRY_BRIGHTNESS | HYPERBUS_WIDGET_FLAG_ENTRY_LEGIBILITY;
     out[len++] = brightness;
     uint16_t countPos = len++;
     uint8_t count = 0;
     const uint16_t fixedLen = allTypes ? HYPERBUS_WIDGET_ENTRY_V2_FIXED_LEN : HYPERBUS_WIDGET_ENTRY_FIXED_LEN;
     size_t n = widgets.size() < 16 ? widgets.size() : 16;
     uint8_t bris[16];
+    uint8_t legibles[16];
     for (size_t i = 0; i < n; i++) {
         if (!(mask & (1u << i))) continue;
         const TextWidget& tw = widgets[i];
         bool textual = (tw.type == WidgetRender::TYPE_TEXT || tw.type == WidgetRender::TYPE_MARQUEE);
         uint8_t textLen = textual ? (uint8_t)tw.text.length() : 0;
         // localWidgetMask() already sized the selection to fit; this only guards against the list
-        // changing in between. The brightness bytes of this and every earlier entry come after.
-        if (len + fixedLen + textLen + count + 1 > HYPERBUS_WIDGETS_MAX_PAYLOAD) break;
+        // changing in between. The two trailing bytes of this and every earlier entry come after.
+        if (len + fixedLen + textLen + 2 * ((size_t)count + 1) > HYPERBUS_WIDGETS_MAX_PAYLOAD) break;
         bris[count] = tw.bri;
+        legibles[count] = tw.legible;
         out[len++] = tw.id;
         out[len++] = tw.type;
         out[len++] = (uint8_t)(tw.x & 0xFF);
@@ -1681,6 +1821,8 @@ uint16_t LEDManagerClass::serializeWidgetsForSlave(const std::vector<TextWidget>
     }
     out[countPos] = count;
     memcpy(&out[len], bris, count);
+    len += count;
+    memcpy(&out[len], legibles, count);
     len += count;
     return len;
 }

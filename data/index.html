@@ -315,6 +315,45 @@
                                                 <h2 data-i18n="widget_title">Matrix-Inhalt</h2>
                                                 <p class="hint" data-i18n="widget_desc">Ziehe ein Element in der Vorschau oben an die gewünschte Position. Ein Hintergrundbild zählt auch als Element.</p>
                                             </div>
+
+                                            <div class="subsection" id="panelBackgroundSection" style="margin-top: 0; margin-bottom: 16px;">
+                                                <h3 data-i18n="bg_title">Hintergrund-Effekt</h3>
+                                                <p class="hint" data-i18n="bg_desc">Läuft hinter den Elementen. Damit sie lesbar bleiben, bekommt jedes Element einen dunklen Umriss – einstellbar pro Element.</p>
+                                                <div class="slider-wrapper">
+                                                    <label for="bgEffectSelect" data-i18n="bg_effect">Effekt</label>
+                                                    <select id="bgEffectSelect" class="field"></select>
+                                                </div>
+                                                <div id="bgControls" style="display: none;">
+                                                    <div class="slider-wrapper" style="margin-top: 15px;">
+                                                        <div class="widget-row" style="margin-bottom: 0; min-height: 0;">
+                                                            <label for="bgBrightness" style="flex: 1;" data-i18n="bg_brightness">Helligkeit</label>
+                                                            <span class="widget-bri-value" id="bgBrightnessValue">30 %</span>
+                                                        </div>
+                                                        <input type="range" id="bgBrightness" min="5" max="100" value="30">
+                                                    </div>
+                                                    <div class="slider-wrapper" style="margin-top: 15px;">
+                                                        <label for="bgSpeed" data-i18n="dash_speed">Geschwindigkeit</label>
+                                                        <input type="range" id="bgSpeed" min="0" max="255" value="128">
+                                                    </div>
+                                                    <div class="slider-wrapper" style="margin-top: 15px;">
+                                                        <label for="bgIntensity" data-i18n="dash_intensity">Intensität</label>
+                                                        <input type="range" id="bgIntensity" min="0" max="255" value="128">
+                                                    </div>
+                                                    <div class="slider-wrapper" style="margin-top: 15px;">
+                                                        <label for="bgPalette" data-i18n="dash_palette">Palette</label>
+                                                        <select id="bgPalette" class="field"></select>
+                                                    </div>
+                                                    <div class="widget-row" style="margin-top: 15px;">
+                                                        <input type="color" id="bgColor" value="#0050ff" class="field-color" aria-label="Farbe" data-i18n-aria="bg_color">
+                                                        <label style="flex: 1; display: flex; align-items: center; gap: 8px; font-size: var(--text-caption); color: var(--text-muted); cursor: pointer;">
+                                                            <input type="checkbox" id="bgColor2Enabled">
+                                                            <span data-i18n="dash_color2_enable">Farbe 2 aktivieren</span>
+                                                        </label>
+                                                        <input type="color" id="bgColor2" value="#ff0080" class="field-color" aria-label="Farbe 2" data-i18n-aria="dash_color2" style="display: none;">
+                                                    </div>
+                                                    <p class="hint" data-i18n="bg_note">Auf einem Gerät-Panel zeichnet das Gerät den Hintergrund selbst – dafür braucht es die aktuelle Geräte-Firmware.</p>
+                                                </div>
+                                            </div>
                                             <div id="textWidgetList" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;">
                                                 <!-- Widget cards dynamically listed here -->
                                             </div>
@@ -811,8 +850,8 @@
         </div>
 
     <script src="iro.min.js"></script>
-    <script src="i18n.js?v=11"></script>
-    <script src="app.js?v=16"></script>
+    <script src="i18n.js?v=13"></script>
+    <script src="app.js?v=17"></script>
 </body>
 </html>
 

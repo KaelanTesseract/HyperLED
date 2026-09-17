@@ -76,7 +76,8 @@ Return the plain list of effect or palette names as a JSON array (the index matc
 | `/api/matrix_preview` | GET | Live preview of the Master matrix's current pixel content. With `?seg=N` the live pixels of segment N instead; `&s=K` returns only every K-th pixel, and with `&w=<panel width>` the step applies to rows and columns (result: a grid of ceil(w/K) columns). |
 | `/api/matrix_config` | POST | 2D matrix setup (width, height, layout). |
 | `/api/canvas_panels` | GET / POST | Multi-panel canvas (combine several panels into one larger area). |
-| `/api/text_widgets` | POST | Set widgets (time, date, text, image, analog clock, weather, marquee/scrolling text) for a segment. Each widget may carry `bri` (0–255, default 255), its own brightness on top of the segment's. |
+| `/api/text_widgets` | POST | Set widgets (time, date, text, image, analog clock, weather, marquee/scrolling text) for a segment. Each widget may carry `bri` (0–255, default 255), its own brightness on top of the segment's, and `legib`, how it stays readable in front of a background effect (0 = none, 1 = dark outline, the default, 2 = dark box). |
+| `/api/panel_background` | POST | Set the background effect behind a segment's widgets: `{seg, effect, bri, speed, intensity, palette, color, color2, color2Enabled}`. `effect` 255 turns it off; `bri` is relative to the segment's brightness. `/api/segments` reports the setting as `bg`. |
 | `/api/text_widget_image` | POST | Upload image data for an image widget (pixel art editor/converter). |
 | `/api/weather_status` | GET | Current status of the weather widget (temperature, icon). |
 | `/api/weather_location` | POST | Set the location for the weather widget (geocoded via Open-Meteo). |

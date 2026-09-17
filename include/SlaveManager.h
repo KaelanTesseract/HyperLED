@@ -81,6 +81,8 @@ public:
     // own "Uhr / Text" widgets. Same dedup/refresh behaviour as sendSegmentConfig - safe to call
     // every frame, only actually transmits on a real change or when the refresh interval is due.
     void sendWidgetConfig(uint8_t slaveId, const uint8_t* payload, uint16_t length);
+    // The same for CMD_SET_BACKGROUND (the effect behind the elements).
+    void sendBackgroundConfig(uint8_t slaveId, const uint8_t* payload, uint16_t length);
     // Forgets what this Slave is believed to show, so the next streamed frame goes out in full and
     // nothing still queued from the previous one is sent. Needed whenever the pixels on the panel
     // change owner - the delta logic otherwise only sends what differs from a frame the Slave may
@@ -293,6 +295,7 @@ private:
     };
     static const unsigned long WIDGETS_REFRESH_MS = 2000;
     std::map<uint8_t, SentWidgets> _sentWidgets;
+    std::map<uint8_t, SentWidgets> _sentBackgrounds;
 
     void handlePacket(const HyperBusPacket& packet);
     static void staticHandlePacket(const HyperBusPacket& packet);

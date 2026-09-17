@@ -700,6 +700,24 @@ void SlaveManagerClass::sendWidgetConfig(uint8_t slaveId, const uint8_t* payload
     if (targetBus) targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_WIDGETS, payload, length);
 }
 
+void SlaveManagerClass::sendBackgroundConfig(uint8_t slaveId, const uint8_t* payload, uint16_t length) {
+    Guard guard(_lock);
+    if (millis() < _pauseLedsUntil) return;
+
+    SentWidgets& sent = _sentBackgrounds[slaveId];
+    unsigned long now = millis();
+    bool changed = !sent.valid || sent.payload.size() != length
+                   || memcmp(sent.payload.data(), payload, length) != 0;
+    if (!changed && now - sent.lastSent < WIDGETS_REFRESH_MS) return;
+
+    sent.payload.assign(payload, payload + length);
+    sent.lastSent = now;
+    sent.valid = true;
+
+    BusInterface* targetBus = busFor(slaveId);
+    if (targetBus) targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_BACKGROUND, payload, length);
+}
+
 void SlaveManagerClass::invalidateLedFrame(uint8_t slaveId) {
     Guard guard(_lock);
     _ledTx.erase(slaveId);

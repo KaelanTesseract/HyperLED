@@ -76,7 +76,8 @@ Liefern jeweils die reine Liste der Effekt- bzw. Palettennamen als JSON-Array (I
 | `/api/matrix_preview` | GET | Aktueller Pixelinhalt der Master-Matrix als Live-Vorschau. Mit `?seg=N` stattdessen die aktuellen Pixel von Segment N; `&s=K` liefert nur jeden K-ten Pixel, mit `&w=<Panelbreite>` gilt der Schritt für Zeilen und Spalten (Ergebnis: ein Raster mit ceil(w/K) Spalten). |
 | `/api/matrix_config` | POST | 2D-Matrix-Setup (Breite, Höhe, Layout). |
 | `/api/canvas_panels` | GET / POST | Multi-Panel-Canvas (mehrere Panels zu einer großen Fläche zusammenschalten). |
-| `/api/text_widgets` | POST | Widgets (Uhrzeit, Datum, Text, Bild, Analoguhr, Wetter, Lauftext) für ein Segment setzen. Jedes Widget kann mit `bri` (0–255, Standard 255) eine eigene Helligkeit bekommen, die zur Segment-Helligkeit hinzukommt. |
+| `/api/text_widgets` | POST | Widgets (Uhrzeit, Datum, Text, Bild, Analoguhr, Wetter, Lauftext) für ein Segment setzen. Jedes Widget kann mit `bri` (0–255, Standard 255) eine eigene Helligkeit bekommen, die zur Segment-Helligkeit hinzukommt, und mit `legib` festlegen, wie es vor einem Hintergrund-Effekt lesbar bleibt (0 = nichts, 1 = dunkler Umriss, Standard, 2 = dunkler Kasten). |
+| `/api/panel_background` | POST | Hintergrund-Effekt hinter den Widgets eines Segments setzen: `{seg, effect, bri, speed, intensity, palette, color, color2, color2Enabled}`. `effect` 255 schaltet ihn aus; `bri` gilt im Verhältnis zur Segment-Helligkeit. In `/api/segments` steht die Einstellung unter `bg`. |
 | `/api/text_widget_image` | POST | Bilddaten für ein Bild-Widget hochladen (Pixel-Art-Editor/-Converter). |
 | `/api/weather_status` | GET | Aktueller Status des Wetter-Widgets (Temperatur, Symbol). |
 | `/api/weather_location` | POST | Standort für das Wetter-Widget festlegen (Geocoding über Open-Meteo). |

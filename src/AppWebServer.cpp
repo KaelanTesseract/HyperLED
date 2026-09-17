@@ -591,6 +591,20 @@ void WebServerManagerClass::setupRoutes() {
     });
     server.addHandler(textWidgetsHandler);
 
+    // Background effect behind a panel's elements: { seg, effect, bri, speed, intensity, palette,
+    // color, color2, color2Enabled } - effect 255 turns it off.
+    AsyncCallbackJsonWebHandler* panelBackgroundHandler = new AsyncCallbackJsonWebHandler("/api/panel_background", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        if (!json.is<JsonObject>()) {
+            request->send(400, "text/plain", "Expected {seg, effect, ...}");
+            return;
+        }
+        JsonObject jsonObj = json.as<JsonObject>();
+        uint8_t segId = jsonObj["seg"] | 0;
+        LEDManager.setPanelBackground(segId, jsonObj);
+        request->send(200, "text/plain", "OK");
+    });
+    server.addHandler(panelBackgroundHandler);
+
     // Uploads one image widget's pixel data: { seg, widget, w, h, pixels:[0xRRGGBB,...] }
     // (same flat-array pixel convention as /api/matrix).
     AsyncCallbackJsonWebHandler* textWidgetImageHandler = new AsyncCallbackJsonWebHandler("/api/text_widget_image", [](AsyncWebServerRequest *request, JsonVariant &json) {
