@@ -1,17 +1,20 @@
 /*
- * Copyright (c) 2026 HyperLED Contributors
+ * HyperLED - Open Source LED Controller
  *
- * Licensed under the European Union Public Licence (EUPL) v1.2.
- * You may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Copyright (c) 2026 Dennis Guse
  *
- *     https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12
+ * Licensed under the EUPL, Version 1.2 or – as soon they will be approved by
+ * the European Commission - subsequent versions of the EUPL (the "Licence");
+ * You may not use this work except in compliance with the Licence.
+ * You may obtain a copy of the Licence at:
+ *
+ * https://joinup.ec.europa.eu/software/page/eupl
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" basis,
+ * distributed under the Licence is distributed on an "AS IS" basis,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * See the Licence for the specific language governing permissions and
+ * limitations under the Licence.
  */
 
 const translations = {
@@ -294,6 +297,7 @@ const translations = {
         "widget_type_marquee": "Lauftext",
         "widget_diameter": "Durchmesser",
         "widget_marquee_width": "Länge",
+        "weather_attribution": "Wetterdaten:",
         "widget_elements_title": "Elemente",
         "widget_number": "Element {n}",
         "widget_type_of": "Art von Element {n}",
@@ -734,6 +738,7 @@ const translations = {
         "widget_type_marquee": "Marquee",
         "widget_diameter": "Diameter",
         "widget_marquee_width": "Length",
+        "weather_attribution": "Weather data:",
         "widget_elements_title": "Elements",
         "widget_number": "Element {n}",
         "widget_type_of": "Kind of element {n}",
@@ -1155,6 +1160,7 @@ const translations = {
         "widget_type_marquee": "Бегущая строка",
         "widget_diameter": "Диаметр",
         "widget_marquee_width": "Длина",
+        "weather_attribution": "Данные о погоде:",
         "widget_elements_title": "Элементы",
         "widget_number": "Элемент {n}",
         "widget_type_of": "Тип элемента {n}",
