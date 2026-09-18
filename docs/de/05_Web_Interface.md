@@ -21,7 +21,7 @@ Der Hauptbildschirm ist in drei Bereiche gegliedert:
 | **Zeitpläne** | Effekte oder Presets zeitgesteuert auslösen (zeitzonenbewusst über NTP). |
 | **Slaves** | Automatisch gefundene Slave-Boards benennen und konfigurieren (LED-Typ, Pins bzw. HUB75-Matrixgröße). |
 | **WLAN / MQTT** | Netzwerk- und Smart-Home-Einstellungen. |
-| **System** | IP-Adresse, Firmware-Version, OTA-Updates, Werkseinstellungen. |
+| **System** | IP-Adresse, Firmware-Version, OTA-Updates, Sicherung und Wiederherstellung, Werkseinstellungen. |
 
 ---
 

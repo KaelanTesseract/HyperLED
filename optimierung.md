@@ -12,8 +12,9 @@ dieser Datei gelöscht – hier steht nur, was noch offen ist.
   sonst liefert das Gerät die alte Version aus.
 - `?v=` für `style.css`, `app.js` und `i18n.js` in `index.html` hochzählen (Browser-Cache).
 - WebUI flashen: `PYTHONIOENCODING=utf-8 pio run -e esp32-s3 -t uploadfs --upload-port COM11`.
-  Achtung: `uploadfs` ersetzt das ganze Dateisystem des Masters – auch die hochgeladenen Bilder
-  der Bild-Elemente (`/img/w<id>.rgb`). Danach müssen Bilder neu hochgeladen werden.
+  Achtung: `uploadfs` ersetzt das ganze Dateisystem des Masters – auch Szenen, Playlist,
+  Zeitpläne und die Bilder der Bild-Elemente (`/img/w<id>.rgb`). Vorher unter Einstellungen →
+  System eine Sicherung herunterladen und sie danach ohne WLAN-Übernahme wiederherstellen.
 - Prüfen bei 375 px und 1280 px, einmal mit Tastatur (Tab/Escape) durchgehen.
 
 ## Entscheidungen aus erledigten Schritten (nicht erneut aufrollen)

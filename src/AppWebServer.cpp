@@ -34,6 +34,7 @@
 #include "PresetManager.h"
 #include "ScheduleManager.h"
 #include "StatusLedManager.h"
+#include "BackupManager.h"
 
 WebServerManagerClass WebServerManager;
 AsyncWebServer server(80);
@@ -45,6 +46,7 @@ void WebServerManagerClass::begin() {
 
     setupRoutes();
     setupSceneAPI();
+    setupBackupAPI();
     
     if (WiFiManager.isAPMode()) {
         setupCaptivePortal();
@@ -955,11 +957,75 @@ void WebServerManagerClass::setupOTA() {
 }
 
 void WebServerManagerClass::loop() {
+    BackupManager.loop();
     if (_triggerRestart) {
         _triggerRestart = false;
         delay(500);
         ESP.restart();
     }
+}
+
+// Backup and restore of all settings (see BackupManager.h). The backup is written by the loop, so
+// the browser asks for it (POST) and then collects it (GET answers 202 until it is ready).
+static const size_t RESTORE_MAX_BYTES = 512 * 1024;
+static File restoreUpload;
+static bool restoreUploadRejected = false;
+
+static void sendJsonError(AsyncWebServerRequest *request, int code, const String& message) {
+    JsonDocument doc;
+    doc["error"] = message;
+    String json;
+    serializeJson(doc, json);
+    request->send(code, "application/json", json);
+}
+
+void WebServerManagerClass::setupBackupAPI() {
+    server.on("/api/backup", HTTP_POST, [](AsyncWebServerRequest *request){
+        BackupManager.requestBackup();
+        request->send(202, "application/json", "{\"status\":\"pending\"}");
+    });
+
+    server.on("/api/backup", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (BackupManager.backupPending()) {
+            request->send(202, "application/json", "{\"status\":\"pending\"}");
+            return;
+        }
+        if (!BackupManager.backupAvailable()) {
+            sendJsonError(request, 409, BackupManager.backupError().length() ? BackupManager.backupError()
+                                                                             : String("no backup requested"));
+            return;
+        }
+        AsyncWebServerResponse *response = request->beginResponse(LittleFS, BackupManagerClass::BACKUP_PATH,
+                                                                  "application/json");
+        response->addHeader("Cache-Control", "no-store");
+        request->send(response);
+    });
+
+    // ?wifi=1 takes the Wi-Fi credentials from the file as well.
+    server.on("/api/restore", HTTP_POST, [](AsyncWebServerRequest *request){
+        if (restoreUploadRejected) {
+            sendJsonError(request, 413, "file too large");
+            return;
+        }
+        bool takeWifi = request->hasParam("wifi") && request->getParam("wifi")->value() == "1";
+        String error;
+        if (!BackupManager.prepareRestore(takeWifi, error)) {
+            sendJsonError(request, 400, error);
+            return;
+        }
+        AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"status\":\"restarting\"}");
+        response->addHeader("Connection", "close");
+        request->send(response);
+    }, [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+        if (index == 0) {
+            restoreUploadRejected = false;
+            if (restoreUpload) restoreUpload.close();
+            restoreUpload = LittleFS.open(BackupManagerClass::RESTORE_PATH, "w");
+        }
+        if (index + len > RESTORE_MAX_BYTES) restoreUploadRejected = true;
+        if (restoreUpload && !restoreUploadRejected) restoreUpload.write(data, len);
+        if (final && restoreUpload) restoreUpload.close();
+    });
 }
 
 void WebServerManagerClass::setupSceneAPI() {

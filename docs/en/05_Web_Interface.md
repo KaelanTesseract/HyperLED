@@ -21,7 +21,7 @@ The gear icon in the top right opens Settings, with further tabs:
 | **Schedules** | Trigger effects or presets on a schedule (timezone-aware via NTP). |
 | **Slaves** | Name and configure automatically discovered Slave boards (LED type, pins, or HUB75 matrix size). |
 | **WLAN / MQTT** | Network and smart home settings. |
-| **System** | IP address, firmware version, OTA updates, factory reset. |
+| **System** | IP address, firmware version, OTA updates, backup and restore, factory reset. |
 
 ---
 

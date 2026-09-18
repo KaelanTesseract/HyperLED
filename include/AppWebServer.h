@@ -38,6 +38,7 @@ private:
     void setupCaptivePortal();
     void setupOTA();
     void setupSceneAPI();
+    void setupBackupAPI();
 };
 
 extern WebServerManagerClass WebServerManager;

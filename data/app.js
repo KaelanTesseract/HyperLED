@@ -2741,6 +2741,123 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- Backup and restore of all settings (see BackupManager.h in the firmware) ---
+    const btnBackupDownload = document.getElementById('btnBackupDownload');
+    const restoreFile = document.getElementById('restoreFile');
+    const restoreFileLabel = document.getElementById('restoreFileLabel');
+    const restoreFileInfo = document.getElementById('restoreFileInfo');
+    const restoreWifi = document.getElementById('restoreWifi');
+    const btnRestore = document.getElementById('btnRestore');
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    if (btnBackupDownload) {
+        btnBackupDownload.addEventListener('click', async () => {
+            btnBackupDownload.disabled = true;
+            btnBackupDownload.innerText = t('backup_working');
+            try {
+                // The controller writes the file in its main loop; ask, then collect it.
+                const start = await fetch('/api/backup', { method: 'POST' });
+                if (!start.ok) throw new Error('HTTP ' + start.status);
+                let res = null;
+                for (let i = 0; i < 50; i++) {
+                    res = await fetch('/api/backup', { cache: 'no-store' });
+                    if (res.status !== 202) break;
+                    await sleep(200);
+                }
+                if (!res || !res.ok) throw new Error(res ? 'HTTP ' + res.status : 'timeout');
+                const blob = await res.blob();
+                const day = new Date().toISOString().slice(0, 10);
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'hyperled-backup-' + day + '.json';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+                btnBackupDownload.disabled = false;
+                flashButton(btnBackupDownload, t('backup_done'));
+            } catch (e) {
+                btnBackupDownload.disabled = false;
+                btnBackupDownload.innerText = t('backup_download');
+                showToast(t('backup_failed'), 'error');
+            }
+        });
+    }
+
+    // A first look at the chosen file in the browser, so an obviously wrong one is caught before
+    // it is sent. The controller checks it again completely before it changes anything.
+    let restoreCandidate = null;
+    if (restoreFile) {
+        restoreFile.addEventListener('change', () => {
+            restoreCandidate = null;
+            btnRestore.disabled = true;
+            restoreFileInfo.hidden = true;
+            restoreFileLabel.innerText = t('restore_select');
+            const file = restoreFile.files[0];
+            if (!file) return;
+            restoreFileLabel.innerText = file.name;
+            const reader = new FileReader();
+            reader.onload = () => {
+                let data = null;
+                try { data = JSON.parse(reader.result); } catch (e) { data = null; }
+                restoreFileInfo.hidden = false;
+                if (!data || !data.hyperled_backup || !data.settings) {
+                    restoreFileInfo.innerText = t('restore_not_backup');
+                    return;
+                }
+                const parts = [data.device, data.created, data.firmware ? 'Firmware ' + data.firmware : null]
+                    .filter(Boolean).join(' · ');
+                restoreFileInfo.innerText = t('restore_from', { what: parts || file.name });
+                restoreCandidate = file;
+                btnRestore.disabled = false;
+            };
+            reader.readAsText(file);
+        });
+    }
+
+    if (btnRestore) {
+        btnRestore.addEventListener('click', async () => {
+            if (!restoreCandidate) return;
+            const confirmed = await askConfirm({
+                title: t('restore_confirm_title'),
+                body: t('restore_confirm_body'),
+                ok: t('restore_btn'),
+                destructive: true
+            });
+            if (!confirmed) return;
+            btnRestore.disabled = true;
+            btnRestore.innerText = t('restore_working');
+            try {
+                const form = new FormData();
+                form.append('backup', restoreCandidate, restoreCandidate.name);
+                const res = await fetch('/api/restore?wifi=' + (restoreWifi.checked ? '1' : '0'), {
+                    method: 'POST',
+                    body: form
+                });
+                if (!res.ok) {
+                    let message = '';
+                    try { message = (await res.json()).error || ''; } catch (e) { message = ''; }
+                    throw new Error(message || 'HTTP ' + res.status);
+                }
+                showToast(t('restore_restarting'), 'sticky');
+                // Back once it answers again, with everything reloaded from the restored settings.
+                await sleep(4000);
+                for (let i = 0; i < 40; i++) {
+                    try {
+                        const info = await fetch('/api/info', { cache: 'no-store' });
+                        if (info.ok) { location.reload(); return; }
+                    } catch (e) { /* still restarting */ }
+                    await sleep(1500);
+                }
+                location.reload();
+            } catch (e) {
+                btnRestore.disabled = false;
+                btnRestore.innerText = t('restore_btn');
+                showToast(t('restore_failed', { reason: e.message }), 'error');
+            }
+        });
+    }
+
     // Compares two dotted numeric version strings (e.g. "0.1.112"). Returns >0 if a > b,
     // <0 if a < b, 0 if equal. Missing/non-numeric parts are treated as 0.
     function compareVersions(a, b) {
