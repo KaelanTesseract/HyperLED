@@ -37,7 +37,7 @@ private:
     void setupRoutes();
     void setupCaptivePortal();
     void setupOTA();
-    void setupWLEDJsonAPI();
+    void setupSceneAPI();
 };
 
 extern WebServerManagerClass WebServerManager;

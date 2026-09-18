@@ -32,7 +32,6 @@ Im Zentrum steht eine moderne, für Mobilgeräte optimierte Web-Oberfläche im G
 - WLAN-Einrichtung per Captive Portal, keine fest kodierten Zugangsdaten
 - Erreichbar per mDNS (`hyperled.local`) und NetBIOS (`hyperled`) – funktioniert ohne Zusatzsoftware auch unter Windows
 - MQTT-Integration mit Home-Assistant-Autodiscovery
-- WLED-kompatible JSON-API für bestehende Automatisierungen und Drittanbieter-Tools
 - Over-the-Air-Updates für Firmware und Web-Oberfläche über zwei Partitionen, direkt aus dem Browser
 
 **Hardware & Sicherheit**

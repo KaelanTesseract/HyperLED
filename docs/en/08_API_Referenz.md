@@ -1,20 +1,17 @@
 # API Reference
 
-HyperLED offers a comprehensive HTTP JSON API for automation systems, MQTT, and scripts. The core is **WLED-compatible** – existing WLED integrations (e.g. Home Assistant, Node-RED) mostly work without modification.
+HyperLED offers an HTTP JSON API for scripts and its own web interface. For Home Assistant and other smart home hubs, MQTT with Home Assistant autodiscovery is the intended way.
 
-## WLED-compatible Control
+## State
 
-### `GET /json/state`
-Returns the Master controller's current state.
+### `GET /api/state`
+Returns the current state: `on` (at least one segment is lit), `sync` (synchronised segments) and all segments.
 
 *Example response (abridged):*
 ```json
 {
+  "sync": false,
   "on": true,
-  "bri": 128,
-  "transition": 7,
-  "ps": -1,
-  "pl": -1,
   "seg": [
     {
       "name": "Master",
@@ -35,26 +32,16 @@ Returns the Master controller's current state.
 }
 ```
 
-### `POST /json/state`
-Changes the state. Expects strict JSON with a correct `Content-Length` header.
+### `POST /api/state`
+Changes the state. Every field is optional.
 
 *Example payloads:*
-- Turn off: `{"on": false}`
-- Turn on at full brightness: `{"on": true, "bri": 255}`
-- **Toggle:** `{"on": "t"}` (switches between on/off, useful for physical buttons)
-- Adjust a segment: `{"seg": [{"id": 0, "effect": 5, "col": [[255,0,0]]}]}`
+- Turn everything off: `{"on": false}`
+- **Toggle:** `{"on": "t"}` (off if any segment is lit, otherwise everything on - handy for buttons)
+- Turn on synchronised segments: `{"sync": true}`
+- Adjust a segment: `{"seg": [{"id": 0, "on": true, "bri": 200, "effect": 5, "color": "#ff0000"}]}`
 
-### `GET /json`
-Combines `state`, `info`, `effects` (list of all effect names), and `palettes` (list of all palette names) into one response – handy for the initial fetch when an integration connects.
-
-### `POST /json`
-Accepts the same payload as `POST /json/state` (WLED-compatible alias).
-
-### `GET /json/info`
-Device information (firmware version, free heap, uptime, MAC address, name, etc.), matching the `info` object from `GET /json`.
-
-### `GET /json/eff` / `GET /json/pal`
-Return the plain list of effect or palette names as a JSON array (the index matches the `effect`/`palette` number in the state).
+Per segment, `on`, `bri`, `effect`, `speed`, `intensity`, `palette`, `color`, `color2`, `color2Enabled`, `white`, `whiteOnly` and `cct` are understood.
 
 ---
 
@@ -63,7 +50,7 @@ Return the plain list of effect or palette names as a JSON array (the index matc
 | Endpoint | Method | Description |
 |---|---|---|
 | `/api/segments` | GET / POST | Read segments, or create/edit/delete them. |
-| `/api/state` | GET / POST | Compact state endpoint (alternative to `/json/state`). |
+| `/api/state` | GET / POST | Read and change the state (see above). |
 | `/api/config` | GET / POST | Base LED configuration (type, count, pin, ABL). |
 | `/api/buttons` | GET / POST | Physical button/switch configuration. |
 
@@ -120,7 +107,7 @@ See [Master/Slave Architecture](07_Master_Slave_Architektur.md) for how this wor
 | `/api/wifi/status` | GET | Current connection status. |
 | `/api/status` | GET | Compact system status. |
 | `/api/version` | GET | Firmware version. |
-| `/api/info` | GET | Device information (compact variant of `/json/info`). |
+| `/api/info` | GET | Device information and diagnostics (firmware, memory, uptime, Wi-Fi, last outage). |
 | `/api/update_online` | POST | Checks for a new release and starts the update. |
 | `/api/update_progress` | GET | Progress of an ongoing OTA update. |
 | `/update` | POST | Manual firmware/filesystem upload (multipart form, same as flashing via the WebUI). |

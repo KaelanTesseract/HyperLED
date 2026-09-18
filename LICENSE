@@ -257,9 +257,3 @@ licensed under the LGPL.
    License: Creative Commons Attribution 4.0 International (CC BY 4.0,
             https://creativecommons.org/licenses/by/4.0/)
    Source: https://open-meteo.com/ - credited in the web interface next to the weather settings
-
-12. WLED (acknowledgement - no code incorporated)
-   HyperLED's WLED-compatible JSON API follows the structure of WLED's API.
-   Copyright (c) 2016-2026 Christian Schwinne and contributors
-   License: EUPL-1.2 (earlier versions: MIT License)
-   Source: https://github.com/wled/WLED

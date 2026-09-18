@@ -24,7 +24,6 @@ HyperLED offers a huge range of features that make it suitable for anything from
 * **mDNS & NetBIOS support:** Reachable at `http://hyperled.local` (macOS/iOS/Linux/Android) or `http://hyperled` (Windows, via NetBIOS – works without extra software like Bonjour).
 * **Wi-Fi Manager & Captive Portal:** No more hardcoded passwords. Set up Wi-Fi easily from your smartphone when the ESP32 starts in Access Point (AP) mode.
 * **MQTT:** Full integration for Home Assistant, ioBroker, and other smart home hubs, including Home Assistant autodiscovery.
-* **WLED-compatible JSON API:** Existing WLED automations and third-party tools mostly work without modification.
 * **Over-the-Air (OTA) updates:** Update the firmware and web interface directly in the browser, without connecting the ESP32 to a PC.
 
 ## Power Supply

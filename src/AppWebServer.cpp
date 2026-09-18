@@ -44,7 +44,7 @@ void WebServerManagerClass::begin() {
     }
 
     setupRoutes();
-    setupWLEDJsonAPI();
+    setupSceneAPI();
     
     if (WiFiManager.isAPMode()) {
         setupCaptivePortal();
@@ -60,8 +60,9 @@ void WebServerManagerClass::begin() {
         if (!MDNS.begin(hostname)) {
             Serial.println("Error setting up MDNS responder!");
         } else {
-            MDNS.addService("wled", "tcp", 80);
-            MDNS.addServiceTxt(String("wled"), String("tcp"), String("mac"), String(macStr));
+            // HyperLED's own service type, so apps looking for controllers find exactly these.
+            MDNS.addService("hyperled", "tcp", 80);
+            MDNS.addServiceTxt(String("hyperled"), String("tcp"), String("mac"), String(macStr));
         }
     }
     setupOTA();
@@ -142,6 +143,10 @@ void WebServerManagerClass::setupRoutes() {
         // The UI restores its sync checkbox from this: without it a reloaded page always came
         // up unticked, no matter what the device was actually doing.
         doc["sync"] = LEDManager.getSync();
+        // On as a whole: any segment lit. A client with a single on/off switch needs nothing else.
+        bool anyOn = false;
+        for (uint8_t i = 0; i < LEDManager.getNumSegments(); i++) anyOn = anyOn || LEDManager.getPower(i);
+        doc["on"] = anyOn;
         JsonArray segArr = doc["seg"].to<JsonArray>();
         LEDManager.getSegmentsJson(segArr);
         
@@ -286,6 +291,21 @@ void WebServerManagerClass::setupRoutes() {
         if (!jsonObj["sync"].isNull()) {
             LEDManager.setSync(jsonObj["sync"].as<bool>());
         }
+
+        // All segments at once: true/false, or "t" to toggle - off if anything is lit, else on
+        // (the same rule as the power button in the web interface).
+        if (!jsonObj["on"].isNull()) {
+            uint8_t count = LEDManager.getNumSegments();
+            bool on;
+            if (jsonObj["on"].is<bool>()) {
+                on = jsonObj["on"].as<bool>();
+            } else {
+                bool anyOn = false;
+                for (uint8_t i = 0; i < count; i++) anyOn = anyOn || LEDManager.getPower(i);
+                on = !anyOn;
+            }
+            for (uint8_t i = 0; i < count; i++) LEDManager.setPower(i, on);
+        }
         
         if (!jsonObj["seg"].isNull() && jsonObj["seg"].is<JsonArray>()) {
             JsonArray arr = jsonObj["seg"].as<JsonArray>();
@@ -409,7 +429,7 @@ void WebServerManagerClass::setupRoutes() {
         
         // We need the current WiFi credentials
         Preferences prefs;
-        prefs.begin("wled_clone", true);
+        prefs.begin(PREF_NAMESPACE, true);
         String ssid = prefs.getString(PREF_WIFI_SSID, "");
         String pass = prefs.getString(PREF_WIFI_PASS, "");
         prefs.end();
@@ -802,7 +822,7 @@ void WebServerManagerClass::setupRoutes() {
 
     server.on("/api/buttons", HTTP_GET, [](AsyncWebServerRequest *request){
         Preferences prefs;
-        prefs.begin("wled_clone", true);
+        prefs.begin(PREF_NAMESPACE, true);
         JsonDocument doc;
         
         JsonObject b1 = doc["btn1"].to<JsonObject>();
@@ -823,7 +843,7 @@ void WebServerManagerClass::setupRoutes() {
     AsyncCallbackJsonWebHandler* buttonsHandler = new AsyncCallbackJsonWebHandler("/api/buttons", [](AsyncWebServerRequest *request, JsonVariant &json) {
         JsonObject jsonObj = json.as<JsonObject>();
         Preferences prefs;
-        prefs.begin("wled_clone", false);
+        prefs.begin(PREF_NAMESPACE, false);
         
         if (!jsonObj["btn1"].isNull()) {
             prefs.putBool("btn1_en", jsonObj["btn1"]["active"].as<bool>());
@@ -844,7 +864,7 @@ void WebServerManagerClass::setupRoutes() {
         Preferences prefs;
         
         // Tasten auf Standard
-        prefs.begin("wled_clone", false);
+        prefs.begin(PREF_NAMESPACE, false);
         prefs.putBool("btn1_en", false);
         prefs.putString("btn1_type", "push");
         prefs.putBool("btn2_en", false);
@@ -942,123 +962,8 @@ void WebServerManagerClass::loop() {
     }
 }
 
-void WebServerManagerClass::setupWLEDJsonAPI() {
-    auto buildState = [](JsonVariant doc) {
-        JsonObject state = doc.to<JsonObject>();
-        state["on"] = LEDManager.getPower(0);
-        state["bri"] = LEDManager.getBrightness(0);
-        state["transition"] = 7;
-        state["ps"] = -1;
-        state["pl"] = -1;
-        
-        JsonObject nl = state["nl"].to<JsonObject>();
-        nl["on"] = false;
-        nl["dur"] = 60;
-        nl["mode"] = 1;
-        nl["tbri"] = 0;
-        nl["rem"] = -1;
-
-        JsonObject udpn = state["udpn"].to<JsonObject>();
-        udpn["send"] = false;
-        udpn["recv"] = true;
-
-        state["lor"] = 0;
-        state["mainseg"] = 0;
-        
-        JsonArray seg = state["seg"].to<JsonArray>();
-        LEDManager.getSegmentsJson(seg);
-    };
-
-    auto buildInfo = [](JsonVariant doc) {
-        JsonObject info = doc.to<JsonObject>();
-        info["ver"] = "0.14.0";
-        info["vid"] = 2401010;
-        
-        JsonObject leds = info["leds"].to<JsonObject>();
-        leds["count"] = LEDManager.getCount();
-        leds["pwr"] = 0;
-        leds["cct"] = false;
-        leds["lco"] = 1;
-        leds["lc"] = 1;
-        leds["fps"] = 30;
-        leds["maxpwr"] = 0;
-        leds["maxseg"] = 1;
-        JsonArray seglc = leds["seglc"].to<JsonArray>();
-        seglc.add(1);
-
-        JsonObject fs = info["fs"].to<JsonObject>();
-        fs["u"] = 120;
-        fs["t"] = 1500;
-        fs["pmt"] = 1700000000;
-
-        info["str"] = true;
-
-        uint8_t mac[6];
-        WiFi.macAddress(mac);
-        char hostname[32];
-        sprintf(hostname, "HyperLED-%02x%02x%02x", mac[3], mac[4], mac[5]);
-        
-        char macStr[13];
-        sprintf(macStr, "%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-        
-        info["name"] = hostname;
-        info["udpport"] = 21324;
-        info["live"] = false;
-        info["lm"] = "";
-        info["lip"] = "";
-        info["ws"] = -1;
-        info["eq"] = 1;
-        info["ndc"] = 1;
-        info["arch"] = "esp32";
-        info["core"] = "2_0_14";
-        info["lwip"] = 1;
-        info["freeheap"] = ESP.getFreeHeap();
-        info["uptime"] = millis() / 1000;
-        info["opt"] = 15;
-        info["brand"] = "WLED";
-        info["product"] = "HyperLED";
-        info["mac"] = macStr;
-        info["ip"] = WiFi.localIP().toString();
-    };
-
-    // Exact match only. A plain "/json" also matches everything below it, and since this handler
-    // is registered first it answered /json/state, /json/info, /json/eff and /json/pal with the
-    // combined document - WLED clients asking for just the state got everything instead.
-    server.on(AsyncURIMatcher::exact("/json"), HTTP_GET, [buildState, buildInfo](AsyncWebServerRequest *request){
-        JsonDocument doc;
-
-        buildState(doc["state"].to<JsonVariant>());
-        buildInfo(doc["info"].to<JsonVariant>());
-
-        JsonArray eff = doc["effects"].to<JsonArray>();
-        for (uint8_t i = 0; i < EFFECT_COUNT; i++) eff.add(EFFECT_NAMES[i]);
-
-        JsonArray pal = doc["palettes"].to<JsonArray>();
-        for (uint8_t i = 0; i < PALETTE_COUNT; i++) pal.add(PALETTE_NAMES[i]);
-
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
-    });
-
-    server.on("/json/eff", HTTP_GET, [](AsyncWebServerRequest *request){
-        JsonDocument doc;
-        JsonArray arr = doc.to<JsonArray>();
-        for (uint8_t i = 0; i < EFFECT_COUNT; i++) arr.add(EFFECT_NAMES[i]);
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
-    });
-
-    server.on("/json/pal", HTTP_GET, [](AsyncWebServerRequest *request){
-        JsonDocument doc;
-        JsonArray arr = doc.to<JsonArray>();
-        for (uint8_t i = 0; i < PALETTE_COUNT; i++) arr.add(PALETTE_NAMES[i]);
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
-    });
-
+void WebServerManagerClass::setupSceneAPI() {
+    // Presets are stored as one JSON file on LittleFS; the web interface reads it whole.
     server.on("/presets.json", HTTP_GET, [](AsyncWebServerRequest *request){
         if (LittleFS.exists("/presets.json")) {
             request->send(LittleFS, "/presets.json", "application/json");
@@ -1148,83 +1053,4 @@ void WebServerManagerClass::setupWLEDJsonAPI() {
         serializeJson(doc, json);
         request->send(200, "application/json", json);
     });
-
-    server.on("/json/state", HTTP_GET, [buildState](AsyncWebServerRequest *request){
-        JsonDocument doc;
-        buildState(doc.to<JsonVariant>());
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
-    });
-
-    server.on("/json/info", HTTP_GET, [buildInfo](AsyncWebServerRequest *request){
-        JsonDocument doc;
-        buildInfo(doc.to<JsonVariant>());
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
-    });
-
-    auto handlePost = [](AsyncWebServerRequest *request, JsonVariant &json) {
-        JsonObject jsonObj = json.as<JsonObject>();
-        
-        if (!jsonObj["on"].isNull()) {
-            if (jsonObj["on"].is<bool>()) {
-                bool on = jsonObj["on"].as<bool>();
-                for(uint8_t i=0; i<LEDManager.getNumSegments(); i++) LEDManager.setPower(i, on);
-            } else if (jsonObj["on"].is<String>() && jsonObj["on"].as<String>() == "t") {
-                for(uint8_t i=0; i<LEDManager.getNumSegments(); i++) LEDManager.setPower(i, !LEDManager.getPower(i));
-            }
-        }
-        
-        if (!jsonObj["bri"].isNull()) {
-            uint8_t bri = jsonObj["bri"].as<uint8_t>();
-            for(uint8_t i=0; i<LEDManager.getNumSegments(); i++) LEDManager.setBrightness(i, bri);
-        }
-        
-        if (!jsonObj["seg"].isNull()) {
-            JsonArray segs = jsonObj["seg"].as<JsonArray>();
-            for (JsonObject seg : segs) {
-                uint8_t id = seg["id"] | 0;
-                if (id >= LEDManager.getNumSegments()) continue;
-                
-                if (!seg["on"].isNull()) {
-                    LEDManager.setPower(id, seg["on"].as<bool>());
-                }
-                if (!seg["bri"].isNull()) {
-                    LEDManager.setBrightness(id, seg["bri"].as<uint8_t>());
-                }
-                if (!seg["col"].isNull()) {
-                    JsonArray cols = seg["col"].as<JsonArray>();
-                    if (cols.size() > 0) {
-                        JsonArray c0 = cols[0].as<JsonArray>();
-                        if (c0.size() >= 3) {
-                            uint32_t color = ((uint32_t)c0[0].as<uint8_t>() << 16) | 
-                                             ((uint32_t)c0[1].as<uint8_t>() << 8) | 
-                                             c0[2].as<uint8_t>();
-                            // preserve white channel if present
-                            uint32_t oldW = LEDManager.getColor(id) & 0xFF000000;
-                            LEDManager.setColor(id, oldW | color);
-                        }
-                    }
-                }
-                if (!seg["fx"].isNull()) {
-                    uint8_t fx = seg["fx"].as<uint8_t>();
-                    if (fx == 0) LEDManager.setEffect(id, 0);
-                    else if (fx == 2 || fx == 1) LEDManager.setEffect(id, 1);
-                    else if (fx == 8 || fx == 9 || fx == 11) LEDManager.setEffect(id, 2);
-                    else LEDManager.setEffect(id, 3);
-                }
-            }
-        }
-        
-        MqttManager.publishState();
-        request->send(200, "application/json", "{\"success\":true}");
-    };
-
-    AsyncCallbackJsonWebHandler* wledJsonHandler = new AsyncCallbackJsonWebHandler("/json", handlePost);
-    server.addHandler(wledJsonHandler);
-    
-    AsyncCallbackJsonWebHandler* wledStateJsonHandler = new AsyncCallbackJsonWebHandler("/json/state", handlePost);
-    server.addHandler(wledStateJsonHandler);
 }

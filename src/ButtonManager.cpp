@@ -22,7 +22,7 @@ ButtonManagerClass ButtonManager;
 
 void ButtonManagerClass::begin() {
     Preferences prefs;
-    prefs.begin("wled_clone", true);
+    prefs.begin(PREF_NAMESPACE, true);
     
     _btn1Enabled = prefs.getBool("btn1_en", false);
     _btn1Type = prefs.getString("btn1_type", "push");

@@ -1,20 +1,17 @@
 # API Referenz
 
-HyperLED bietet eine umfangreiche HTTP-JSON-API für Automatisierungssysteme, MQTT und Skripte. Der Kern ist **WLED-kompatibel** – bestehende WLED-Integrationen (z. B. Home Assistant, Node-RED) funktionieren größtenteils ohne Anpassung.
+HyperLED bietet eine HTTP-JSON-API für Skripte und die eigene Weboberfläche. Für Home Assistant und andere Smart-Home-Zentralen ist MQTT mit Home-Assistant-Autodiscovery der vorgesehene Weg.
 
-## WLED-kompatible Steuerung
+## Zustand
 
-### `GET /json/state`
-Gibt den aktuellen Zustand des Master-Controllers zurück.
+### `GET /api/state`
+Gibt den aktuellen Zustand zurück: `on` (mindestens ein Segment leuchtet), `sync` (Gleichlauf) und alle Segmente.
 
 *Beispiel-Antwort (gekürzt):*
 ```json
 {
+  "sync": false,
   "on": true,
-  "bri": 128,
-  "transition": 7,
-  "ps": -1,
-  "pl": -1,
   "seg": [
     {
       "name": "Master",
@@ -35,26 +32,16 @@ Gibt den aktuellen Zustand des Master-Controllers zurück.
 }
 ```
 
-### `POST /json/state`
-Ändert den Zustand. Erwartet striktes JSON mit korrektem `Content-Length`-Header.
+### `POST /api/state`
+Ändert den Zustand. Alle Felder sind optional.
 
 *Beispiel-Payloads:*
-- Ausschalten: `{"on": false}`
-- Einschalten mit voller Helligkeit: `{"on": true, "bri": 255}`
-- **Toggle:** `{"on": "t"}` (wechselt zwischen an/aus, nützlich für physische Buttons)
-- Segment anpassen: `{"seg": [{"id": 0, "effect": 5, "col": [[255,0,0]]}]}`
+- Alles ausschalten: `{"on": false}`
+- **Umschalten:** `{"on": "t"}` (aus, wenn irgendein Segment leuchtet, sonst alles an – praktisch für Taster)
+- Gleichlauf einschalten: `{"sync": true}`
+- Segment anpassen: `{"seg": [{"id": 0, "on": true, "bri": 200, "effect": 5, "color": "#ff0000"}]}`
 
-### `GET /json`
-Kombiniert `state`, `info`, `effects` (Liste aller Effektnamen) und `palettes` (Liste aller Palettennamen) in einer Antwort – praktisch für den ersten Abruf beim Verbindungsaufbau einer Integration.
-
-### `POST /json`
-Nimmt denselben Payload wie `POST /json/state` entgegen (WLED-kompatibler Alias).
-
-### `GET /json/info`
-Geräteinformationen (Firmware-Version, freier Heap, Uptime, MAC-Adresse, Name usw.), analog zum `info`-Objekt aus `GET /json`.
-
-### `GET /json/eff` / `GET /json/pal`
-Liefern jeweils die reine Liste der Effekt- bzw. Palettennamen als JSON-Array (Index entspricht der `effect`/`palette`-Nummer im State).
+Pro Segment werden `on`, `bri`, `effect`, `speed`, `intensity`, `palette`, `color`, `color2`, `color2Enabled`, `white`, `whiteOnly` und `cct` verstanden.
 
 ---
 
@@ -63,7 +50,7 @@ Liefern jeweils die reine Liste der Effekt- bzw. Palettennamen als JSON-Array (I
 | Endpunkt | Methode | Beschreibung |
 |---|---|---|
 | `/api/segments` | GET / POST | Segmente auslesen bzw. anlegen bearbeiten oder löschen. |
-| `/api/state` | GET / POST | Kompakter Zustands-Endpunkt (Alternative zu `/json/state`). |
+| `/api/state` | GET / POST | Zustand lesen und ändern (siehe oben). |
 | `/api/config` | GET / POST | LED-Grundkonfiguration (Typ, Anzahl, Pin, ABL). |
 | `/api/buttons` | GET / POST | Konfiguration der physischen Taster/Schalter. |
 
@@ -120,7 +107,7 @@ Details zur Funktionsweise siehe [Master/Slave Architektur](07_Master_Slave_Arch
 | `/api/wifi/status` | GET | Aktueller Verbindungsstatus. |
 | `/api/status` | GET | Kompakter System-Status. |
 | `/api/version` | GET | Firmware-Version. |
-| `/api/info` | GET | Geräteinformationen (kompakte Variante von `/json/info`). |
+| `/api/info` | GET | Geräteinformationen und Diagnose (Firmware, Speicher, Laufzeit, WLAN, letzter Ausfall). |
 | `/api/update_online` | POST | Prüft auf ein neues Release und startet das Update. |
 | `/api/update_progress` | GET | Fortschritt eines laufenden OTA-Updates. |
 | `/update` | POST | Manueller Firmware-/Dateisystem-Upload (Multipart-Formular, wie beim Flashen über die WebUI). |

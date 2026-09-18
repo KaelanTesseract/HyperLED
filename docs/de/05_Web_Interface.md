@@ -38,4 +38,4 @@ Gehe im Web-Interface auf den Tab **WLAN / MQTT** und scrolle nach unten:
 5. **Topic:** Gib einen eindeutigen Namen an (z. B. `wohnzimmer/hyperled`). Über dieses Topic lauscht der Controller auf Befehle.
 
 > [!TIP]
-> **Payloads:** Der Controller erwartet JSON-Pakete, die identisch zur `/json/state`-API sind (siehe [API Referenz](08_API_Referenz.md)). Ein Payload wie `{"on": true, "bri": 255}` an das eingestellte Topic schaltet den Controller mit voller Helligkeit ein.
+> **Payloads:** Home Assistant findet den Controller über die Autodiscovery von selbst. Befehle gehen im JSON-Format von Home Assistant an `hyperled/<MAC>/ha/set` (alle Segmente) oder `hyperled/<MAC>/seg<N>/ha/set` (ein Segment), zum Beispiel `{"state": "ON", "brightness": 255}`. Den Zustand meldet der Controller unter denselben Pfaden mit `/ha/state`.

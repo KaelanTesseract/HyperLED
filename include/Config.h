@@ -28,7 +28,7 @@
 #define DEBUG_SERIAL 0
 
 // --- Preferences Namespaces & Keys ---
-#define PREF_NAMESPACE "wled_clone"
+#define PREF_NAMESPACE "hyperled"
 
 // ABL
 #define PREF_ABL_ENABLE "abl_en"

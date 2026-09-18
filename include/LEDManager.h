@@ -164,7 +164,7 @@ struct Segment {
     uint8_t palette = 0;
 
     // Generic second effect parameter (0-255), interpreted per-effect: sparkle
-    // density, trail length, cooling rate, etc. Mirrors WLED's "intensity" slider.
+    // density, trail length, cooling rate, etc.
     uint8_t intensity = 128;
     // Secondary color, used by effects that blend/alternate between two colors
     // (e.g. Chase, Color Wipe) instead of color-to-black. Off by default so those
@@ -310,7 +310,7 @@ public:
     // Multi-Panel Canvas: lets 2D effects (Plasma, Fire 2D, Ripple, Pacifica, Matrix
     // Rain) flow seamlessly across the Master's own matrix AND any number of Slave
     // panels arranged in a shared coordinate space, instead of being confined to a
-    // single device's grid like WLED's per-device 2D effects are. With no extra
+    // single device's grid. With no extra
     // panels configured this collapses to exactly the old Master-only matrix.
     void setCanvasPanels(JsonArray panels);
     void getCanvasPanelsJson(JsonArray array) const;
