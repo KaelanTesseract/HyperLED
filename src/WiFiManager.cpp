@@ -47,7 +47,7 @@ static void setStaRestartStreak(uint32_t v) {
 
 // The link-failure snapshot, same survival rules as the streak above.
 // Bumped whenever the layout changes, so a record written by older firmware is never misread.
-#define LINK_SNAPSHOT_MAGIC 0x484C4632u  // "HLF2"
+#define LINK_SNAPSHOT_MAGIC 0x484C4633u  // "HLF3"
 struct LinkSnapshotRecord {
     uint32_t magic;
     WiFiManagerClass::LinkFailureSnapshot data;
@@ -89,13 +89,17 @@ void WiFiManagerClass::recordLinkFailure(bool restarting, uint32_t reason) {
         s.espNowLastError = nowBus->getLastSendError();
         s.espNowFailStreak = nowBus->getSendFailStreak();
         s.espNowRxAgoMs = nowBus->getLastRxAgoMs();
+        s.espNowTxDone = nowBus->getTxDone();
+        s.espNowTxFailed = nowBus->getTxFailed();
+        s.espNowTxDoneAgoMs = nowBus->getLastTxDoneAgoMs();
     }
 
     // On the serial port too, with the numbers now - if someone is watching, they see the
     // state of the device at the moment it went deaf, not only after.
     Serial.printf("WiFi: link dead since %lus - heap %lu (min %lu, block %lu, internal %lu), "
                   "rssi %ld ch %lu status %lu, espnow sendErr %lu rx %lu, led pkts %lu, "
-                  "espnow refused %lu in a row (first 0x%x, last 0x%x), nothing heard for %lums\n",
+                  "espnow refused %lu in a row (first 0x%x, last 0x%x), nothing heard for %lums, "
+                  "sends completed %lu / failed %lu (last completion %lums ago)\n",
                   (unsigned long)s.uptimeAtFailure, (unsigned long)ESP.getFreeHeap(),
                   (unsigned long)ESP.getMinFreeHeap(), (unsigned long)ESP.getMaxAllocHeap(),
                   (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
@@ -104,7 +108,9 @@ void WiFiManagerClass::recordLinkFailure(bool restarting, uint32_t reason) {
                   (unsigned long)(SlaveManager.getEspBus() ? SlaveManager.getEspBus()->getPacketsReceived() : 0),
                   (unsigned long)SlaveManager.getLedPacketsSent(),
                   (unsigned long)s.espNowFailStreak, (unsigned)s.espNowFirstError,
-                  (unsigned)s.espNowLastError, (unsigned long)s.espNowRxAgoMs);
+                  (unsigned)s.espNowLastError, (unsigned long)s.espNowRxAgoMs,
+                  (unsigned long)s.espNowTxDone, (unsigned long)s.espNowTxFailed,
+                  (unsigned long)s.espNowTxDoneAgoMs);
 }
 
 bool WiFiManagerClass::radioLooksDead() const {
@@ -366,9 +372,9 @@ void WiFiManagerClass::superviseLink() {
             // its channel, and the Slaves keep being served - a probe that is merely wrong costs
             // nothing at all now, which is the whole point of the change.
             uint32_t streak = staRestartStreak();
-            // Within budget: restart after ten minutes - or after one, if ESP-NOW confirms that
-            // the radio itself is dead. Budget spent: still restart, but only once an hour, so a
-            // device that cannot recover does not reboot-loop the Slaves.
+            // Within budget: restart after ten minutes - or after RADIO_DEAD_MS, if ESP-NOW confirms
+            // that the radio itself is dead. Budget spent: still restart, but only once an hour, so
+            // a device that cannot recover does not reboot-loop the Slaves.
             bool radioDead = radioLooksDead();
             unsigned long wait = streak >= STA_MAX_RESTART_STREAK ? LINK_DEAD_BACKOFF_MS
                                : radioDead                        ? RADIO_DEAD_MS

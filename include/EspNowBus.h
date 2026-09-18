@@ -43,6 +43,7 @@ public:
 
     static EspNowBusClass* _instance;
     static void onDataRecv(const esp_now_recv_info_t * esp_now_info, const uint8_t *incomingData, int len);
+    static void onDataSent(const wifi_tx_info_t* info, esp_now_send_status_t status);
 
     // Receive diagnostics, surfaced via /api/espnow_status. Discovery problems are otherwise
     // invisible from the Master side: a Slave that is heard but rejected looks exactly like a
@@ -79,6 +80,13 @@ public:
     }
     // Time since anything at all was received.
     unsigned long getLastRxAgoMs() const { return millis() - _lastRxAt; }
+    // esp_now_send() only queues a packet. These count what the driver reported back through its
+    // send callback, which is the only proof that the radio still transmits: a radio that has
+    // stalled takes packets and never completes them, which looks quite different from a queue
+    // that is merely full.
+    uint32_t getTxDone() const { return _txDone; }
+    uint32_t getTxFailed() const { return _txFailed; }
+    unsigned long getLastTxDoneAgoMs() const { return _lastTxDoneAt == 0 ? 0 : millis() - _lastTxDoneAt; }
 
 private:
     void noteSendResult(esp_err_t result);
@@ -88,6 +96,16 @@ private:
     unsigned long _sendFailSince = 0;
     // Written by the receive callback on the Wi-Fi task; a single 32-bit write, read as a whole.
     volatile unsigned long _lastRxAt = 0;
+    volatile uint32_t _txDone = 0;
+    volatile uint32_t _txFailed = 0;
+    volatile unsigned long _lastTxDoneAt = 0;
+    // While every send is being refused, trying at full rate only keeps the driver's queue full
+    // and buries the serial log. After this many refusals in a row, sends are spaced out; the
+    // counters keep running, so the supervision above still sees how long it has been going on.
+    static const uint32_t SEND_BACKOFF_AFTER = 10;
+    static const unsigned long SEND_BACKOFF_MS = 50;
+    unsigned long _lastSendAttemptAt = 0;
+    bool sendBackoffActive();
 
     // Received packets are parked here and handled from loop(), never in the callback.
     //

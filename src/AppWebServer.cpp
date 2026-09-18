@@ -179,6 +179,9 @@ void WebServerManagerClass::setupRoutes() {
             doc["lastSendError"] = bus->getLastSendError();
             doc["sendFailStreak"] = bus->getSendFailStreak();
             doc["lastRxAgoMs"] = bus->getLastRxAgoMs();
+            doc["txDone"] = bus->getTxDone();
+            doc["txFailed"] = bus->getTxFailed();
+            doc["lastTxDoneAgoMs"] = bus->getLastTxDoneAgoMs();
         }
         doc["ledPackets"] = SlaveManager.getLedPacketsSent();
         doc["ledFrames"] = SlaveManager.getLedFramesSent();
@@ -222,8 +225,7 @@ void WebServerManagerClass::setupRoutes() {
         json += ",\"wifiLastReason\":" + String((unsigned)WiFiManager.getLastDisconnectReason());
         json += ",\"wifiOfflineMs\":" + String((unsigned long)WiFiManager.getOfflineMs());
         json += ",\"linkProbeFailures\":" + String((unsigned long)WiFiManager.getProbeFailures());
-        json += ",\"forcedReconnects\":" + String((unsigned long)WiFiManager.getForcedReconnects());
-        json += ",\"lastProbeOkAgoMs\":" + String((unsigned long)WiFiManager.getLastProbeOkAgoMs());
+        json += ",\"forcedReconnects\":" + String((unsigned long)WiFiManager.getForcedReconnects());        json += ",\"lastProbeOkAgoMs\":" + String((unsigned long)WiFiManager.getLastProbeOkAgoMs());
         // The state the previous run was in when its link died (see WiFiManager).
         const WiFiManagerClass::LinkFailureSnapshot& lf = WiFiManager.getPreviousLinkFailure();
         if (lf.valid) {
@@ -244,7 +246,10 @@ void WebServerManagerClass::setupRoutes() {
             json += ",\"espNowFirstError\":" + String(lf.espNowFirstError);
             json += ",\"espNowLastError\":" + String(lf.espNowLastError);
             json += ",\"espNowFailStreak\":" + String(lf.espNowFailStreak);
-            json += ",\"espNowRxAgoMs\":" + String(lf.espNowRxAgoMs) + "}";
+            json += ",\"espNowRxAgoMs\":" + String(lf.espNowRxAgoMs);
+            json += ",\"espNowTxDone\":" + String(lf.espNowTxDone);
+            json += ",\"espNowTxFailed\":" + String(lf.espNowTxFailed);
+            json += ",\"espNowTxDoneAgoMs\":" + String(lf.espNowTxDoneAgoMs) + "}";
         }
         // What the run before this one was doing when it ended. A hang leaves nothing behind on
         // its own - this is written to RTC memory as the loop goes, so it survives the reset.

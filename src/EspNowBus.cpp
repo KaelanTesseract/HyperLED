@@ -49,8 +49,9 @@ void EspNowBusClass::begin(wifi_mode_t mode, bool autoHop) {
         return;
     }
     
-    // Register callback
+    // Register callbacks
     esp_now_register_recv_cb(EspNowBusClass::onDataRecv);
+    esp_now_register_send_cb(EspNowBusClass::onDataSent);
     
     // Register broadcast peer
     esp_now_peer_info_t peerInfo;
@@ -65,6 +66,27 @@ void EspNowBusClass::begin(wifi_mode_t mode, bool autoHop) {
     
     _lastPingReceived = millis();
     _lastRxAt = millis();
+}
+
+// The SDK calls this from the Wi-Fi task once a queued packet has been transmitted (or given up
+// on). Counting only - everything else belongs to the loop.
+void EspNowBusClass::onDataSent(const wifi_tx_info_t* info, esp_now_send_status_t status) {
+    (void)info;
+    if (!_instance) return;
+    if (status == ESP_NOW_SEND_SUCCESS) {
+        _instance->_txDone = _instance->_txDone + 1;
+        _instance->_lastTxDoneAt = millis();
+    } else {
+        _instance->_txFailed = _instance->_txFailed + 1;
+    }
+}
+
+bool EspNowBusClass::sendBackoffActive() {
+    if (_sendFailStreak < SEND_BACKOFF_AFTER) return false;
+    unsigned long now = millis();
+    if (now - _lastSendAttemptAt < SEND_BACKOFF_MS) return true;
+    _lastSendAttemptAt = now;
+    return false;
 }
 
 void EspNowBusClass::noteSendResult(esp_err_t result) {
@@ -140,6 +162,9 @@ void EspNowBusClass::loop() {
 }
 
 bool EspNowBusClass::sendPacket(uint8_t targetId, uint8_t senderId, uint8_t command, const uint8_t* payload, uint16_t length) {
+    // While the driver refuses everything, spacing the attempts out keeps the queue from being
+    // hammered and the log from being flooded (see SEND_BACKOFF_AFTER).
+    if (_instance && _instance->sendBackoffActive()) return false;
     uint8_t* targetMac = _broadcastAddress;
     if (targetId != HYPERBUS_BROADCAST_ID && targetId != 254 && _instance && _instance->_peerMacs.find(targetId) != _instance->_peerMacs.end()) {
         targetMac = _instance->_peerMacs[targetId].data();

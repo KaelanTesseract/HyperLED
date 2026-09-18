@@ -102,6 +102,12 @@ public:
         uint32_t espNowFailStreak;
         uint32_t espNowRxAgoMs;
         uint32_t reason;             // 1 = gateway unreachable, 2 = radio dead (ping + ESP-NOW)
+        // Sends the driver completed, and how long ago the last completion was. Sends accepted
+        // but never completed mean the radio itself stopped transmitting; sends refused outright
+        // mean its queue never drained. The two need different fixes, so both are recorded.
+        uint32_t espNowTxDone;
+        uint32_t espNowTxFailed;
+        uint32_t espNowTxDoneAgoMs;
     };
     const LinkFailureSnapshot& getPreviousLinkFailure() const { return _prevLinkFailure; }
 
@@ -209,8 +215,14 @@ private:
     // The radio is dead, not merely the route to the gateway, when the probe fails AND every
     // ESP-NOW send has been refused AND nothing was received - for this long. Two independent
     // signals agreeing leave no room for the false alarms the ten-minute wait guards against, and
-    // the Slaves are without a Master for every one of those minutes.
-    static const unsigned long RADIO_DEAD_MS = 60000;
+    // the Slaves are without a Master for every one of those seconds.
+    //
+    // 25 s rather than the minute it used to be. The one stall recorded in the field (after 2.9 h)
+    // showed the signature without any ambiguity: association and RSSI fine, heap fine, yet every
+    // ESP-NOW send refused with ESP_ERR_ESPNOW_NO_MEM, every ping unsendable and nothing received.
+    // It did not clear by itself; only the restart cleared it. Waiting longer only made the outage
+    // longer. Restarting the radio alone is not an option - see the note in superviseLink().
+    static const unsigned long RADIO_DEAD_MS = 25000;
     static const uint32_t RADIO_DEAD_MIN_REFUSED = 50;
     bool radioLooksDead() const;
 

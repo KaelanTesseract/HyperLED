@@ -569,8 +569,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden) stopLiveStrip();
-        else if (activeArea === 'light' && !isAPMode) startLiveStrip();
+        if (document.hidden) {
+            stopLiveStrip();
+            stopMatrixPreview();
+        } else if (!isAPMode) {
+            if (activeArea === 'light') startLiveStrip();
+            if (activeArea === 'panel') startMatrixPreview();
+        }
     });
     const tabsWrapperEl = settingsTabsEl ? settingsTabsEl.closest('.subnav-wrapper') : null;
 
@@ -3389,10 +3394,13 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch(() => {});
     }
 
+    // Once a second, and only while someone can see it. A 64x64 panel is some 30 KB of JSON per
+    // answer; the Master used to send that twice a second for as long as the tab stayed open, even
+    // behind other windows - hours of Wi-Fi traffic next to the ESP-NOW link to the Slaves.
     function startMatrixPreview() {
-        if (matrixPreviewTimer) return;
+        if (matrixPreviewTimer || document.hidden) return;
         fetchMatrixPreview();
-        matrixPreviewTimer = setInterval(fetchMatrixPreview, 500);
+        matrixPreviewTimer = setInterval(fetchMatrixPreview, 1000);
     }
 
     function stopMatrixPreview() {
