@@ -35,7 +35,16 @@ Gehe im Web-Interface auf den Tab **WLAN / MQTT** und scrolle nach unten:
 2. **Broker IP:** Trage die IP-Adresse deines MQTT-Servers ein (z. B. Mosquitto).
 3. **Port:** Standard ist `1883`.
 4. **Benutzer / Passwort:** Falls dein Broker eine Authentifizierung benötigt.
-5. **Topic:** Gib einen eindeutigen Namen an (z. B. `wohnzimmer/hyperled`). Über dieses Topic lauscht der Controller auf Befehle.
+5. **Basis-Thema (Topic):** Leer lassen für den Standard `hyperled/<MAC>`. Wer mehrere Controller sprechend benennen will, trägt z. B. `wohnzimmer/hyperled` ein – jeder Controller braucht ein eigenes Thema.
+
+Beim Speichern startet der Controller neu und verbindet sich. Home Assistant findet ihn danach über die Autodiscovery von selbst, auch nach einem Neustart von Home Assistant.
+
+### Was in Home Assistant erscheint
+* **Ein Licht pro Segment** – auch Segmente auf einem Slave. Die Farbwahl richtet sich nach der LED-Hardware: RGB, RGBW, Farbtemperatur (bei Streifen mit zwei Weißkanälen und CCT-LEDs), nur Helligkeit oder nur Ein/Aus.
+* **Effekte** mit denselben Namen wie in der Weboberfläche. Uhr/Text, Bild und die Panel-Effekte stehen nur bei Segmenten auf einem HUB75-Panel (bzw. einer Matrix) zur Auswahl.
+* **„Alle Segmente“** schaltet und dimmt alle Segmente zusammen (nur bei mehr als einem Segment).
+* **Verfügbarkeit:** Ist der Controller aus oder nicht erreichbar, zeigt Home Assistant die Lichter als „nicht verfügbar“.
+* Jede Änderung – aus der Weboberfläche, über Taster, Zeitpläne, Szenen oder die Playlist – kommt sofort in Home Assistant an. Neue, umbenannte oder gelöschte Segmente übernimmt Home Assistant automatisch.
 
 > [!TIP]
-> **Payloads:** Home Assistant findet den Controller über die Autodiscovery von selbst. Befehle gehen im JSON-Format von Home Assistant an `hyperled/<MAC>/ha/set` (alle Segmente) oder `hyperled/<MAC>/seg<N>/ha/set` (ein Segment), zum Beispiel `{"state": "ON", "brightness": 255}`. Den Zustand meldet der Controller unter denselben Pfaden mit `/ha/state`.
+> **Themen:** Befehle gehen im JSON-Format an `<Basis>/ha/set` (alle Segmente) oder `<Basis>/seg<N>/ha/set` (ein Segment), zum Beispiel `{"state": "ON", "brightness": 255}`. Den Zustand meldet der Controller unter denselben Pfaden mit `/ha/state`, die Erreichbarkeit unter `<Basis>/status` (`online` / `offline`).

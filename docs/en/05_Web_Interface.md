@@ -35,7 +35,16 @@ Go to the **WLAN / MQTT** tab in the web interface and scroll down:
 2. **Broker IP:** Enter the IP address of your MQTT server (e.g., Mosquitto).
 3. **Port:** Default is `1883`.
 4. **User / Password:** If your broker requires authentication.
-5. **Topic:** Provide a unique name (e.g., `livingroom/hyperled`). The controller listens for commands on this topic.
+5. **Base topic:** Leave empty for the default `hyperled/<MAC>`. To give several controllers readable names, enter e.g. `livingroom/hyperled` – each controller needs a topic of its own.
+
+Saving restarts the controller, which then connects. Home Assistant finds it on its own through autodiscovery, also after Home Assistant restarts.
+
+### What appears in Home Assistant
+* **One light per segment** – segments on a Slave included. The colour controls follow the LED hardware: RGB, RGBW, colour temperature (strips with two white channels and CCT LEDs), brightness only, or on/off only.
+* **Effects** with the same names as in the web interface. Clock/text, image and the panel effects are only offered for segments on a HUB75 panel (or a matrix).
+* **"Alle Segmente"** switches and dims all segments together (only with more than one segment).
+* **Availability:** When the controller is off or unreachable, Home Assistant shows its lights as unavailable.
+* Every change – from the web interface, buttons, schedules, scenes or the playlist – reaches Home Assistant right away. New, renamed or deleted segments are picked up automatically.
 
 > [!TIP]
-> **Payloads:** Home Assistant finds the controller on its own through autodiscovery. Commands go in Home Assistant's JSON format to `hyperled/<MAC>/ha/set` (all segments) or `hyperled/<MAC>/seg<N>/ha/set` (one segment), for example `{"state": "ON", "brightness": 255}`. The controller reports its state on the same paths with `/ha/state`.
+> **Topics:** Commands go in JSON to `<base>/ha/set` (all segments) or `<base>/seg<N>/ha/set` (one segment), for example `{"state": "ON", "brightness": 255}`. The controller reports its state on the same paths with `/ha/state`, and its availability on `<base>/status` (`online` / `offline`).

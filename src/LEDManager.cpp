@@ -70,13 +70,15 @@ static void saveWidgetImageToFs(const TextWidget& tw) {
     f.close();
 }
 
+// Display names, the same the German web interface shows. Only Home Assistant sees these (as
+// the effect list of each light), so they are what a user picks from there.
 const char* const EFFECT_NAMES[EFFECT_COUNT] = {
-    "Solid", "Breathe", "Rainbow", "Chase", "Fire", "Color Wipe", "Scanner", "Twinkle", "Meteor", "Matrix Rain", "Nur Weiß",
-    "Strobe", "Bounce", "Palette Rainbow",
-    "Sinelon", "Confetti", "Juggle", "BPM", "Theater Chase Rainbow", "Running Lights", "Color Waves",
-    "Plasma", "Ripple", "Fire 2D", "Pacifica",
+    "Einfarbig", "Atmen", "Regenbogen", "Lauflicht", "Feuer", "Farbwisch", "Scanner", "Funkeln", "Meteor", "Matrix-Regen", "Nur Weiß",
+    "Stroboskop", "Prallen", "Paletten-Regenbogen",
+    "Sinelon", "Konfetti", "Jonglieren", "BPM", "Theaterlicht Regenbogen", "Wanderlicht", "Farbwellen",
+    "Plasma", "Kreiswellen", "Feuer (2D)", "Pacifica",
     "Bild",
-    "Fireworks", "Starfield", "Bouncing Balls",
+    "Feuerwerk", "Sternenfeld", "Springbälle",
     "Uhr / Text"
 };
 

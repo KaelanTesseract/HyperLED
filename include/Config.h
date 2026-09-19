@@ -59,6 +59,9 @@
 #define PREF_MQTT_USER "mqtt_user"
 #define PREF_MQTT_PASS "mqtt_pass"
 #define PREF_MQTT_TOPIC "mqtt_top"
+// How many segment lights were last announced to Home Assistant, so the ones since deleted can
+// be removed there after a restart.
+#define PREF_MQTT_ANNOUNCED "mqtt_ann"
 
 // LED Types
 #define TYPE_WS2812_RGB 22

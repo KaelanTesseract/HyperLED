@@ -750,7 +750,8 @@
                                         </div>
                                         <div class="form-group">
                                             <label for="mqttTopic" data-i18n="mqtt_topic">Basis-Thema (Topic)</label>
-                                            <input type="text" id="mqttTopic" value="hyperled/device">
+                                            <input type="text" id="mqttTopic" placeholder="hyperled/…" aria-describedby="mqttTopicHint">
+                                            <p class="hint" id="mqttTopicHint" data-i18n="mqtt_topic_hint">Leer lassen für den Standard. Unter diesem Thema meldet sich der Controller in Home Assistant an.</p>
                                         </div>
                                         </div>
                                         <div style="margin-top: 20px;">
@@ -897,8 +898,8 @@
         </div>
 
     <script src="iro.min.js"></script>
-    <script src="i18n.js?v=16"></script>
-    <script src="app.js?v=22"></script>
+    <script src="i18n.js?v=17"></script>
+    <script src="app.js?v=23"></script>
 </body>
 </html>
 

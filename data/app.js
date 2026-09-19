@@ -3150,7 +3150,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 mqttPort.value = data.port || 1883;
                 mqttUser.value = data.user || "";
                 mqttPass.value = data.pass || "";
-                mqttTopic.value = data.topic || "hyperled/device";
+                mqttTopic.value = data.topic || "";
+                if (data.defaultTopic) mqttTopic.placeholder = data.defaultTopic;
             }
         } catch (e) {
             console.error("MQTT config fetch error:", e);

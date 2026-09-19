@@ -107,6 +107,7 @@ const translations = {
         "mqtt_user": "Benutzername (Optional)",
         "mqtt_pass": "Passwort (Optional)",
         "mqtt_topic": "Basis-Thema (Topic)",
+        "mqtt_topic_hint": "Leer lassen für den Standard. Unter diesem Thema meldet sich der Controller in Home Assistant an.",
         "btn_save_mqtt": "MQTT speichern und neu starten",
         
         "seg_title": "LED Segmente",
@@ -567,6 +568,7 @@ const translations = {
         "mqtt_user": "Username (Optional)",
         "mqtt_pass": "Password (Optional)",
         "mqtt_topic": "Base topic",
+        "mqtt_topic_hint": "Leave empty for the default. The controller registers with Home Assistant under this topic.",
         "btn_save_mqtt": "Save MQTT and restart",
         
         "seg_title": "LED Segments",
@@ -1019,6 +1021,7 @@ const translations = {
         "mqtt_user": "Имя пользователя (Необязательно)",
         "mqtt_pass": "Пароль (Необязательно)",
         "mqtt_topic": "Базовая тема (topic)",
+        "mqtt_topic_hint": "Оставьте пустым для значения по умолчанию. Под этой темой контроллер регистрируется в Home Assistant.",
         "btn_save_mqtt": "Сохранить MQTT и перезапустить",
         "seg_title": "Сегменты LED",
         "btn_add_seg": "+ Добавить",

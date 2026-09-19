@@ -345,7 +345,8 @@ void WebServerManagerClass::setupRoutes() {
             }
         }
         
-        MqttManager.publishState();
+        // Home Assistant learns about the change from MqttManager's own loop - PubSubClient is
+        // not safe to use from this task.
         request->send(200, "text/plain", "OK");
     });
     server.addHandler(stateHandler);
@@ -697,7 +698,14 @@ void WebServerManagerClass::setupRoutes() {
         doc["port"] = prefs.getUShort(PREF_MQTT_PORT, 1883);
         doc["user"] = prefs.getString(PREF_MQTT_USER, "");
         doc["pass"] = prefs.getString(PREF_MQTT_PASS, "");
-        doc["topic"] = prefs.getString(PREF_MQTT_TOPIC, "hyperled/device");
+        // Empty means the default, hyperled/<mac>. "hyperled/device" was a placeholder in older
+        // versions that never took effect, so it is shown as empty too.
+        String topic = prefs.getString(PREF_MQTT_TOPIC, "");
+        doc["topic"] = topic == "hyperled/device" ? "" : topic;
+        String mac = WiFi.macAddress();
+        mac.replace(":", "");
+        mac.toLowerCase();
+        doc["defaultTopic"] = "hyperled/" + mac;
         prefs.end();
         
         String response;
@@ -744,7 +752,8 @@ void WebServerManagerClass::setupRoutes() {
         prefs.end();
         
         request->send(200, "application/json", "{\"status\":\"ok\"}");
-        LEDManager.recalculateSegments();
+        // The connection is set up once at start, and the web interface announces a restart.
+        WiFiManager.requestRestart(1000);
     });
 
 
@@ -901,7 +910,8 @@ void WebServerManagerClass::setupRoutes() {
         prefs.putUShort(PREF_MQTT_PORT, 1883);
         prefs.remove(PREF_MQTT_USER);
         prefs.remove(PREF_MQTT_PASS);
-        prefs.putString(PREF_MQTT_TOPIC, "hyperled/device");
+        prefs.remove(PREF_MQTT_TOPIC);
+        prefs.remove(PREF_MQTT_ANNOUNCED);
         
         // WLAN löschen
         prefs.remove(PREF_WIFI_SSID);
