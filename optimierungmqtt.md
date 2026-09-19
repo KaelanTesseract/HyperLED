@@ -30,9 +30,7 @@ offen ist. Neu entdeckte Folgearbeiten kommen ebenfalls hierher.
 1. **MQTT-Verbindungsstatus anzeigen** – verbunden / nicht verbunden mit Fehlergrund, dazu ein
    Knopf „Verbindung testen“.
 2. **Knopf „In Home Assistant neu anmelden“** – sendet Discovery und Zustand erneut.
-3. **MQTT-Passwort nicht im Klartext an den Browser zurückgeben** – `/api/mqtt` liefert es heute
-   mit; ein leeres Feld soll „unverändert“ bedeuten.
-4. **Kurzanleitung in der Doku** – Einrichtung in Home Assistant Schritt für Schritt (de/en).
+3. **Kurzanleitung in der Doku** – Einrichtung in Home Assistant Schritt für Schritt (de/en).
 
 ## D. Stabilität und Aufräumen (bei der Umsetzung von A gefunden)
 

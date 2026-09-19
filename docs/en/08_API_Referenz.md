@@ -111,7 +111,7 @@ See [Master/Slave Architecture](07_Master_Slave_Architektur.md) for how this wor
 | `/api/update_online` | POST | Checks for a new release and starts the update. |
 | `/api/update_progress` | GET | Progress of an ongoing OTA update. |
 | `/update` | POST | Manual firmware/filesystem upload (multipart form, same as flashing via the WebUI). |
-| `/api/mqtt` | GET / POST | Read or save MQTT settings. An empty `topic` means the default, which `GET` returns as `defaultTopic` (`hyperled/<mac>`). Saving restarts the controller. |
+| `/api/mqtt` | GET / POST | Read or save MQTT settings. An empty `topic` means the default, which `GET` returns as `defaultTopic` (`hyperled/<mac>`). `GET` never returns the password, only `passSet` (whether one is stored); an empty `pass` on `POST` keeps the stored one, an empty `user` removes both. Saving restarts the controller. |
 | `/api/backup` | POST / GET | Backup of all settings: `POST` starts it, `GET` collects the JSON file (`202` while it is still being written). Contains every stored setting including the Wi-Fi and MQTT passwords, plus scenes, playlist, schedules and the images of image elements. |
 | `/api/restore` | POST | Upload a backup file (`multipart/form-data`). The controller checks the whole file, then replaces all settings and files and restarts. `?wifi=1` also takes the Wi-Fi credentials from the file; without it the controller keeps its own. Works on another controller too. |
 | `/api/factory_reset` | POST | Resets all settings (LED pins, buttons, Wi-Fi) to factory defaults and forces a reboot. |

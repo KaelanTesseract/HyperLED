@@ -697,7 +697,9 @@ void WebServerManagerClass::setupRoutes() {
         doc["server"] = prefs.getString(PREF_MQTT_SERVER, "");
         doc["port"] = prefs.getUShort(PREF_MQTT_PORT, 1883);
         doc["user"] = prefs.getString(PREF_MQTT_USER, "");
-        doc["pass"] = prefs.getString(PREF_MQTT_PASS, "");
+        // The password never leaves the controller - anyone on the network can open this page.
+        // The web interface only learns whether one is stored.
+        doc["passSet"] = prefs.getString(PREF_MQTT_PASS, "").length() > 0;
         // Empty means the default, hyperled/<mac>. "hyperled/device" was a placeholder in older
         // versions that never took effect, so it is shown as empty too.
         String topic = prefs.getString(PREF_MQTT_TOPIC, "");
@@ -731,16 +733,20 @@ void WebServerManagerClass::setupRoutes() {
             prefs.putUShort(PREF_MQTT_PORT, request->getParam("port", true)->value().toInt());
         }
         
+        bool userCleared = false;
         if (request->hasParam("user", true)) {
             String usr = request->getParam("user", true)->value();
             if (usr.length() > 0) prefs.putString(PREF_MQTT_USER, usr);
-            else prefs.remove(PREF_MQTT_USER);
+            else { prefs.remove(PREF_MQTT_USER); userCleared = true; }
         }
         
-        if (request->hasParam("pass", true)) {
+        // An empty password field means "keep the stored one", since the form never shows it.
+        // Without a user name there is no login, so the password goes with it.
+        if (userCleared) {
+            prefs.remove(PREF_MQTT_PASS);
+        } else if (request->hasParam("pass", true)) {
             String pwd = request->getParam("pass", true)->value();
             if (pwd.length() > 0) prefs.putString(PREF_MQTT_PASS, pwd);
-            else prefs.remove(PREF_MQTT_PASS);
         }
         
         if (request->hasParam("topic", true)) {

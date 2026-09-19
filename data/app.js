@@ -1639,7 +1639,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.hardwareLimits && window.hardwareLimits.slaves) {
                 window.hardwareLimits.slaves.forEach(s => {
                     const val = "slave_" + s.id;
-                    const displayName = s.name !== 'Unknown' && s.name ? s.name : t('dyn_slave') + ' ' + s.id;
+                    // A Slave reports its own name over the air - never trust it as markup.
+                    const displayName = escapeText(s.name !== 'Unknown' && s.name ? s.name : t('dyn_slave') + ' ' + s.id);
                     targetOptions += `<option style="background: var(--surface-2); color: var(--text-main);" value="${val}" ${currentTarget === val ? 'selected' : ''}>${displayName}</option>`;
                 });
             }
@@ -2490,7 +2491,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span style="font-size: var(--text-caption); color: var(--text-muted);">${t('dyn_slave_seen')}${Math.round(slave.lastSeenAge / 1000)}${t('dyn_slave_seen_suffix')}</span>
                         </div>
                         <div style="font-size: var(--text-caption); color: var(--text-muted); margin-bottom: 10px;">
-                            ${t('dyn_slave_version')} <strong style="color: var(--text-main);">${slave.version || t('dyn_slave_unknown_ver')}</strong>
+                            ${t('dyn_slave_version')} <strong style="color: var(--text-main);">${escapeText(slave.version || t('dyn_slave_unknown_ver'))}</strong>
                         </div>
                         <div class="form-group" style="margin-bottom: 10px;">
                             <label for="slaveName_${slave.id}">${t('dyn_slave_name')}</label>
@@ -2911,7 +2912,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (displayVer.startsWith('v')) displayVer = displayVer.substring(1);
 
                         if (compareVersions(displayVer, currentVer) > 0) {
-                            sysVersion.innerHTML = `<span style="color: var(--text-main);">${currentVer}</span> <span style="color: var(--text-muted);">(${t('dyn_latest')}${latestVer})</span>`;
+                            sysVersion.innerHTML = `<span style="color: var(--text-main);">${escapeText(currentVer)}</span> <span style="color: var(--text-muted);">(${t('dyn_latest')}${escapeText(latestVer)})</span>`;
                             offerUpdate(t('dyn_update_to', { ver: latestVer }),
                                         () => startOnlineUpdate(latestVer));
 
@@ -2924,13 +2925,13 @@ document.addEventListener('DOMContentLoaded', () => {
                                 banner.style.display = 'block';
                             }
                         } else {
-                            sysVersion.innerHTML = `<span style="color: var(--text-main);">${currentVer}</span>`;
+                            sysVersion.innerHTML = `<span style="color: var(--text-main);">${escapeText(currentVer)}</span>`;
                             showState(t('dyn_firmware_up_to_date'));
                         }
                     })
                     .catch(err => {
                         console.log('GitHub API error or no releases yet', err);
-                        sysVersion.innerHTML = `<span style="color: var(--text-main);">${currentVer}</span>`;
+                        sysVersion.innerHTML = `<span style="color: var(--text-main);">${escapeText(currentVer)}</span>`;
                         showState(t('dyn_firmware_up_to_date'));
                     });
             })
@@ -3149,7 +3150,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 mqttServer.value = data.server || "";
                 mqttPort.value = data.port || 1883;
                 mqttUser.value = data.user || "";
-                mqttPass.value = data.pass || "";
+                // The controller never sends the password back, only whether one is stored.
+                mqttPass.value = "";
+                mqttPass.placeholder = data.passSet ? t('ph_mqtt_pass_set') : "";
                 mqttTopic.value = data.topic || "";
                 if (data.defaultTopic) mqttTopic.placeholder = data.defaultTopic;
             }

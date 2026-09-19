@@ -111,7 +111,7 @@ Details zur Funktionsweise siehe [Master/Slave Architektur](07_Master_Slave_Arch
 | `/api/update_online` | POST | Prüft auf ein neues Release und startet das Update. |
 | `/api/update_progress` | GET | Fortschritt eines laufenden OTA-Updates. |
 | `/update` | POST | Manueller Firmware-/Dateisystem-Upload (Multipart-Formular, wie beim Flashen über die WebUI). |
-| `/api/mqtt` | GET / POST | MQTT-Einstellungen auslesen bzw. speichern. `topic` leer bedeutet den Standard, den `GET` als `defaultTopic` mitliefert (`hyperled/<mac>`). Nach dem Speichern startet der Controller neu. |
+| `/api/mqtt` | GET / POST | MQTT-Einstellungen auslesen bzw. speichern. `topic` leer bedeutet den Standard, den `GET` als `defaultTopic` mitliefert (`hyperled/<mac>`). Das Passwort gibt `GET` nie heraus, nur `passSet` (ob eines gespeichert ist); ein leeres `pass` beim `POST` behält das gespeicherte, ein leerer `user` löscht beide. Nach dem Speichern startet der Controller neu. |
 | `/api/backup` | POST / GET | Sicherung aller Einstellungen: `POST` stößt sie an, `GET` holt die JSON-Datei ab (`202`, solange sie noch entsteht). Enthält alle gespeicherten Einstellungen samt WLAN- und MQTT-Passwort sowie Szenen, Playlist, Zeitpläne und die Bilder der Bild-Elemente. |
 | `/api/restore` | POST | Sicherungsdatei hochladen (`multipart/form-data`). Der Controller prüft die Datei vollständig, ersetzt dann alle Einstellungen und Dateien und startet neu. `?wifi=1` übernimmt auch die WLAN-Zugangsdaten aus der Datei; ohne behält der Controller seine eigenen. Funktioniert auch auf einem anderen Controller. |
 | `/api/factory_reset` | POST | Setzt alle Einstellungen (LED-Pins, Taster, WLAN) auf den Werkszustand zurück und erzwingt einen Neustart. |
