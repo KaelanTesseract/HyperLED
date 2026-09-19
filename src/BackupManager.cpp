@@ -55,6 +55,21 @@ static bool isUserFile(const String& path) {
     return isImagePath(path);
 }
 
+void BackupManagerClass::listUserFiles(std::vector<String>& paths) {
+    paths.clear();
+    for (const char* path : USER_FILES) {
+        if (LittleFS.exists(path)) paths.push_back(path);
+    }
+    File dir = LittleFS.open(IMAGE_DIR);
+    if (dir && dir.isDirectory()) {
+        for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
+            String path = String(IMAGE_DIR) + "/" + f.name();
+            f.close();
+            if (isImagePath(path)) paths.push_back(path);
+        }
+    }
+}
+
 static String toBase64(const uint8_t* data, size_t len) {
     size_t outLen = 0;
     mbedtls_base64_encode(nullptr, 0, &outLen, data, len);
@@ -230,16 +245,10 @@ bool BackupManagerClass::writeBackup(String& error) {
     // The user files, as base64 so images and text travel the same way.
     JsonObject files = doc["files"].to<JsonObject>();
     std::vector<uint8_t> data;
-    for (const char* path : USER_FILES) {
-        if (LittleFS.exists(path) && readFile(path, data)) files[path] = toBase64(data.data(), data.size());
-    }
-    File dir = LittleFS.open(IMAGE_DIR);
-    if (dir && dir.isDirectory()) {
-        for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
-            String path = String(IMAGE_DIR) + "/" + f.name();
-            f.close();
-            if (isImagePath(path) && readFile(path.c_str(), data)) files[path] = toBase64(data.data(), data.size());
-        }
+    std::vector<String> paths;
+    listUserFiles(paths);
+    for (const String& path : paths) {
+        if (readFile(path.c_str(), data)) files[path] = toBase64(data.data(), data.size());
     }
 
     File out = LittleFS.open(BACKUP_PATH, "w");

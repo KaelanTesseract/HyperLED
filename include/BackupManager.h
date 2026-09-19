@@ -19,6 +19,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <vector>
 
 // Backup and restore of everything this controller has been told, as one JSON file that can be
 // restored here or on another controller:
@@ -50,6 +51,11 @@ public:
     bool restorePending() const { return _restorePending; }
 
     void loop();
+
+    // The user files on LittleFS right now: presets, playlist, schedules and the element images.
+    // What a backup carries, and what an online update brings back after it has replaced the file
+    // system - one list, so the two cannot drift apart.
+    static void listUserFiles(std::vector<String>& paths);
 
 private:
     volatile bool _backupRequested = false;

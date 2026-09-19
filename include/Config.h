@@ -20,7 +20,7 @@
 
 #include <Arduino.h>
 
-#define HYPERLED_VERSION "0.1.112"
+#define HYPERLED_VERSION "0.2.001"
 
 // Set to 1 to re-enable the periodic "Free heap" serial print (main.cpp loop()) for
 // quick heap-health monitoring during development. Off by default to keep the serial

@@ -3,7 +3,7 @@
  * 
  * Copyright (c) 2026 Dennis Guse
  * 
- * Licensed under the EUPL, Version 1.2 or – as soon they will be approved by 
+ * Licensed under the EUPL, Version 1.2 or ï¿½ as soon they will be approved by 
  * the European Commission - subsequent versions of the EUPL (the "Licence");
  * You may not use this work except in compliance with the Licence.
  * You may obtain a copy of the Licence at:
@@ -24,6 +24,7 @@
 #include <WiFiClientSecure.h>
 #include <Update.h>
 #include <ArduinoJson.h>
+#include <vector>
 
 class UpdateManagerClass {
 public:
@@ -43,6 +44,19 @@ private:
     
     void performUpdate();
     bool downloadAndFlash(String url, int command, int startProgress, int endProgress);
+
+    // littlefs.bin replaces the whole file system - web interface and the user's presets,
+    // playlist, schedules and element images alike. The user files are held in PSRAM across it
+    // and written back before the firmware follows.
+    struct KeptFile {
+        String path;
+        uint8_t* data = nullptr;
+        size_t len = 0;
+    };
+    std::vector<KeptFile> _kept;
+    bool keepUserFiles();
+    void restoreUserFiles();
+    void freeKeptFiles();
 };
 
 extern UpdateManagerClass UpdateManager;

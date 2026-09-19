@@ -3,7 +3,7 @@
  * 
  * Copyright (c) 2026 Dennis Guse
  * 
- * Licensed under the EUPL, Version 1.2 or – as soon they will be approved by 
+ * Licensed under the EUPL, Version 1.2 or ï¿½ as soon they will be approved by 
  * the European Commission - subsequent versions of the EUPL (the "Licence");
  * You may not use this work except in compliance with the Licence.
  * You may obtain a copy of the Licence at:
@@ -17,7 +17,10 @@
  * limitations under the Licence.
  */
 #include "UpdateManager.h"
+#include "BackupManager.h"
 #include "esp_task_wdt.h"
+#include <LittleFS.h>
+#include <esp_heap_caps.h>
 
 UpdateManagerClass UpdateManager;
 
@@ -35,6 +38,11 @@ void UpdateManagerClass::loop() {
 
 void UpdateManagerClass::startOnlineUpdate(String version) {
     if (_updatePending || _status == "updating") return;
+    // The version becomes part of the download URL: digits and dots only.
+    if (version.isEmpty() || version.length() > 16) return;
+    for (size_t i = 0; i < version.length(); i++) {
+        if (!isDigit(version[i]) && version[i] != '.') return;
+    }
     _targetVersion = version;
     _updatePending = true;
     _progress = 0;
@@ -52,17 +60,33 @@ String UpdateManagerClass::getStatus() {
 void UpdateManagerClass::performUpdate() {
     _status = "updating FS";
     _progress = 5;
-    
+
     String baseUrl = "https://github.com/KaelanTesseract/HyperLED/releases/download/" + _targetVersion + "/";
-    
-    if (!downloadAndFlash(baseUrl + "littlefs.bin", U_SPIFFS, 5, 45)) {
-        _status = "error_fs";
-        Serial.println("LittleFS update failed or file not found.");
-        // We could abort, but maybe it's just a firmware update without a new filesystem?
-        // Let's abort to be safe, since they usually go together.
+
+    // Nothing is overwritten unless every user file could be read first.
+    if (!keepUserFiles()) {
+        _status = "error_keep";
+        freeKeptFiles();
         return;
     }
-    
+
+    // Unmounted while the partition is rewritten, so nothing reads or writes a half-written file
+    // system, and mounted fresh afterwards to see the new one.
+    LittleFS.end();
+    bool fsOk = downloadAndFlash(baseUrl + "littlefs.bin", U_SPIFFS, 5, 45);
+    LittleFS.begin();
+    if (!fsOk) {
+        _status = "error_fs";
+        Serial.println("LittleFS update failed or file not found.");
+        // A download that failed before writing leaves the old file system in place; one that
+        // failed halfway does not, so the files go back either way.
+        restoreUserFiles();
+        freeKeptFiles();
+        return;
+    }
+    restoreUserFiles();
+    freeKeptFiles();
+
     _status = "updating FW";
     if (!downloadAndFlash(baseUrl + "firmware.bin", U_FLASH, 45, 95)) {
         _status = "error_fw";
@@ -137,4 +161,59 @@ bool UpdateManagerClass::downloadAndFlash(String url, int command, int startProg
         Serial.println("Unable to connect");
     }
     return success;
+}
+
+bool UpdateManagerClass::keepUserFiles() {
+    freeKeptFiles();
+    std::vector<String> paths;
+    BackupManagerClass::listUserFiles(paths);
+    for (const String& path : paths) {
+        File f = LittleFS.open(path, "r");
+        if (!f) {
+            Serial.printf("Update: cannot open %s - not updating\n", path.c_str());
+            return false;
+        }
+        KeptFile kept;
+        kept.path = path;
+        kept.len = f.size();
+        if (kept.len > 0) {
+            // PSRAM: the TLS download that follows needs the internal RAM.
+            kept.data = (uint8_t*)heap_caps_malloc(kept.len, MALLOC_CAP_SPIRAM);
+            if (!kept.data) kept.data = (uint8_t*)malloc(kept.len);
+            size_t got = kept.data ? f.read(kept.data, kept.len) : 0;
+            if (got != kept.len) {
+                f.close();
+                free(kept.data);
+                Serial.printf("Update: cannot read %s - not updating\n", path.c_str());
+                return false;
+            }
+        }
+        f.close();
+        _kept.push_back(kept);
+    }
+    Serial.printf("Update: keeping %u user files across the file system update\n", (unsigned)_kept.size());
+    return true;
+}
+
+void UpdateManagerClass::restoreUserFiles() {
+    unsigned restored = 0;
+    for (const KeptFile& kept : _kept) {
+        int slash = kept.path.lastIndexOf('/');
+        if (slash > 0) {
+            String dir = kept.path.substring(0, slash);
+            if (!LittleFS.exists(dir)) LittleFS.mkdir(dir);
+        }
+        File f = LittleFS.open(kept.path, "w");
+        bool opened = (bool)f;
+        size_t written = (opened && kept.len) ? f.write(kept.data, kept.len) : 0;
+        if (opened) f.close();
+        if (opened && written == kept.len) restored++;
+        else Serial.printf("Update: could not write %s back\n", kept.path.c_str());
+    }
+    Serial.printf("Update: %u of %u user files written back\n", restored, (unsigned)_kept.size());
+}
+
+void UpdateManagerClass::freeKeptFiles() {
+    for (KeptFile& kept : _kept) free(kept.data);
+    _kept.clear();
 }
