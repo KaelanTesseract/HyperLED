@@ -77,7 +77,7 @@ Pro Segment werden `on`, `bri`, `effect`, `speed`, `intensity`, `palette`, `colo
 |---|---|---|
 | `/api/slaves` | GET | Liste aller aktuell erreichbaren Slaves (ID, Name, LED-Anzahl, Version, kabelgebunden/kabellos). |
 | `/api/slaves/config` | POST | Slave konfigurieren (Name, LED-Typ, Pins bzw. HUB75-Matrixgröße/Treiber). |
-| `/api/slaves/update` | POST | Firmware-Update der Slaves aus der Ferne anstoßen (`{"url": "https://…"}`, höchstens 116 Zeichen). Antwort: `sealed` (verschlüsselt übergeben, ab Slave 0.2.008), `wired` (ältere Slaves per Kabel), `skipped` (ältere Slaves per Funk – bekommen das WLAN-Passwort nicht mehr über Funk und brauchen einmal ein Update per USB). |
+| `/api/slaves/update` | POST | Firmware-Update der Slaves aus der Ferne anstoßen (`{"url": "https://…"}`, höchstens 116 Zeichen; ohne `url` das neueste Slave-Release, das der Master kennt – `409` mit `no_release`, solange er keines kennt). Antwort: `sealed` (verschlüsselt übergeben, ab Slave 0.2.008), `wired` (ältere Slaves per Kabel), `skipped` (ältere Slaves per Funk – bekommen das WLAN-Passwort nicht mehr über Funk und brauchen einmal ein Update per USB). |
 
 Details zur Funktionsweise siehe [Master/Slave Architektur](07_Master_Slave_Architektur.md).
 
@@ -108,7 +108,9 @@ Details zur Funktionsweise siehe [Master/Slave Architektur](07_Master_Slave_Arch
 | `/api/status` | GET | Kompakter System-Status. |
 | `/api/version` | GET | Firmware-Version. |
 | `/api/info` | GET | Geräteinformationen und Diagnose (Firmware, Speicher, Laufzeit, WLAN, letzter Ausfall). |
-| `/api/update_online` | POST | Prüft auf ein neues Release und startet das Update. |
+| `/api/update_online` | POST | Startet das Online-Update auf die angegebene Version (`{"version": "0.2.002"}`). Szenen, Playlist, Zeitpläne und Bilder bleiben erhalten. |
+| `/api/update_status` | GET | Was die eigene Release-Prüfung des Masters gefunden hat: `installed`, `latest`, `slaveLatest` (leer, solange unbekannt), `checking`, `checkedAgo` (Sekunden, `-1` = noch nie), `updating`. Geprüft wird eine Minute nach dem Start und dann zweimal am Tag. |
+| `/api/update_check` | POST | Stößt diese Prüfung sofort an (höchstens einmal pro Minute). |
 | `/api/update_progress` | GET | Fortschritt eines laufenden OTA-Updates. |
 | `/update` | POST | Manueller Firmware-/Dateisystem-Upload (Multipart-Formular, wie beim Flashen über die WebUI). |
 | `/api/mqtt` | GET / POST | MQTT-Einstellungen auslesen bzw. speichern. `topic` leer bedeutet den Standard, den `GET` als `defaultTopic` mitliefert (`hyperled/<mac>`). Das Passwort gibt `GET` nie heraus, nur `passSet` (ob eines gespeichert ist); ein leeres `pass` beim `POST` behält das gespeicherte, ein leerer `user` löscht beide. `tls` schaltet MQTTS ein. `GET` liefert unter `status` den Zustand der laufenden Verbindung (`connected`, `error`, `since` in Sekunden). Nach dem Speichern startet der Controller neu. |
