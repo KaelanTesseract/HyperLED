@@ -651,6 +651,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateMqttFields() {
         const fields = document.getElementById('mqttFields');
         if (fields && mqttEnable) fields.style.display = mqttEnable.checked ? '' : 'none';
+        const actions = document.getElementById('mqttActions');
+        if (actions && mqttEnable) actions.style.display = mqttEnable.checked ? 'flex' : 'none';
     }
     if (mqttEnable) mqttEnable.addEventListener('change', updateMqttFields);
     const mqttServer = document.getElementById('mqttServer');
@@ -660,6 +662,89 @@ document.addEventListener('DOMContentLoaded', () => {
     const mqttTopic = document.getElementById('mqttTopic');
     const btnTestMqtt = document.getElementById('btnTestMqtt');
     const btnSaveMqtt = document.getElementById('btnSaveMqtt');
+    const btnResyncMqtt = document.getElementById('btnResyncMqtt');
+    const mqttTls = document.getElementById('mqttTls');
+    const mqttStatus = document.getElementById('mqttStatus');
+
+    // Switching TLS on or off moves the port along, as long as it is still the usual one.
+    if (mqttTls) mqttTls.addEventListener('change', () => {
+        if (mqttTls.checked && mqttPort.value === '1883') mqttPort.value = '8883';
+        if (!mqttTls.checked && mqttPort.value === '8883') mqttPort.value = '1883';
+    });
+
+    function formatDuration(sec) {
+        if (sec < 60) return t('dur_s', { n: sec });
+        if (sec < 3600) return t('dur_min', { n: Math.floor(sec / 60) });
+        if (sec < 86400) return t('dur_h', { n: Math.floor(sec / 3600) });
+        return t('dur_d', { n: Math.floor(sec / 86400) });
+    }
+
+    // The status is that of the running connection - the settings from the last restart.
+    function renderMqttStatus(st) {
+        if (!mqttStatus || !st) return;
+        let text;
+        if (!st.enabled) text = t('mqtt_st_off');
+        else if (st.connected) text = t('mqtt_st_connected', { time: formatDuration(st.since) });
+        else text = t('mqtt_st_error', { reason: t('mqtt_err_' + st.error) });
+        mqttStatus.textContent = text;
+        mqttStatus.style.color = st.enabled && !st.connected ? 'var(--danger)' : '';
+    }
+
+    // Kept current while the settings are on screen, without touching what is being typed.
+    setInterval(() => {
+        if (!mqttStatus || !mqttStatus.offsetParent || document.hidden) return;
+        fetch('/api/mqtt').then(r => r.ok ? r.json() : null).then(d => d && renderMqttStatus(d.status)).catch(() => {});
+    }, 5000);
+
+    function mqttFormPayload() {
+        const payload = new URLSearchParams();
+        payload.append('enabled', mqttEnable.checked ? 'true' : 'false');
+        payload.append('server', mqttServer.value);
+        payload.append('port', mqttPort.value);
+        payload.append('tls', mqttTls && mqttTls.checked ? 'true' : 'false');
+        payload.append('user', mqttUser.value);
+        payload.append('pass', mqttPass.value);
+        payload.append('topic', mqttTopic.value);
+        return payload;
+    }
+
+    // Tries what is in the form, without saving it or disturbing the running connection.
+    if (btnTestMqtt) btnTestMqtt.addEventListener('click', () => {
+        btnTestMqtt.disabled = true;
+        btnTestMqtt.innerText = t('btn_mqtt_testing');
+        const finish = (ok, reason) => {
+            btnTestMqtt.disabled = false;
+            if (ok) {
+                flashButton(btnTestMqtt, t('mqtt_test_ok_short'));
+                showToast(t('mqtt_test_ok'), 'ok');
+            } else {
+                flashButton(btnTestMqtt, t('mqtt_test_failed_short'), { failed: true });
+                showToast(t('mqtt_test_failed', { reason: t('mqtt_err_' + reason) }), 'error');
+            }
+        };
+        fetch('/api/mqtt/test', { method: 'POST', body: mqttFormPayload() })
+            .then(res => {
+                if (!res.ok) throw new Error('busy');
+                let tries = 0;
+                const poll = () => {
+                    fetch('/api/mqtt/test').then(r => r.json()).then(d => {
+                        if (d.result === 'running' && ++tries < 40) setTimeout(poll, 500);
+                        else finish(d.result === 'ok', d.result === 'running' ? 'no_answer' : d.result);
+                    }).catch(() => finish(false, 'failed'));
+                };
+                setTimeout(poll, 500);
+            })
+            .catch(() => finish(false, 'failed'));
+    });
+
+    if (btnResyncMqtt) btnResyncMqtt.addEventListener('click', () => {
+        fetch('/api/mqtt/resync', { method: 'POST' })
+            .then(res => {
+                if (res.ok) flashButton(btnResyncMqtt, t('mqtt_resync_ok'));
+                else showToast(t('mqtt_resync_not_connected'), 'error');
+            })
+            .catch(() => showToast(t('dyn_conn_err'), 'error'));
+    });
 
     // Segments Elements
     const segmentSelector = document.getElementById('segmentSelector');
@@ -1574,13 +1659,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Event Listeners - MQTT
     btnSaveMqtt.addEventListener('click', () => {
-        const payload = new URLSearchParams();
-        payload.append('enabled', mqttEnable.checked ? 'true' : 'false');
-        payload.append('server', mqttServer.value);
-        payload.append('port', mqttPort.value);
-        payload.append('user', mqttUser.value);
-        payload.append('pass', mqttPass.value);
-        payload.append('topic', mqttTopic.value);
+        const payload = mqttFormPayload();
 
         btnSaveMqtt.innerText = t('btn_saving');
         fetch('/api/mqtt', {
@@ -3162,6 +3241,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 mqttPass.value = "";
                 mqttPass.placeholder = data.passSet ? t('ph_mqtt_pass_set') : "";
                 mqttTopic.value = data.topic || "";
+                if (mqttTls) mqttTls.checked = !!data.tls;
+                renderMqttStatus(data.status);
                 if (data.defaultTopic) mqttTopic.placeholder = data.defaultTopic;
             }
         } catch (e) {

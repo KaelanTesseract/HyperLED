@@ -33,11 +33,31 @@ Damit du HyperLED in Systeme wie Home Assistant, ioBroker oder Node-RED einbinde
 Gehe im Web-Interface auf den Tab **WLAN / MQTT** und scrolle nach unten:
 1. **MQTT aktivieren:** Setze das Häkchen.
 2. **Broker IP:** Trage die IP-Adresse deines MQTT-Servers ein (z. B. Mosquitto).
-3. **Port:** Standard ist `1883`.
-4. **Benutzer / Passwort:** Falls dein Broker eine Authentifizierung benötigt.
-5. **Basis-Thema (Topic):** Leer lassen für den Standard `hyperled/<MAC>`. Wer mehrere Controller sprechend benennen will, trägt z. B. `wohnzimmer/hyperled` ein – jeder Controller braucht ein eigenes Thema.
+3. **Port:** Standard ist `1883`, mit TLS meist `8883`.
+4. **Verschlüsselt (TLS):** Nur einschalten, wenn dein Broker TLS anbietet. Die Verbindung wird dann verschlüsselt; das Zertifikat des Brokers prüft HyperLED nicht (Heim-Broker nutzen meist selbst ausgestellte Zertifikate).
+5. **Benutzer / Passwort:** Falls dein Broker eine Authentifizierung benötigt. Das gespeicherte Passwort zeigt die Weboberfläche nie an – ein leeres Feld behält es.
+6. **Basis-Thema (Topic):** Leer lassen für den Standard `hyperled/<MAC>`. Wer mehrere Controller sprechend benennen will, trägt z. B. `wohnzimmer/hyperled` ein – jeder Controller braucht ein eigenes Thema.
 
-Beim Speichern startet der Controller neu und verbindet sich. Home Assistant findet ihn danach über die Autodiscovery von selbst, auch nach einem Neustart von Home Assistant.
+Mit **Verbindung testen** probierst du die eingetragenen Werte aus, ohne sie zu speichern. Beim Speichern startet der Controller neu und verbindet sich. Home Assistant findet ihn danach über die Autodiscovery von selbst, auch nach einem Neustart von Home Assistant.
+
+Über den Feldern steht, ob der Controller verbunden ist – und wenn nicht, warum (z. B. „Benutzername oder Passwort falsch“ oder „Broker nicht erreichbar“). **In Home Assistant neu anmelden** schickt alle Geräte-Informationen noch einmal, falls in Home Assistant etwas fehlt.
+
+### Kurzanleitung: HyperLED in Home Assistant einbinden
+1. **Broker einrichten:** In Home Assistant unter *Einstellungen → Add-ons → Add-on-Store* das Add-on **Mosquitto broker** installieren und starten. Home Assistant schlägt danach die **MQTT**-Integration vor – bestätigen.
+2. **Benutzer anlegen:** Unter *Einstellungen → Personen → Benutzer* einen eigenen Benutzer für HyperLED anlegen (z. B. `hyperled`). Mosquitto akzeptiert die Home-Assistant-Benutzer als MQTT-Zugang.
+3. **HyperLED verbinden:** In der HyperLED-Weboberfläche unter *Einstellungen → WLAN & MQTT* MQTT aktivieren, als Server die IP-Adresse von Home Assistant eintragen, Port `1883`, dazu Benutzer und Passwort aus Schritt 2. **Verbindung testen**, dann **MQTT speichern und neu starten**.
+4. **Gerät finden:** Nach wenigen Sekunden erscheint unter *Einstellungen → Geräte & Dienste → MQTT* das Gerät **HyperLED-xxxxxx** mit allen Lichtern und Einstellungen.
+5. **Automationen:** Zum Beispiel einen Text aufs Panel schreiben, wenn die Waschmaschine fertig ist:
+
+```yaml
+action: text.set_value
+target:
+  entity_id: text.hyperled_xxxxxx_panel_lauftext
+data:
+  value: "Waschmaschine fertig"
+```
+
+Die Entity-ID steht in Home Assistant beim jeweiligen Text-Element. Für eine Benachrichtigung bei Funk-Ausfällen eignet sich der Sensor **WLAN-Ausfälle** (er zählt hoch).
 
 ### Was in Home Assistant erscheint
 * **Ein Licht pro Segment** – auch Segmente auf einem Slave. Die Farbwahl richtet sich nach der LED-Hardware: RGB, RGBW, Farbtemperatur (bei Streifen mit zwei Weißkanälen und CCT-LEDs), nur Helligkeit oder nur Ein/Aus.

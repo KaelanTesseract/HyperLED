@@ -727,6 +727,7 @@
                                     <!-- MQTT Settings moved here (hidden during AP-mode setup, see app.js) -->
                                     <div id="mqttSettingsSection" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--separator);">
                                         <h2 data-i18n="mqtt_title">MQTT-Konfiguration</h2>
+                                        <p class="hint" id="mqttStatus" role="status" aria-live="polite"></p>
                                         <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 15px; background: var(--fill-subtle); border-radius: 8px; margin-bottom: 15px;">
                                             <label for="mqttEnable" style="margin: 0;" data-i18n="mqtt_enable">MQTT aktivieren</label>
                                             <input type="checkbox" id="mqttEnable">
@@ -739,6 +740,13 @@
                                         <div class="form-group">
                                             <label for="mqttPort" data-i18n="mqtt_port">Port</label>
                                             <input type="number" id="mqttPort" value="1883" min="1" max="65535">
+                                        </div>
+                                        <div class="form-group">
+                                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                                <label for="mqttTls" style="margin: 0;" data-i18n="mqtt_tls">Verschlüsselt (TLS)</label>
+                                                <input type="checkbox" id="mqttTls" aria-describedby="mqttTlsHint">
+                                            </div>
+                                            <p class="hint" id="mqttTlsHint" data-i18n="mqtt_tls_hint">Für Broker mit TLS, meist Port 8883. Die Verbindung wird verschlüsselt; das Zertifikat des Brokers wird nicht geprüft.</p>
                                         </div>
                                         <div class="form-group">
                                             <label for="mqttUser" data-i18n="mqtt_user">Benutzername (Optional)</label>
@@ -755,6 +763,10 @@
                                         </div>
                                         </div>
                                         <div style="margin-top: 20px;">
+                                            <div id="mqttActions" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
+                                                <button type="button" class="btn btn-secondary" id="btnTestMqtt" style="flex: 1;" data-i18n="btn_mqtt_test">Verbindung testen</button>
+                                                <button type="button" class="btn btn-secondary" id="btnResyncMqtt" style="flex: 1;" data-i18n="btn_mqtt_resync">In Home Assistant neu anmelden</button>
+                                            </div>
                                             <button type="button" class="btn btn-secondary" id="btnSaveMqtt" style="width: 100%;" data-i18n="btn_save_mqtt">MQTT speichern und neu starten</button>
                                         </div>
                                     </div>
@@ -898,8 +910,8 @@
         </div>
 
     <script src="iro.min.js"></script>
-    <script src="i18n.js?v=19"></script>
-    <script src="app.js?v=25"></script>
+    <script src="i18n.js?v=21"></script>
+    <script src="app.js?v=26"></script>
 </body>
 </html>
 

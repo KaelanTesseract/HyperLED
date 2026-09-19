@@ -702,6 +702,43 @@ void WebServerManagerClass::setupRoutes() {
     server.addHandler(weatherLocationHandler);
 
     // --- MQTT API ---
+    // Tries the settings in the form without saving them. An empty password with the stored user
+    // name means the stored password, like saving does.
+    server.on("/api/mqtt/test", HTTP_POST, [](AsyncWebServerRequest *request){
+        auto param = [request](const char* name) {
+            return request->hasParam(name, true) ? request->getParam(name, true)->value() : String();
+        };
+        String user = param("user");
+        String pass = param("pass");
+        if (pass.isEmpty() && user.length()) {
+            Preferences prefs;
+            prefs.begin(PREF_NAMESPACE, true);
+            if (prefs.getString(PREF_MQTT_USER, "") == user) pass = prefs.getString(PREF_MQTT_PASS, "");
+            prefs.end();
+        }
+        bool tls = param("tls") == "true";
+        long port = param("port").toInt();
+        if (port <= 0 || port > 65535) port = tls ? 8883 : 1883;
+        bool started = MqttManager.startTest(param("server"), (uint16_t)port, user, pass, tls);
+        if (pass.length()) memset(&pass[0], 0, pass.length());
+        request->send(started ? 200 : 409, "application/json",
+                      started ? "{\"status\":\"started\"}" : "{\"status\":\"busy\"}");
+    });
+
+    server.on("/api/mqtt/test", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(200, "application/json", String("{\"result\":\"") + MqttManager.testResult() + "\"}");
+    });
+
+    // Announces the controller in Home Assistant again, with every entity and state.
+    server.on("/api/mqtt/resync", HTTP_POST, [](AsyncWebServerRequest *request){
+        JsonDocument status;
+        MqttManager.statusJson(status.to<JsonObject>());
+        bool connected = status["connected"] | false;
+        if (connected) MqttManager.requestResyncFromWeb();
+        request->send(connected ? 200 : 409, "application/json",
+                      connected ? "{\"status\":\"ok\"}" : "{\"status\":\"not_connected\"}");
+    });
+
     server.on("/api/mqtt", HTTP_GET, [](AsyncWebServerRequest *request){
         Preferences prefs;
         prefs.begin(PREF_NAMESPACE, true);
@@ -721,7 +758,10 @@ void WebServerManagerClass::setupRoutes() {
         mac.replace(":", "");
         mac.toLowerCase();
         doc["defaultTopic"] = "hyperled/" + mac;
+        doc["tls"] = prefs.getBool(PREF_MQTT_TLS, false);
         prefs.end();
+        // What the running connection is doing - as of the last restart's settings.
+        MqttManager.statusJson(doc["status"].to<JsonObject>());
         
         String response;
         serializeJson(doc, response);
@@ -747,6 +787,9 @@ void WebServerManagerClass::setupRoutes() {
         
         if (request->hasParam("port", true)) {
             prefs.putUShort(PREF_MQTT_PORT, request->getParam("port", true)->value().toInt());
+        }
+        if (request->hasParam("tls", true)) {
+            prefs.putBool(PREF_MQTT_TLS, request->getParam("tls", true)->value() == "true");
         }
         
         bool userCleared = false;
@@ -937,6 +980,7 @@ void WebServerManagerClass::setupRoutes() {
         prefs.remove(PREF_MQTT_PASS);
         prefs.remove(PREF_MQTT_TOPIC);
         prefs.remove(PREF_MQTT_ANNOUNCED);
+        prefs.remove(PREF_MQTT_TLS);
         MqttManager.requestRemoval();  // a reset controller should not stay behind in Home Assistant
 
         // WLAN löschen

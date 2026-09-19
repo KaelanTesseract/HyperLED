@@ -79,7 +79,12 @@ void MqttManagerClass::begin() {
     _macAddress.replace(":", "");
     loadConfig();
 
-    _client.setClient(_wifiClient);
+    _tlsClient.setInsecure();
+    _tlsClient.setHandshakeTimeout(10);
+    _net = _tls ? static_cast<NetworkClient*>(&_tlsClient) : static_cast<NetworkClient*>(&_plainClient);
+    _client.setClient(*_net);
+    if (!_enabled) setError("disabled");
+    else if (_server.isEmpty()) setError("no_server");
     _client.setBufferSize(2048);   // a discovery message with the full effect list is ~1.3 KB
     // How long the main loop waits for the broker's answer to CONNECT (and for the rest of a
     // message that arrived in part). A broker on the home network answers within milliseconds.
@@ -99,6 +104,7 @@ void MqttManagerClass::loadConfig() {
     _user = prefs.getString(PREF_MQTT_USER, "");
     _pass = prefs.getString(PREF_MQTT_PASS, "");
     String topic = prefs.getString(PREF_MQTT_TOPIC, "");
+    _tls = prefs.getBool(PREF_MQTT_TLS, false);
     _announcedSegs = prefs.getUChar(PREF_MQTT_ANNOUNCED, 0);
     prefs.end();
 
@@ -137,15 +143,28 @@ void MqttManagerClass::loopStep() {
         _removalRequested = false;
         if (_connectState == CONNECT_IDLE && _client.connected()) removeFromHomeAssistant();
         _enabled = false;
+        setError("disabled");
     }
-    if (!_enabled) return;
+    if (!_enabled) {
+        _connectedFlag = false;
+        return;
+    }
 
     if (_connectState != CONNECT_IDLE || !_client.connected()) {
+        if (_connectedFlag) setError("lost");
+        if (WiFi.status() != WL_CONNECTED && _connectState == CONNECT_IDLE) setError("no_wifi");
         reconnect();
         return;
     }
     _client.loop();
-    if (!_client.connected()) return;
+    if (!_client.connected()) {
+        setError("lost");
+        return;
+    }
+    if (_resyncRequested) {
+        _resyncRequested = false;
+        requestResync();
+    }
 
     unsigned long now = millis();
     if (now - _lastDiscoveryCheck >= DISCOVERY_CHECK_MS) {
@@ -173,7 +192,7 @@ void MqttManagerClass::loopStep() {
 // part and ends; the main loop only sees the finished connection (see reconnect()).
 void MqttManagerClass::connectTask(void* arg) {
     MqttManagerClass* self = static_cast<MqttManagerClass*>(arg);
-    bool ok = self->_wifiClient.connect(self->_server.c_str(), self->_port, CONNECT_TIMEOUT_MS) == 1;
+    bool ok = self->_net->connect(self->_server.c_str(), self->_port, CONNECT_TIMEOUT_MS) == 1;
     self->_connectState = ok ? CONNECT_OK : CONNECT_FAILED;
     vTaskDelete(nullptr);
 }
@@ -193,13 +212,14 @@ void MqttManagerClass::reconnect() {
     _lastReconnectAttempt = now;
 
     _connectState = CONNECT_RUNNING;
-    if (xTaskCreatePinnedToCore(connectTask, "mqttConnect", 6144, this, 1, nullptr, 1) != pdPASS) {
+    if (xTaskCreatePinnedToCore(connectTask, "mqttConnect", _tls ? 12288 : 6144, this, 1, nullptr, 1) != pdPASS) {
         _connectState = CONNECT_FAILED;
     }
 }
 
 void MqttManagerClass::finishConnect(bool tcpOk) {
     if (!tcpOk) {
+        setError(_tls ? "unreachable_tls" : "unreachable");
         _reconnectDelay = min(_reconnectDelay * 2, RECONNECT_MAX_MS);
         Serial.printf("[MQTT] Cannot reach %s:%u, next try in %lu s\n", _server.c_str(), _port,
                       (unsigned long)(_reconnectDelay / 1000));
@@ -220,7 +240,8 @@ void MqttManagerClass::finishConnect(bool tcpOk) {
         // answering straight away should not be retried every 5 s.
         _reconnectDelay = _client.connected() ? RECONNECT_MIN_MS : min(_reconnectDelay * 2, RECONNECT_MAX_MS);
     } else {
-        _wifiClient.stop();  // PubSubClient leaves the socket open when writing CONNECT failed
+        _net->stop();  // PubSubClient leaves the socket open when writing CONNECT failed
+        setError(errorForState(_client.state()));
         _reconnectDelay = min(_reconnectDelay * 2, RECONNECT_MAX_MS);
         // PubSubClient's state: -4 timeout, -2 connect failed, 4 bad credentials, 5 not authorised.
         Serial.printf("[MQTT] Connecting to %s:%u failed (state %d), next try in %lu s\n",
@@ -228,7 +249,88 @@ void MqttManagerClass::finishConnect(bool tcpOk) {
     }
 }
 
+void MqttManagerClass::setError(const char* error) {
+    // A connection that is already known to be gone keeps the first reason.
+    if (!_connectedFlag && _lastError == error) return;
+    _connectedFlag = false;
+    _lastError = error;
+    _statusSince = millis();
+}
+
+const char* MqttManagerClass::errorForState(int state) {
+    switch (state) {
+        case -4: return "no_answer";      // MQTT_CONNECTION_TIMEOUT
+        case 1:  return "protocol";       // MQTT_CONNECT_BAD_PROTOCOL
+        case 2:  return "client_id";      // MQTT_CONNECT_BAD_CLIENT_ID
+        case 3:  return "unavailable";    // MQTT_CONNECT_UNAVAILABLE
+        case 4:  return "credentials";    // MQTT_CONNECT_BAD_CREDENTIALS
+        case 5:  return "unauthorized";   // MQTT_CONNECT_UNAUTHORIZED
+        default: return "failed";
+    }
+}
+
+void MqttManagerClass::statusJson(JsonObject out) const {
+    out["enabled"] = _enabled;
+    out["connected"] = (bool)_connectedFlag;
+    out["error"] = _connectedFlag ? "none" : _lastError;
+    out["since"] = (unsigned long)((millis() - _statusSince) / 1000);
+    out["tls"] = _tls;
+    out["base"] = _base;
+}
+
+bool MqttManagerClass::startTest(const String& server, uint16_t port, const String& user, const String& pass,
+                                 bool tls) {
+    if (strcmp(_testResult, "running") == 0) return false;
+    TestParams* p = new TestParams{server, port, user, pass, tls};
+    _testResult = "running";
+    if (xTaskCreatePinnedToCore(testTask, "mqttTest", 12288, p, 1, nullptr, 1) != pdPASS) {
+        delete p;
+        _testResult = "failed";
+        return false;
+    }
+    return true;
+}
+
+// The test's own connection: nothing it does touches the running one, and it uses a client id
+// of its own so the broker does not throw the running connection out.
+void MqttManagerClass::testTask(void* arg) {
+    TestParams* p = static_cast<TestParams*>(arg);
+    const char* result;
+    WiFiClient plain;
+    NetworkClientSecure secure;
+    secure.setInsecure();
+    secure.setHandshakeTimeout(10);
+    NetworkClient& net = p->tls ? static_cast<NetworkClient&>(secure) : static_cast<NetworkClient&>(plain);
+    if (p->server.isEmpty()) {
+        result = "no_server";
+    } else if (WiFi.status() != WL_CONNECTED) {
+        result = "no_wifi";
+    } else if (net.connect(p->server.c_str(), p->port, CONNECT_TIMEOUT_MS) != 1) {
+        result = p->tls ? "unreachable_tls" : "unreachable";
+    } else {
+        PubSubClient client(net);
+        client.setSocketTimeout(3);
+        String id = "HyperLED-" + MqttManager._macAddress + "-test";
+        const char* user = p->user.isEmpty() ? nullptr : p->user.c_str();
+        const char* pass = p->user.isEmpty() ? nullptr : p->pass.c_str();
+        if (client.connect(id.c_str(), user, pass)) {
+            result = "ok";
+            client.disconnect();
+        } else {
+            result = errorForState(client.state());
+        }
+        net.stop();
+    }
+    if (p->pass.length()) memset(&p->pass[0], 0, p->pass.length());
+    delete p;
+    MqttManager._testResult = result;
+    vTaskDelete(nullptr);
+}
+
 void MqttManagerClass::onConnected() {
+    _connectedFlag = true;
+    _lastError = "none";
+    _statusSince = millis();
     publish(_base + "/status", "online");
 
     // Every command topic is <base>/<what>/set or <base>/<segment>/<what>/set - the lights'
@@ -687,7 +789,7 @@ void MqttManagerClass::publishChangedStates(bool force) {
 // within milliseconds. So wait briefly for room, and treat a buffer that stays full as a dead
 // connection.
 bool MqttManagerClass::socketWritable() {
-    int fd = _wifiClient.fd();
+    int fd = _net->fd();
     if (fd < 0) return false;
     fd_set set;
     FD_ZERO(&set);
@@ -698,7 +800,8 @@ bool MqttManagerClass::socketWritable() {
 
 void MqttManagerClass::dropConnection(const char* reason) {
     Serial.printf("[MQTT] Dropping the connection: %s\n", reason);
-    _wifiClient.stop();  // not _client.disconnect(): that would write to the stuck socket too
+    _net->stop();  // not _client.disconnect(): that would write to the stuck socket too
+    setError("stalled");
     _lastReconnectAttempt = millis();
 }
 

@@ -21,6 +21,7 @@
 #include <Arduino.h>
 #include <PubSubClient.h>
 #include <WiFiClient.h>
+#include <WiFiClientSecure.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <map>
@@ -52,6 +53,19 @@ public:
     bool isEnabled() const { return _enabled; }
     bool isConnected() { return _connectState == CONNECT_IDLE && _client.connected(); }
     const String& baseTopic() const { return _base; }
+
+    // For the web interface. Safe to call from the web server's task: they only read values the
+    // main loop keeps up to date, or set a flag for it.
+    //   error: "none", "disabled", "no_server", "no_wifi", "unreachable", "unreachable_tls",
+    //   "no_answer", "protocol", "client_id", "unavailable", "credentials", "unauthorized",
+    //   "lost", "stalled", "failed"
+    void statusJson(JsonObject out) const;
+    void requestResyncFromWeb() { _resyncRequested = true; }
+    // Tries the given settings with a connection of its own (in a task) without saving them or
+    // disturbing the running connection. testResult() is "running" until it is done, then "ok"
+    // or one of the errors above.
+    bool startTest(const String& server, uint16_t port, const String& user, const String& pass, bool tls);
+    const char* testResult() const { return _testResult; }
 
     // A physical button was used (ButtonManager, main loop). Home Assistant gets it as an event
     // of that button's event entity; the button keeps doing what it does on the controller.
@@ -160,8 +174,30 @@ private:
     String discoveryTopic(const String& objectId) const;
     void addDevice(JsonDocument& doc) const;
 
-    WiFiClient _wifiClient;
+    // The connection underneath: plain TCP, or TLS for MQTTS. TLS encrypts but does not check the
+    // broker's certificate - home brokers mostly use self-signed ones.
+    WiFiClient _plainClient;
+    NetworkClientSecure _tlsClient;
+    NetworkClient* _net = &_plainClient;
+    bool _tls = false;
     PubSubClient _client;
+
+    // Status for the web interface (see statusJson()).
+    volatile bool _connectedFlag = false;
+    const char* volatile _lastError = "none";
+    volatile unsigned long _statusSince = 0;  // when the connection came up or the error happened
+    void setError(const char* error);
+    static const char* errorForState(int state);
+    volatile bool _resyncRequested = false;
+    struct TestParams {
+        String server;
+        uint16_t port;
+        String user;
+        String pass;
+        bool tls;
+    };
+    static void testTask(void* arg);
+    const char* volatile _testResult = "none";
 
     bool _enabled = false;
     String _server;

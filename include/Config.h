@@ -20,7 +20,7 @@
 
 #include <Arduino.h>
 
-#define HYPERLED_VERSION "0.2.001"
+#define HYPERLED_VERSION "0.2.002"
 
 // Set to 1 to re-enable the periodic "Free heap" serial print (main.cpp loop()) for
 // quick heap-health monitoring during development. Off by default to keep the serial
@@ -59,6 +59,8 @@
 #define PREF_MQTT_USER "mqtt_user"
 #define PREF_MQTT_PASS "mqtt_pass"
 #define PREF_MQTT_TOPIC "mqtt_top"
+// Encrypted connection to the broker (MQTTS, usually port 8883).
+#define PREF_MQTT_TLS "mqtt_tls"
 // How many segment lights were last announced to Home Assistant, so the ones since deleted can
 // be removed there after a restart.
 #define PREF_MQTT_ANNOUNCED "mqtt_ann"
