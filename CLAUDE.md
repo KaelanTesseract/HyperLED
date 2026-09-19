@@ -64,7 +64,7 @@ Defined in `include/HyperBus.h` (framing: `0xAA` start byte, header, payload, CR
 - `HyperBusClass` — wired UART transport (`src/HyperBus.cpp`), used between Master and Slave over `Serial1`/`Serial0` (default pins: Master TX GPIO 17 → Slave RX GPIO 16).
 - `EspNowBusClass` (`include/EspNowBus.h`) — wireless ESP-NOW transport, used as an auto-sensing fallback when no UART link is detected.
 
-Commands (`HyperBusCommand` enum): `CMD_PING`/`CMD_PONG` (discovery), `CMD_SET_CONFIG` (assign slave ID/pins/LED count/name), `CMD_SET_LEDS`/`CMD_SET_LEDS_CHUNK` (per-frame RGBW pixel data), `CMD_TRIGGER_UPDATE` (remote OTA trigger with SSID/URL payload).
+Commands (`HyperBusCommand` enum): `CMD_PING`/`CMD_PONG` (discovery), `CMD_SET_CONFIG` (assign slave ID/pins/LED count/name), `CMD_SET_LEDS`/`CMD_SET_LEDS_CHUNK` (per-frame RGBW pixel data), `CMD_UPDATE_KEY` + `CMD_TRIGGER_UPDATE_SEALED` (remote OTA trigger: X25519 key exchange, then SSID/password sealed with AES-256-GCM and the URL authenticated - see `include/UpdateSeal.h`, a separate copy in each project like `HyperBus.h`), `CMD_TRIGGER_UPDATE` (legacy plain-JSON OTA trigger, only sent to and accepted from pre-0.2.008 slaves over UART).
 
 `HyperLED_Slave/src/main.cpp` is a standalone firmware for slave boards: it auto-senses UART vs. ESP-NOW transport (locking in after a timeout, persisted via `Preferences`, with hardware-lockup recovery and auto-revert logic), forwards unrecognized/broadcast packets downstream (daisy-chaining slaves via `busUp`/`busDown`), and performs WiFi-on-demand OTA updates (disabling UART and freeing the LED buffer first to survive the SSL handshake on constrained RAM).
 

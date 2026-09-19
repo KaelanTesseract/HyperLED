@@ -2707,9 +2707,17 @@ document.addEventListener('DOMContentLoaded', () => {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ url: downloadUrl })
                         })
-                        .then(res => {
-                            if (res.ok) showToast(t('dyn_cmd_sent'), 'ok');
-                            else showToast(t('dyn_cmd_err'), 'error');
+                        .then(res => res.json().catch(() => ({})).then(data => ({ ok: res.ok, data })))
+                        .then(({ ok, data }) => {
+                            if (!ok) {
+                                showToast(t(data.error === 'url_too_long' ? 'dyn_update_url_long' : 'dyn_cmd_err'), 'error');
+                            } else if (data.skipped > 0) {
+                                // Older devices on radio no longer get the Wi-Fi password over the air.
+                                showToast(t('dyn_update_skipped', { n: data.skipped }), 'error');
+                                if (data.sealed > 0 || data.wired > 0) showToast(t('dyn_cmd_sent'), 'ok');
+                            } else {
+                                showToast(t('dyn_cmd_sent'), 'ok');
+                            }
                             done();
                         })
                         .catch(() => {

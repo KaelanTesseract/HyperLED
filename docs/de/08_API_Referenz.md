@@ -77,7 +77,7 @@ Pro Segment werden `on`, `bri`, `effect`, `speed`, `intensity`, `palette`, `colo
 |---|---|---|
 | `/api/slaves` | GET | Liste aller aktuell erreichbaren Slaves (ID, Name, LED-Anzahl, Version, kabelgebunden/kabellos). |
 | `/api/slaves/config` | POST | Slave konfigurieren (Name, LED-Typ, Pins bzw. HUB75-Matrixgröße/Treiber). |
-| `/api/slaves/update` | POST | Firmware-Update eines Slaves aus der Ferne anstoßen. |
+| `/api/slaves/update` | POST | Firmware-Update der Slaves aus der Ferne anstoßen (`{"url": "https://…"}`, höchstens 116 Zeichen). Antwort: `sealed` (verschlüsselt übergeben, ab Slave 0.2.008), `wired` (ältere Slaves per Kabel), `skipped` (ältere Slaves per Funk – bekommen das WLAN-Passwort nicht mehr über Funk und brauchen einmal ein Update per USB). |
 
 Details zur Funktionsweise siehe [Master/Slave Architektur](07_Master_Slave_Architektur.md).
 

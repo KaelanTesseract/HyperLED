@@ -77,7 +77,7 @@ Per segment, `on`, `bri`, `effect`, `speed`, `intensity`, `palette`, `color`, `c
 |---|---|---|
 | `/api/slaves` | GET | List of all currently reachable Slaves (ID, name, LED count, version, wired/wireless). |
 | `/api/slaves/config` | POST | Configure a Slave (name, LED type, pins, or HUB75 matrix size/driver). |
-| `/api/slaves/update` | POST | Trigger a remote firmware update for a Slave. |
+| `/api/slaves/update` | POST | Trigger a remote firmware update of the slaves (`{"url": "https://…"}`, at most 116 characters). Response: `sealed` (credentials handed over encrypted, slave 0.2.008 and later), `wired` (older slaves over the cable), `skipped` (older slaves over radio – they no longer get the Wi-Fi password over the air and need one update over USB). |
 
 See [Master/Slave Architecture](07_Master_Slave_Architektur.md) for how this works.
 

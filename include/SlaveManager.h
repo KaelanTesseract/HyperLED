@@ -26,6 +26,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include "EspNowBus.h"
+#include "UpdateSeal.h"
 
 struct DiscoveredSlave {
     uint8_t currentId; // Usually 254 if unconfigured
@@ -64,7 +65,17 @@ public:
     // Slave still signals problems (unconfigured, lost connection) on its own, even when
     // the LED is switched off here.
     void setSlaveStatusLed(uint8_t slaveId, bool on, uint32_t color, uint8_t brightness);
-    void triggerSlaveUpdate(uint8_t slaveId, const String& ssid, const String& pass, const String& url);
+    // Starts an online update. Slaves 0.2.008 and later get the Wi-Fi credentials sealed after a
+    // key exchange (see UpdateSeal.h), which finishes in loop() over the next seconds. Older Slaves
+    // get them in plain text, but only over the cable; an older wireless Slave is skipped and has
+    // to be flashed once over USB.
+    struct UpdateStart {
+        uint8_t sealed = 0;
+        uint8_t wired = 0;
+        uint8_t skipped = 0;
+        bool urlTooLong = false;
+    };
+    UpdateStart triggerSlaveUpdate(uint8_t slaveId, const String& ssid, const String& pass, const String& url);
     void sendLEDData(uint8_t slaveId, const uint8_t* rgbData, uint16_t length);
 
     // Hands effect parameters to a Slave that renders locally, instead of streaming pixels.
@@ -139,6 +150,30 @@ private:
     static const unsigned long CONFIG_RETRY_MS = 400;
     std::vector<PendingConfig> _pendingConfigs;
     void retryPendingConfigs();
+
+    // The key exchange of an online update in progress (see triggerSlaveUpdate()).
+    struct SealedUpdate {
+        uint8_t slaveId;
+        bool keyReceived = false;
+        bool conflict = false;      // two different keys arrived - someone else answered too
+        uint8_t sealedSent = 0;
+        uint8_t offers = 0;
+        unsigned long lastOffer = 0;
+        unsigned long keyAt = 0;
+        uint8_t slavePub[UpdateSeal::PUBLIC_LEN];
+    };
+    static const uint8_t UPDATE_KEY_OFFERS = 5;
+    static const unsigned long UPDATE_KEY_RETRY_MS = 1000;
+    // Wait this long after a Slave's key before sending, so a second, conflicting answer is noticed.
+    static const unsigned long UPDATE_KEY_SETTLE_MS = 500;
+    std::vector<SealedUpdate> _sealedUpdates;
+    UpdateSeal::KeyPair _updateKeys;
+    String _updateSsid, _updatePass, _updateUrl;
+    unsigned long _updateStarted = 0;
+    void handleUpdateKey(const HyperBusPacket& packet);
+    void pumpSealedUpdates();
+    void sendSealedUpdate(SealedUpdate& u);
+    void endSealedUpdate();
     void confirmPendingConfig(uint8_t senderId, uint16_t ledCount);
 
     HyperBusClass* _uartBus;

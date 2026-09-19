@@ -399,6 +399,8 @@ const translations = {
         "dyn_no_bin": "Im neuesten Release ist keine firmware.bin enthalten.",
         "dyn_cmd_sent": "Befehl gesendet. Die Geräte verbinden sich jetzt mit dem WLAN und laden das Update.",
         "dyn_cmd_err": "Der Befehl konnte nicht gesendet werden.",
+        "dyn_update_skipped": "{n} Gerät(e) per Funk haben eine zu alte Firmware und bekommen das WLAN-Passwort nicht mehr über Funk. Bitte einmal per USB aktualisieren.",
+        "dyn_update_url_long": "Die Download-Adresse des Updates ist zu lang.",
         "dyn_conn_err": "Keine Verbindung zum Gerät.",
         "dyn_send_config": "Konfiguration an das Gerät senden",
 
@@ -861,6 +863,8 @@ const translations = {
         "dyn_no_bin": "The latest release contains no firmware.bin.",
         "dyn_cmd_sent": "Command sent. The devices are joining your Wi-Fi now to download the update.",
         "dyn_cmd_err": "The command could not be sent.",
+        "dyn_update_skipped": "{n} wireless device(s) run firmware too old to receive the Wi-Fi password securely. Please update them once over USB.",
+        "dyn_update_url_long": "The update download address is too long.",
         "dyn_conn_err": "No connection to the device.",
         "dyn_send_config": "Send configuration to the device",
 
@@ -1304,6 +1308,8 @@ const translations = {
         "dyn_no_bin": "В последнем релизе нет файла firmware.bin.",
         "dyn_cmd_sent": "Команда отправлена. Устройства подключаются к Wi-Fi и загружают обновление.",
         "dyn_cmd_err": "Не удалось отправить команду.",
+        "dyn_update_skipped": "{n} беспроводных устройств имеют слишком старую прошивку и больше не получают пароль Wi-Fi по радио. Обновите их один раз через USB.",
+        "dyn_update_url_long": "Адрес загрузки обновления слишком длинный.",
         "dyn_conn_err": "Нет связи с устройством.",
         "dyn_send_config": "Отправить настройки устройству",
 

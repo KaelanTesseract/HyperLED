@@ -437,8 +437,21 @@ void WebServerManagerClass::setupRoutes() {
         String pass = prefs.getString(PREF_WIFI_PASS, "");
         prefs.end();
         
-        SlaveManager.triggerSlaveUpdate(HYPERBUS_BROADCAST_ID, ssid, pass, url);
-        request->send(200, "text/plain", "OK");
+        SlaveManagerClass::UpdateStart started = SlaveManager.triggerSlaveUpdate(HYPERBUS_BROADCAST_ID, ssid, pass, url);
+        if (pass.length()) UpdateSeal::wipe(&pass[0], pass.length());
+        if (started.urlTooLong) {
+            request->send(400, "application/json", "{\"error\":\"url_too_long\"}");
+            return;
+        }
+        // sealed: key exchange started; wired: older Slave told over the cable; skipped: older
+        // Slave on ESP-NOW, which no longer gets the Wi-Fi password over the air.
+        JsonDocument doc;
+        doc["sealed"] = started.sealed;
+        doc["wired"] = started.wired;
+        doc["skipped"] = started.skipped;
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
     });
     server.addHandler(slaveUpdateHandler);
     

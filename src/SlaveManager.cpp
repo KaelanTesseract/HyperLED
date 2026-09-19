@@ -68,6 +68,7 @@ void SlaveManagerClass::loop() {
     }
     
     retryPendingConfigs();
+    pumpSealedUpdates();
 
     // Hand over a little of the queued pixel data. Doing it here rather than where the frame is
     // produced is the whole point: the loop keeps turning between chunks, so pings still go out
@@ -235,6 +236,8 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
         }
     } else if (packet.command == CMD_REQUEST_WIDGET_IMAGE) {
         handleImageRequest(packet.senderId, packet.payload, packet.length);
+    } else if (packet.command == CMD_UPDATE_KEY) {
+        handleUpdateKey(packet);
     }
 }
 
@@ -384,34 +387,180 @@ void SlaveManagerClass::setSlaveStatusLed(uint8_t slaveId, bool on, uint32_t col
     if (targetBus) targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_SET_STATUS_LED, payload, 5);
 }
 
-void SlaveManagerClass::triggerSlaveUpdate(uint8_t slaveId, const String& ssid, const String& pass, const String& url) {
+// The sealed update (CMD_UPDATE_KEY / CMD_TRIGGER_UPDATE_SEALED) arrived in Slave firmware 0.2.008.
+static bool versionSealsUpdate(const String& version) {
+    int firstDot = version.indexOf('.');
+    if (firstDot < 0) return false;
+    int secondDot = version.indexOf('.', firstDot + 1);
+    if (secondDot < 0) return false;
+    long major = version.substring(0, firstDot).toInt();
+    long minor = version.substring(firstDot + 1, secondDot).toInt();
+    long patch = version.substring(secondDot + 1).toInt();
+    if (major > 0) return true;
+    if (minor > 2) return true;
+    return (minor == 2 && patch >= 8);
+}
+
+SlaveManagerClass::UpdateStart SlaveManagerClass::triggerSlaveUpdate(uint8_t slaveId, const String& ssid,
+                                                                     const String& pass, const String& url) {
     Guard guard(_lock);
+    UpdateStart result;
+    if (url.length() > UPDATE_SEAL_MAX_URL || ssid.length() > 32 || pass.length() > 64) {
+        result.urlTooLong = true;
+        Serial.printf("SlaveUpdate: URL (%u bytes) or credentials too long for a sealed update\n",
+                      (unsigned)url.length());
+        return result;
+    }
+
+    // A new update replaces one still exchanging keys.
+    endSealedUpdate();
+
+    // Older Slaves only understand the plain JSON. They get it over the cable, never over the air.
     JsonDocument doc;
     doc["ssid"] = ssid;
     doc["pass"] = pass;
     doc["url"] = url;
-    String json;
-    serializeJson(doc, json);
-    
-    _pauseLedsUntil = millis() + 45000; // Pause LED transmission for 45 seconds to allow Wi-Fi OTA to complete
-    
-    if (slaveId == HYPERBUS_BROADCAST_ID) {
-        // Send via UART Broadcast (reliable over wire, but we send 3 times just in case of CRC errors on long cables)
-        for (int i = 0; i < 3; i++) {
-            _uartBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_TRIGGER_UPDATE, (const uint8_t*)json.c_str(), json.length());
-            delay(50);
-        }
-        
-        // Send via ESP-NOW Unicast to EACH wireless slave (Broadcasts are dropped in Power Save mode)
-        for (const auto& s : _discoveredSlaves) {
-            if (s.isWireless) {
-                _espBus->sendPacket(s.currentId, HYPERBUS_MASTER_ID, CMD_TRIGGER_UPDATE, (const uint8_t*)json.c_str(), json.length());
+    String legacyJson;
+    serializeJson(doc, legacyJson);
+
+    for (const auto& s : _discoveredSlaves) {
+        if (slaveId != HYPERBUS_BROADCAST_ID && s.currentId != slaveId) continue;
+        if (versionSealsUpdate(s.version)) {
+            SealedUpdate u;
+            u.slaveId = s.currentId;
+            _sealedUpdates.push_back(u);
+            result.sealed++;
+        } else if (!s.isWireless) {
+            // A plain unicast, repeated in case of CRC errors on a long cable.
+            for (int i = 0; i < 3; i++) {
+                _uartBus->sendPacket(s.currentId, HYPERBUS_MASTER_ID, CMD_TRIGGER_UPDATE,
+                                     (const uint8_t*)legacyJson.c_str(), legacyJson.length());
+                delay(50);
             }
+            result.wired++;
+        } else {
+            Serial.printf("SlaveUpdate: Slave %u runs %s over the air - too old for a sealed update, "
+                          "flash it once over USB\n", s.currentId, s.version.c_str());
+            result.skipped++;
         }
-    } else {
-        BusInterface* targetBus = busFor(slaveId);
-        if (targetBus) targetBus->sendPacket(slaveId, HYPERBUS_MASTER_ID, CMD_TRIGGER_UPDATE, (const uint8_t*)json.c_str(), json.length());
     }
+    if (legacyJson.length()) UpdateSeal::wipe(&legacyJson[0], legacyJson.length());
+
+    if (!_sealedUpdates.empty()) {
+        if (!UpdateSeal::generate(_updateKeys)) {
+            Serial.println("SlaveUpdate: could not create a key pair");
+            result.skipped += result.sealed;
+            result.sealed = 0;
+            _sealedUpdates.clear();
+        } else {
+            _updateSsid = ssid;
+            _updatePass = pass;
+            _updateUrl = url;
+            _updateStarted = millis();
+        }
+    }
+    if (result.sealed || result.wired) {
+        _pauseLedsUntil = millis() + 45000;  // leave the link to the update for 45 s
+    }
+    return result;
+}
+
+void SlaveManagerClass::handleUpdateKey(const HyperBusPacket& packet) {
+    if (packet.length != UpdateSeal::PUBLIC_LEN || packet.targetId != HYPERBUS_MASTER_ID) return;
+    for (auto& u : _sealedUpdates) {
+        if (u.slaveId != packet.senderId) continue;
+        if (!u.keyReceived) {
+            memcpy(u.slavePub, packet.payload, UpdateSeal::PUBLIC_LEN);
+            u.keyReceived = true;
+            u.keyAt = millis();
+        } else if (!u.conflict && memcmp(u.slavePub, packet.payload, UpdateSeal::PUBLIC_LEN) != 0) {
+            // The Slave answers every offer with the same key, so a different one came from
+            // somewhere else. Neither gets the credentials.
+            u.conflict = true;
+            Serial.printf("SlaveUpdate: two different keys answered for Slave %u - not sending the "
+                          "credentials\n", u.slaveId);
+        }
+        return;
+    }
+}
+
+void SlaveManagerClass::sendSealedUpdate(SealedUpdate& u) {
+    BusInterface* bus = busFor(u.slaveId);
+    if (!bus) return;
+
+    uint8_t key[UpdateSeal::KEY_LEN];
+    if (!UpdateSeal::deriveKey(_updateKeys, u.slavePub, _updateKeys.pub, u.slavePub, key)) {
+        Serial.printf("SlaveUpdate: key agreement with Slave %u failed\n", u.slaveId);
+        u.conflict = true;
+        return;
+    }
+
+    uint8_t plain[2 + 32 + 64];
+    size_t plainLen = 0;
+    plain[plainLen++] = _updateSsid.length();
+    memcpy(plain + plainLen, _updateSsid.c_str(), _updateSsid.length());
+    plainLen += _updateSsid.length();
+    plain[plainLen++] = _updatePass.length();
+    memcpy(plain + plainLen, _updatePass.c_str(), _updatePass.length());
+    plainLen += _updatePass.length();
+
+    uint8_t payload[2 + UPDATE_SEAL_MAX_URL + sizeof(plain) + UpdateSeal::OVERHEAD];
+    size_t aadLen = 2 + _updateUrl.length();
+    payload[0] = UPDATE_SEAL_FORMAT;
+    payload[1] = _updateUrl.length();
+    memcpy(payload + 2, _updateUrl.c_str(), _updateUrl.length());
+    bool ok = UpdateSeal::seal(key, payload, aadLen, plain, plainLen, payload + aadLen);
+    UpdateSeal::wipe(plain, sizeof(plain));
+    UpdateSeal::wipe(key, sizeof(key));
+    if (!ok) {
+        u.conflict = true;
+        return;
+    }
+    bus->sendPacket(u.slaveId, HYPERBUS_MASTER_ID, CMD_TRIGGER_UPDATE_SEALED, payload,
+                    aadLen + plainLen + UpdateSeal::OVERHEAD);
+    u.sealedSent++;
+    _pauseLedsUntil = millis() + 45000;
+    if (u.sealedSent == 1) Serial.printf("SlaveUpdate: sealed update sent to Slave %u\n", u.slaveId);
+}
+
+void SlaveManagerClass::pumpSealedUpdates() {
+    if (_sealedUpdates.empty()) return;
+    unsigned long now = millis();
+    bool pending = false;
+    for (auto& u : _sealedUpdates) {
+        if (u.conflict) continue;
+        if (!u.keyReceived) {
+            if (u.offers < UPDATE_KEY_OFFERS && (u.offers == 0 || now - u.lastOffer >= UPDATE_KEY_RETRY_MS)) {
+                BusInterface* bus = busFor(u.slaveId);
+                if (bus) bus->sendPacket(u.slaveId, HYPERBUS_MASTER_ID, CMD_UPDATE_KEY, _updateKeys.pub,
+                                         UpdateSeal::PUBLIC_LEN);
+                u.offers++;
+                u.lastOffer = now;
+            }
+            if (u.offers < UPDATE_KEY_OFFERS || now - u.lastOffer < UPDATE_KEY_RETRY_MS) pending = true;
+            continue;
+        }
+        // Sent twice, 200 ms apart: a Slave that already started on the first ignores the second.
+        if (u.sealedSent < 2 && now - u.keyAt >= UPDATE_KEY_SETTLE_MS + u.sealedSent * 200UL) {
+            sendSealedUpdate(u);
+        }
+        if (u.sealedSent < 2 && !u.conflict) pending = true;
+    }
+    if (!pending || now - _updateStarted >= UpdateSeal::EXCHANGE_TIMEOUT_MS) {
+        for (const auto& u : _sealedUpdates) {
+            if (!u.keyReceived) Serial.printf("SlaveUpdate: Slave %u did not answer the key exchange\n", u.slaveId);
+        }
+        endSealedUpdate();
+    }
+}
+
+void SlaveManagerClass::endSealedUpdate() {
+    _sealedUpdates.clear();
+    UpdateSeal::wipe(&_updateKeys, sizeof(_updateKeys));
+    if (_updatePass.length()) UpdateSeal::wipe(&_updatePass[0], _updatePass.length());
+    _updateSsid = "";
+    _updatePass = "";
+    _updateUrl = "";
 }
 
 // Local rendering arrived in Slave firmware 0.2.0. Anything older only understands streamed
