@@ -5,6 +5,47 @@ HyperLED läuft auf dem leistungsstarken **ESP32-S3**. Um optimale Ergebnisse zu
 > [!IMPORTANT]
 > Achte immer darauf, dass die Stromversorgung (Netzteil) stark genug für deine LEDs ist. Der ESP32 kann die LEDs NICHT direkt mit Strom versorgen (Gefahr der Beschädigung!). Verbinde immer nur die Datenleitung (DIN) und einen gemeinsamen Ground (GND) mit dem ESP32.
 
+## Welche ESP32-Chips eignen sich?
+
+HyperLED ist für den **ESP32-S3** entwickelt und nur darauf getestet (Master und Slave: Waveshare ESP32-S3-Zero). In der Theorie laufen auch andere ESP32-Chips – vorausgesetzt, sie bringen mit, was HyperLED braucht:
+
+- **WLAN (2,4 GHz) und ESP-NOW** – für Weboberfläche, MQTT, Online-Update und Funk-Slaves
+- **mindestens 4 MB Flash** – zwei Update-Plätze à 1,44 MB plus 1,06 MB Dateisystem; die Master-Firmware füllt ihren Platz schon zu gut 90 %
+- **genug Arbeitsspeicher** für Webserver, TLS und ESP-NOW gleichzeitig (als Master)
+- **für HUB75-Panels:** einen Chip, den die Panel-Bibliothek `esp-hub75` unterstützt (ESP32, S2, S3, C6, P4)
+
+### Geeignet
+
+| Chip | Kerne / RAM | Master | Slave | HUB75 | Anmerkung |
+|---|---|---|---|---|---|
+| **ESP32-S3** (N4R2, N8R2, N8R8, N16R8 …) | 2 × 240 MHz, 512 KB + PSRAM | ✅ | ✅ | ✅ | **Die Referenz-Plattform.** Beste Wahl, besonders mit PSRAM. |
+| **ESP32** (klassisch: WROOM-32, WROVER) | 2 × 240 MHz, 520 KB (WROVER + PSRAM) | ✅ | ✅ | ✅ | Leistung reicht. Andere Pinbelegung (GPIO 34–39 nur Eingang, 6–11 belegt), kein natives USB. |
+| **ESP32-S2** (z. B. S2 Mini mit PSRAM) | 1 × 240 MHz, 320 KB (+ PSRAM) | ⚠️ knapp | ✅ | ✅ | Nur ein Kern, wenig RAM – als Master nur mit PSRAM sinnvoll. |
+| **ESP32-C6** | 1 × 160 MHz, 512 KB | ⚠️ | ✅ | ✅ | Langsamer, ohne PSRAM. |
+| **ESP32-C3** | 1 × 160 MHz, 400 KB | ⚠️ | ✅ | ❌ | Nur LED-Streifen, kein Panel. Als günstiger Slave gut geeignet. |
+| **ESP32-C5** | 1 × 240 MHz, PSRAM möglich | ⚠️ theoretisch | ⚠️ theoretisch | ❌ | Neu, WLAN auch auf 5 GHz; im Arduino-Core erst seit Kurzem, ungetestet. |
+
+✅ geeignet · ⚠️ möglich, aber mit Einschränkungen · ❌ nicht möglich
+
+### Nicht geeignet
+
+| Chip | Grund |
+|---|---|
+| **ESP32-P4** | Kein eigenes WLAN; nur mit Funk-Zusatzchip (z. B. C6 über ESP-Hosted) denkbar, ESP-NOW darüber fraglich. |
+| **ESP32-H2 / H4** | Kein WLAN (nur Bluetooth und Thread/Zigbee). |
+| **ESP32-C2 (ESP8684)** | Wenig RAM, meist nur 2–4 MB Flash, im Arduino-Core nicht offiziell unterstützt. |
+| **Module mit 2 MB Flash** | Zu wenig Platz für zwei Update-Plätze. |
+| **ESP8266** | Kein ESP32, eigene Plattform. |
+
+### Was für einen anderen Chip angepasst werden muss
+
+1. **Pins:** Die festen Pins in `include/Config.h` (HUB75, HyperBus-UART, Taster, Status-LED) sind auf den ESP32-S3 zugeschnitten.
+2. **Build-Umgebung:** ein eigenes `[env]` in `platformio.ini`; die USB-CDC-Einstellungen gelten nur für Chips mit nativem USB.
+3. **Chips mit einem Kern (S2, C3, C5, C6):** Die Hintergrund-Tasks für MQTT-Verbindung, Verbindungstest und Update-Prüfung sind fest auf Kern 1 gelegt und müssten dort auf den einzigen Kern verlegt werden.
+4. **Arbeitsspeicher:** Auf Chips mit einem Kern ohne PSRAM wird es als Master mit TLS (MQTTS, Online-Update) und Webserver eng; als Slave ist das kein Problem.
+
+**Empfehlung:** Master auf einem **ESP32-S3 mit PSRAM**, zur Not ein klassischer ESP32 (WROVER). Slaves ohne Panel können günstig auf einem **ESP32-C3** laufen, Slaves mit Panel auf einem S3 oder C6.
+
 ## Standard-Pinbelegung (Pinout)
 
 In HyperLED sind bestimmte Pins ab Werk als Standard vorkonfiguriert. Du kannst diese später in der WebUI ändern.
