@@ -43,6 +43,12 @@ Beim Speichern startet der Controller neu und verbindet sich. Home Assistant fin
 * **Ein Licht pro Segment** – auch Segmente auf einem Slave. Die Farbwahl richtet sich nach der LED-Hardware: RGB, RGBW, Farbtemperatur (bei Streifen mit zwei Weißkanälen und CCT-LEDs), nur Helligkeit oder nur Ein/Aus.
 * **Effekte** mit denselben Namen wie in der Weboberfläche. Uhr/Text, Bild und die Panel-Effekte stehen nur bei Segmenten auf einem HUB75-Panel (bzw. einer Matrix) zur Auswahl.
 * **„Alle Segmente“** schaltet und dimmt alle Segmente zusammen (nur bei mehr als einem Segment).
+* **Pro Segment:** Geschwindigkeit und Intensität (in %) und die Palette; bei Panels der Hintergrund-Effekt.
+* **Texte:** Jedes Text- und Lauftext-Element ist ein Textfeld. So lässt sich z. B. „Waschmaschine fertig“ aus einer Automation aufs Panel schreiben.
+* **Szene** (Auswahl) – zeigt die zuletzt aktivierte Szene, bis sich danach etwas ändert. Dazu **Playlist** und **Gleichlauf** als Schalter.
+* **Taster:** Jeder aktivierte Taster ist ein Ereignis („kurz“, „lang“ bzw. „umgelegt“) für Automationen. Am Controller macht er weiter, was er bisher tut.
+* **Diagnose:** WLAN-Signal, freier Speicher, IP-Adresse, Startzeit, Zahl und Zeitpunkt der WLAN-Ausfälle, dazu je Slave, ob er verbunden ist (mit Firmware-Version). So kann Home Assistant bei einem Ausfall benachrichtigen.
+* **Firmware:** zeigt ein neues Release und installiert es auf Knopfdruck (Szenen, Zeitpläne und Bilder bleiben erhalten). Dazu ein **Neustart**-Knopf und die **Status-LED** als eigenes Licht.
 * **Verfügbarkeit:** Ist der Controller aus oder nicht erreichbar, zeigt Home Assistant die Lichter als „nicht verfügbar“.
 * **Abmelden:** Schaltest du MQTT aus (oder setzt den Controller zurück), entfernt er seine Lichter aus Home Assistant, statt sie als „nicht verfügbar“ zurückzulassen. Beim Wiedereinschalten erscheinen sie mit denselben IDs wieder.
 * Jede Änderung – aus der Weboberfläche, über Taster, Zeitpläne, Szenen oder die Playlist – kommt sofort in Home Assistant an. Neue, umbenannte oder gelöschte Segmente übernimmt Home Assistant automatisch.

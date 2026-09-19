@@ -20,6 +20,7 @@
 #include "BackupManager.h"
 #include "esp_task_wdt.h"
 #include <LittleFS.h>
+#include <WiFi.h>
 #include <esp_heap_caps.h>
 
 UpdateManagerClass UpdateManager;
@@ -29,7 +30,63 @@ void UpdateManagerClass::begin() {
     _status = "idle";
 }
 
+int UpdateManagerClass::compareVersions(const String& a, const String& b) {
+    int ia = 0, ib = 0;
+    while (ia < (int)a.length() || ib < (int)b.length()) {
+        long na = 0, nb = 0;
+        while (ia < (int)a.length() && a[ia] != '.') na = na * 10 + (isDigit(a[ia]) ? a[ia] - '0' : 0), ia++;
+        while (ib < (int)b.length() && b[ib] != '.') nb = nb * 10 + (isDigit(b[ib]) ? b[ib] - '0' : 0), ib++;
+        if (na != nb) return na > nb ? 1 : -1;
+        ia++;
+        ib++;
+    }
+    return 0;
+}
+
+void UpdateManagerClass::requestLatestCheck() {
+    if (_latestRunning || WiFi.status() != WL_CONNECTED) return;
+    _latestRunning = true;
+    if (xTaskCreatePinnedToCore(latestTask, "latestCheck", 10240, this, 1, nullptr, 1) != pdPASS) {
+        _latestRunning = false;
+    }
+}
+
+void UpdateManagerClass::latestTask(void* arg) {
+    UpdateManagerClass* self = static_cast<UpdateManagerClass*>(arg);
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setTimeout(10000);
+    if (http.begin(client, "https://api.github.com/repos/KaelanTesseract/HyperLED/releases/latest")) {
+        http.setUserAgent("HyperLED");  // GitHub refuses API requests without one
+        if (http.GET() == HTTP_CODE_OK) {
+            // Only the tag: the release also carries its notes and asset list.
+            JsonDocument filter;
+            filter["tag_name"] = true;
+            // getString() rather than the raw stream: GitHub may answer chunked, which only the
+            // former decodes. The whole answer is a few KB.
+            String body = http.getString();
+            JsonDocument doc;
+            if (!deserializeJson(doc, body, DeserializationOption::Filter(filter))) {
+                String tag = doc["tag_name"] | "";
+                if (tag.startsWith("v")) tag.remove(0, 1);
+                if (tag.length() > 0 && tag.length() < sizeof(self->_latestBuf)) {
+                    strncpy(self->_latestBuf, tag.c_str(), sizeof(self->_latestBuf) - 1);
+                    self->_latestFresh = true;
+                }
+            }
+        }
+        http.end();
+    }
+    self->_latestRunning = false;
+    vTaskDelete(nullptr);
+}
+
 void UpdateManagerClass::loop() {
+    if (_latestFresh) {
+        _latestFresh = false;
+        _latest = String(_latestBuf);
+    }
     if (_updatePending) {
         _updatePending = false;
         performUpdate();

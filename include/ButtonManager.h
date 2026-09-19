@@ -28,6 +28,11 @@ public:
     void begin();
     void loop();
 
+    // For Home Assistant, which gets every press as an event (see MqttManager::buttonEvent).
+    // index 0 or 1. The configuration only changes with a restart.
+    bool isEnabled(uint8_t index) const { return index == 0 ? _btn1Enabled : _btn2Enabled; }
+    bool isSwitch(uint8_t index) const { return (index == 0 ? _btn1Type : _btn2Type) != "push"; }
+
 private:
     bool _btn1Enabled = false;
     bool _btn2Enabled = false;
@@ -55,8 +60,8 @@ private:
     unsigned long _btn2LastDimTime = 0;
     unsigned long _btn2DebounceTime = 0;
 
-    void handlePushButton(int pin, bool& lastState, unsigned long& pressTime, bool& handled, bool& dimmingDown, unsigned long& lastDimTime, unsigned long& debounceTime);
-    void handleSwitchButton(int pin, bool& lastState, unsigned long& pressTime);
+    void handlePushButton(uint8_t index, int pin, bool& lastState, unsigned long& pressTime, bool& handled, bool& dimmingDown, unsigned long& lastDimTime, unsigned long& debounceTime);
+    void handleSwitchButton(uint8_t index, int pin, bool& lastState, unsigned long& pressTime);
 };
 
 extern ButtonManagerClass ButtonManager;

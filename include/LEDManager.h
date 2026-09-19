@@ -234,6 +234,9 @@ public:
     // A widget with id == 0 in the incoming JSON is treated as new and gets
     // the next free id assigned.
     void setTextWidgets(uint8_t segId, JsonArray widgets);
+    // Replaces only the text of one text or Lauftext element (for Home Assistant). Everything
+    // else about it - position, colour, the segment's effect - stays as it is.
+    bool setTextWidgetText(uint8_t segId, uint8_t widgetId, const String& text);
     void getTextWidgetsJson(uint8_t segId, JsonArray array) const;
     void setTextWidgetImage(uint8_t segId, uint8_t widgetId, uint8_t w, uint8_t h, const std::vector<uint8_t>& rgbData);
     uint8_t getNextWidgetId() const;

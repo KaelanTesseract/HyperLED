@@ -17,6 +17,7 @@
  * limitations under the Licence.
  */
 #include "ButtonManager.h"
+#include "MqttManager.h"
 
 ButtonManagerClass ButtonManager;
 
@@ -43,22 +44,22 @@ void ButtonManagerClass::begin() {
 void ButtonManagerClass::loop() {
     if (_btn1Enabled) {
         if (_btn1Type == "push") {
-            handlePushButton(_pin1, _btn1LastState, _btn1PressTime, _btn1Handled, _btn1DimmingDown, _btn1LastDimTime, _btn1DebounceTime);
+            handlePushButton(0, _pin1, _btn1LastState, _btn1PressTime, _btn1Handled, _btn1DimmingDown, _btn1LastDimTime, _btn1DebounceTime);
         } else {
-            handleSwitchButton(_pin1, _btn1LastState, _btn1PressTime);
+            handleSwitchButton(0, _pin1, _btn1LastState, _btn1PressTime);
         }
     }
 
     if (_btn2Enabled) {
         if (_btn2Type == "push") {
-            handlePushButton(_pin2, _btn2LastState, _btn2PressTime, _btn2Handled, _btn2DimmingDown, _btn2LastDimTime, _btn2DebounceTime);
+            handlePushButton(1, _pin2, _btn2LastState, _btn2PressTime, _btn2Handled, _btn2DimmingDown, _btn2LastDimTime, _btn2DebounceTime);
         } else {
-            handleSwitchButton(_pin2, _btn2LastState, _btn2PressTime);
+            handleSwitchButton(1, _pin2, _btn2LastState, _btn2PressTime);
         }
     }
 }
 
-void ButtonManagerClass::handlePushButton(int pin, bool& lastState, unsigned long& pressTime, bool& handled, bool& dimmingDown, unsigned long& lastDimTime, unsigned long& debounceTime) {
+void ButtonManagerClass::handlePushButton(uint8_t index, int pin, bool& lastState, unsigned long& pressTime, bool& handled, bool& dimmingDown, unsigned long& lastDimTime, unsigned long& debounceTime) {
     bool reading = digitalRead(pin);
     unsigned long now = millis();
 
@@ -78,6 +79,7 @@ void ButtonManagerClass::handlePushButton(int pin, bool& lastState, unsigned lon
                 // Toggle Segment 0
                 bool isOn = LEDManager.getPower(0);
                 LEDManager.setPower(0, !isOn);
+                MqttManager.buttonEvent(index, MqttManagerClass::BUTTON_SHORT);
             }
             if (now - pressTime >= 500) {
                 // End of hold, flip dimming direction for next hold
@@ -89,6 +91,8 @@ void ButtonManagerClass::handlePushButton(int pin, bool& lastState, unsigned lon
 
     // Button held down - ramp brightness, independent of the debounce edge above
     if (lastState == LOW && !handled && (now - pressTime > 500)) { // Held for 500ms
+        // The first dimming step is where the hold begins - reported once per hold.
+        if (lastDimTime < pressTime) MqttManager.buttonEvent(index, MqttManagerClass::BUTTON_LONG);
         if (now - lastDimTime > 30) {
             lastDimTime = now;
             uint8_t currentBri = LEDManager.getBrightness(0);
@@ -103,7 +107,7 @@ void ButtonManagerClass::handlePushButton(int pin, bool& lastState, unsigned lon
     }
 }
 
-void ButtonManagerClass::handleSwitchButton(int pin, bool& lastState, unsigned long& pressTime) {
+void ButtonManagerClass::handleSwitchButton(uint8_t index, int pin, bool& lastState, unsigned long& pressTime) {
     bool currentState = digitalRead(pin);
     unsigned long now = millis();
     
@@ -113,5 +117,6 @@ void ButtonManagerClass::handleSwitchButton(int pin, bool& lastState, unsigned l
         
         bool isOn = LEDManager.getPower(0);
         LEDManager.setPower(0, !isOn);
+        MqttManager.buttonEvent(index, MqttManagerClass::BUTTON_FLIPPED);
     }
 }

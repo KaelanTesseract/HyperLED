@@ -62,6 +62,13 @@
 // How many segment lights were last announced to Home Assistant, so the ones since deleted can
 // be removed there after a restart.
 #define PREF_MQTT_ANNOUNCED "mqtt_ann"
+// The Home Assistant entities besides the segment lights that were last announced, so the ones
+// that no longer exist can be removed there, also after a restart.
+#define PREF_MQTT_EXTRAS "mqtt_ext"
+// How often the Wi-Fi link died and forced a restart, and when that last happened (Unix time,
+// 0 = not known yet). Kept across restarts for Home Assistant's diagnostics.
+#define PREF_LINK_FAILS "link_fails"
+#define PREF_LINK_FAIL_AT "link_fail_at"
 
 // LED Types
 #define TYPE_WS2812_RGB 22

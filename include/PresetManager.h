@@ -39,6 +39,24 @@ public:
     void getPlaylistJson(JsonDocument& doc) const;
     bool setPlaylistFromJson(JsonVariant data);
 
+    // For Home Assistant (see MqttManager).
+    struct PresetInfo {
+        uint8_t id;
+        String name;
+    };
+    // Every stored preset, ordered by id. Reads the file, so not for every loop pass.
+    void listPresets(std::vector<PresetInfo>& out) const;
+    // Bumped whenever a preset is saved or deleted, so a cached list knows it is stale.
+    uint32_t revision() const { return _revision; }
+    // The preset applied last (0 = none yet), and how many presets have been applied - from any
+    // source: web interface, playlist, schedule or Home Assistant.
+    uint8_t lastApplied() const { return _lastApplied; }
+    uint32_t applyCount() const { return _applyCount; }
+    bool hasPlaylist() const { return !_playlist.empty(); }
+    bool playlistEnabled() const { return _playlistEnabled; }
+    // Starts (from the first entry) or stops the playlist, keeping its entries.
+    void setPlaylistEnabled(bool enabled);
+
 private:
     struct PlaylistEntry {
         uint8_t presetId;
@@ -49,6 +67,9 @@ private:
     void savePlaylist();
     void advancePlaylist();
 
+    uint32_t _revision = 0;
+    uint8_t _lastApplied = 0;
+    uint32_t _applyCount = 0;
     std::vector<PlaylistEntry> _playlist;
     bool _playlistEnabled = false;
     int8_t _playlistIndex = -1;

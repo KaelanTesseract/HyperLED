@@ -43,6 +43,12 @@ Saving restarts the controller, which then connects. Home Assistant finds it on 
 * **One light per segment** – segments on a Slave included. The colour controls follow the LED hardware: RGB, RGBW, colour temperature (strips with two white channels and CCT LEDs), brightness only, or on/off only.
 * **Effects** with the same names as in the web interface. Clock/text, image and the panel effects are only offered for segments on a HUB75 panel (or a matrix).
 * **"Alle Segmente"** switches and dims all segments together (only with more than one segment).
+* **Per segment:** speed and intensity (in %) and the palette; for panels the background effect.
+* **Texts:** every text and Lauftext element is a text entity, so an automation can put e.g. "washing machine done" on the panel.
+* **Scene** (select) – shows the scene activated last until something changes afterwards. Plus **playlist** and **sync** as switches.
+* **Buttons:** every enabled button is an event ("kurz", "lang" or "umgelegt") for automations. On the controller it keeps doing what it did.
+* **Diagnostics:** Wi-Fi signal, free memory, IP address, start time, number and time of Wi-Fi failures, and per Slave whether it is connected (with its firmware version) – so Home Assistant can notify you of an outage.
+* **Firmware:** shows a new release and installs it at the press of a button (scenes, schedules and images are kept). Plus a **restart** button and the **status LED** as a light of its own.
 * **Availability:** When the controller is off or unreachable, Home Assistant shows its lights as unavailable.
 * **Leaving:** Switching MQTT off (or resetting the controller) removes its lights from Home Assistant instead of leaving them behind as unavailable. Switching it on again brings them back with the same IDs.
 * Every change – from the web interface, buttons, schedules, scenes or the playlist – reaches Home Assistant right away. New, renamed or deleted segments are picked up automatically.

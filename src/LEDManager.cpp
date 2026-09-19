@@ -1674,6 +1674,17 @@ uint8_t LEDManagerClass::getNextWidgetId() const {
     return maxId + 1;
 }
 
+bool LEDManagerClass::setTextWidgetText(uint8_t segId, uint8_t widgetId, const String& text) {
+    if (segId >= _segments.size()) return false;
+    for (auto& tw : _segments[segId].textWidgets) {
+        if (tw.id != widgetId || (tw.type != 2 && tw.type != 6)) continue;
+        tw.text = text.length() > 64 ? text.substring(0, 64) : text;
+        triggerSave();
+        return true;
+    }
+    return false;
+}
+
 void LEDManagerClass::setTextWidgets(uint8_t segId, JsonArray widgets) {
     if (segId >= _segments.size()) return;
     uint8_t nextId = getNextWidgetId();

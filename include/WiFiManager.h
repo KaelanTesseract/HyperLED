@@ -111,7 +111,16 @@ public:
     };
     const LinkFailureSnapshot& getPreviousLinkFailure() const { return _prevLinkFailure; }
 
+    // Restarts because the link died, counted over the controller's whole life, and the Unix time
+    // of the last one (0 while the clock has not been set since). For Home Assistant.
+    uint32_t getLinkFailureCount() const { return _linkFailureCount; }
+    uint32_t getLastLinkFailureTime() const { return _lastLinkFailureAt; }
+
 private:
+    uint32_t _linkFailureCount = 0;
+    uint32_t _lastLinkFailureAt = 0;
+    bool _linkFailureNeedsTime = false;
+    void stampLinkFailure();
     bool _isAPMode = false;
     bool _triggerScan = false;
     DNSServer _dnsServer;

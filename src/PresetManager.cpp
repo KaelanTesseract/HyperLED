@@ -19,6 +19,7 @@
 #include "PresetManager.h"
 #include <LittleFS.h>
 #include "LEDManager.h"
+#include <algorithm>
 
 PresetManagerClass PresetManager;
 
@@ -54,6 +55,7 @@ bool PresetManagerClass::savePreset(uint8_t id, const String& name) {
     if (!out) return false;
     serializeJson(doc, out);
     out.close();
+    _revision++;
     return true;
 }
 
@@ -72,6 +74,8 @@ bool PresetManagerClass::applyPreset(uint8_t id) {
 
     LEDManager.setSegmentsFromJson(preset["seg"].as<JsonArray>());
     LEDManager.recalculateSegments();
+    _lastApplied = id;
+    _applyCount++;
     return true;
 }
 
@@ -92,7 +96,38 @@ bool PresetManagerClass::deletePreset(uint8_t id) {
     if (!out) return false;
     serializeJson(doc, out);
     out.close();
+    _revision++;
     return true;
+}
+
+void PresetManagerClass::listPresets(std::vector<PresetInfo>& out) const {
+    out.clear();
+    if (!LittleFS.exists(PRESETS_FILE)) return;
+    File f = LittleFS.open(PRESETS_FILE, "r");
+    if (!f) return;
+    // Only the names: a preset also holds every segment with its elements, which can be large.
+    JsonDocument filter;
+    filter["*"]["name"] = true;
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, f, DeserializationOption::Filter(filter));
+    f.close();
+    if (err) return;
+    for (JsonPair kv : doc.as<JsonObject>()) {
+        int id = atoi(kv.key().c_str());
+        if (id <= 0 || id > 255) continue;
+        PresetInfo info;
+        info.id = (uint8_t)id;
+        info.name = kv.value()["name"] | "";
+        out.push_back(info);
+    }
+    std::sort(out.begin(), out.end(), [](const PresetInfo& a, const PresetInfo& b) { return a.id < b.id; });
+}
+
+void PresetManagerClass::setPlaylistEnabled(bool enabled) {
+    if (_playlistEnabled == enabled) return;
+    _playlistEnabled = enabled;
+    _playlistIndex = -1;  // a (re)started playlist begins with its first entry
+    savePlaylist();
 }
 
 uint8_t PresetManagerClass::nextFreePresetId() {

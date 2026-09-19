@@ -34,8 +34,22 @@ public:
     void startOnlineUpdate(String version);
     uint8_t getProgress();
     String getStatus();
+    bool isUpdating() const { return _updatePending || _status.startsWith("updating"); }
+
+    // The newest release on GitHub, for Home Assistant's update entity. Asked for in a task of its
+    // own: the TLS handshake takes seconds, and the LEDs would stand still meanwhile.
+    void requestLatestCheck();
+    const String& latestVersion() const { return _latest; }  // empty while unknown
+    // Compares dotted version numbers ("0.2.001"): >0 if a is newer than b.
+    static int compareVersions(const String& a, const String& b);
 
 private:
+    static void latestTask(void* arg);
+    volatile bool _latestRunning = false;
+    volatile bool _latestFresh = false;
+    char _latestBuf[17] = {0};
+    String _latest;
+
     bool _updatePending = false;
     String _targetVersion;
     

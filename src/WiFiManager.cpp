@@ -166,6 +166,19 @@ void WiFiManagerClass::begin() {
                       (unsigned)_prevLinkFailure.espNowFirstError,
                       (unsigned)_prevLinkFailure.espNowLastError);
     }
+    {
+        Preferences prefs;
+        prefs.begin(PREF_NAMESPACE, false);
+        _linkFailureCount = prefs.getUInt(PREF_LINK_FAILS, 0);
+        _lastLinkFailureAt = prefs.getUInt(PREF_LINK_FAIL_AT, 0);
+        if (_prevLinkFailure.valid) {
+            // The previous run ended with a restart because its link died. When exactly is only
+            // known once the clock is set again - see stampLinkFailure().
+            prefs.putUInt(PREF_LINK_FAILS, ++_linkFailureCount);
+            _linkFailureNeedsTime = true;
+        }
+        prefs.end();
+    }
     WiFi.onEvent(WiFiManagerClass::onWiFiEvent);
     Preferences preferences;
     preferences.begin(PREF_NAMESPACE, true);
@@ -240,8 +253,21 @@ void WiFiManagerClass::startAP() {
     _dnsServer.start(53, "*", WiFi.softAPIP());
 }
 
+void WiFiManagerClass::stampLinkFailure() {
+    time_t now = time(nullptr);
+    if (now < 1700000000) return;  // clock not set yet
+    // The restart came right after the failure, so it happened about one uptime ago.
+    _lastLinkFailureAt = (uint32_t)(now - millis() / 1000);
+    _linkFailureNeedsTime = false;
+    Preferences prefs;
+    prefs.begin(PREF_NAMESPACE, false);
+    prefs.putUInt(PREF_LINK_FAIL_AT, _lastLinkFailureAt);
+    prefs.end();
+}
+
 void WiFiManagerClass::loop() {
     superviseLink();
+    if (_linkFailureNeedsTime) stampLinkFailure();
 
     if (_isAPMode) {
         _dnsServer.processNextRequest();

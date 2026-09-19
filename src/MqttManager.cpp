@@ -152,7 +152,9 @@ void MqttManagerClass::loopStep() {
         _lastDiscoveryCheck = now;
         refreshSlaveTypes();
         if (discoverySignature() != _discoverySig) requestResync();
+        publishSlaves(false);
     }
+    if (_extraStage) publishExtraStage();
     if (_discoveryDue && (long)(now - _discoveryDueAt) >= 0) {
         _discoveryDue = false;
         publishDiscovery();
@@ -161,6 +163,7 @@ void MqttManagerClass::loopStep() {
     if (_forceState || now - _lastStateCheck >= STATE_CHECK_MS) {
         _lastStateCheck = now;
         publishChangedStates(_forceState);
+        loopExtras(_forceState);
         _forceState = false;
     }
 }
@@ -228,11 +231,14 @@ void MqttManagerClass::finishConnect(bool tcpOk) {
 void MqttManagerClass::onConnected() {
     publish(_base + "/status", "online");
 
-    _client.subscribe((_base + "/ha/set").c_str());
-    _client.subscribe((_base + "/+/ha/set").c_str());
+    // Every command topic is <base>/<what>/set or <base>/<segment>/<what>/set - the lights'
+    // .../ha/set included.
+    _client.subscribe((_base + "/+/set").c_str());
+    _client.subscribe((_base + "/+/+/set").c_str());
     // Home Assistant announces itself here after a restart; discovery has to be sent again then.
     _client.subscribe("homeassistant/status");
 
+    _connectedAt = millis();
     refreshSlaveTypes();
     publishDiscovery();
     _stateSigs.clear();
@@ -248,6 +254,7 @@ void MqttManagerClass::removeFromHomeAssistant() {
     clearSegmentDiscovery(0, count);
     for (uint8_t i = 0; i < count; i++) publish(segTopic(i) + "/ha/state", "");
     publish(_base + "/ha/state", "");
+    removeExtras();
     publish(_base + "/status", "");
     bool removed = _client.connected();
     _client.disconnect();
@@ -279,8 +286,12 @@ void MqttManagerClass::handleMessage(char* topicRaw, uint8_t* payload, unsigned 
     }
 
     String prefix = _base + "/";
-    if (!topic.startsWith(prefix) || !topic.endsWith("ha/set")) return;
+    if (!topic.startsWith(prefix) || !topic.endsWith("/set")) return;
     String rest = topic.substring(prefix.length());
+    if (rest != "ha/set" && !rest.endsWith("/ha/set")) {
+        handleExtraCommand(rest, payload, length);
+        return;
+    }
 
     JsonDocument doc;
     if (deserializeJson(doc, payload, length) != DeserializationError::Ok || !doc.is<JsonObject>()) {
@@ -397,16 +408,16 @@ MqttManagerClass::Caps MqttManagerClass::capsForType(uint8_t type) {
     }
 }
 
+// Once a second. What a Slave last reported is kept when it drops out for a moment, so its
+// entities keep their names and capabilities instead of flipping in Home Assistant.
 void MqttManagerClass::refreshSlaveTypes() {
-    bool anySlave = false;
-    uint8_t numSegs = LEDManager.getNumSegments();
-    for (uint8_t i = 0; i < numSegs && !anySlave; i++) {
-        const Segment* seg = LEDManager.getSegment(i);
-        anySlave = seg && seg->isSlave;
-    }
-    if (!anySlave) return;
     for (const DiscoveredSlave& s : SlaveManager.getDiscoveredSlaves()) {
         if (s.ledType != 255) _slaveTypes[s.currentId] = s.ledType;
+        if (s.currentId == 254) continue;  // not configured yet
+        SlaveCache& c = _slaveCache[s.currentId];
+        c.name = s.name;
+        c.version = s.version;
+        c.wireless = s.isWireless;
     }
 }
 
@@ -453,6 +464,7 @@ uint32_t MqttManagerClass::discoverySignature() {
         f.add(info.matrix);
     }
     f.add(WiFi.localIP().toString());  // part of the device's configuration link
+    f.add(extrasSignature());
     return f.h;
 }
 
@@ -551,6 +563,7 @@ void MqttManagerClass::publishDiscovery() {
 
     // Segments deleted since the last announcement, also across restarts.
     if (_announcedSegs > numSegs) clearSegmentDiscovery(numSegs, _announcedSegs);
+    startExtraDiscovery();
     if (_announcedSegs != numSegs && _client.connected()) {
         _announcedSegs = numSegs;
         Preferences prefs;

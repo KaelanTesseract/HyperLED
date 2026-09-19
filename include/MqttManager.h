@@ -23,7 +23,9 @@
 #include <WiFiClient.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <map>
 #include <vector>
+#include "PresetManager.h"
 
 struct Segment;
 
@@ -51,7 +53,65 @@ public:
     bool isConnected() { return _connectState == CONNECT_IDLE && _client.connected(); }
     const String& baseTopic() const { return _base; }
 
+    // A physical button was used (ButtonManager, main loop). Home Assistant gets it as an event
+    // of that button's event entity; the button keeps doing what it does on the controller.
+    enum ButtonEvent : uint8_t { BUTTON_SHORT, BUTTON_LONG, BUTTON_FLIPPED };
+    void buttonEvent(uint8_t index, ButtonEvent event);
+
 private:
+    // --- Everything besides the lights (MqttEntities.cpp) ------------------------------------
+    // Scenes, playlist, sync, effect settings, texts, panel background, diagnostics, Slaves,
+    // buttons, firmware update, restart and the status LED. Each is announced with
+    // "hyperled_<mac>_<suffix>" as its object id; the set announced last is kept in
+    // PREF_MQTT_EXTRAS, so entities that disappear are removed from Home Assistant too.
+    struct SlaveCache {
+        String name;
+        String version;
+        bool wireless = true;
+    };
+    String componentTopic(const char* component, const String& suffix) const;
+    void beginEntity(JsonDocument& doc, const String& suffix, const String& name) const;
+    void announce(const char* component, const String& suffix, JsonDocument& doc, std::vector<String>& seen);
+    uint32_t extrasSignature();
+    void startExtraDiscovery();
+    void publishExtraStage();
+    uint8_t _extraStage = 0;  // 0 = nothing to announce
+    std::vector<String> _extraSeen;
+    void loadAnnouncedExtras();
+    void handleExtraCommand(const String& rest, const uint8_t* payload, unsigned int length);
+    void loopExtras(bool force);
+    void publishSegmentExtras(bool force);
+    void publishSysState(bool force);
+    void publishDiagnostics();
+    void publishSlaves(bool force);
+    void publishUpdateState(bool force);
+    void publishStatusLed(bool force);
+    void flushButtonEvents();
+    void removeExtras();
+    void relevantSlaves(std::vector<uint8_t>& ids);
+    void refreshPresets();
+    String sceneOption(uint8_t presetId) const;
+
+    std::vector<String> _announcedExtras;  // "component:suffix"
+    bool _extrasLoaded = false;
+    std::vector<uint32_t> _extSigs;
+    uint32_t _sysSig = 0;
+    uint32_t _slaveSig = 0;
+    uint32_t _updateSig = 0;
+    uint32_t _statusLedSig = 0;
+    unsigned long _lastDiag = 0;
+    unsigned long _connectedAt = 0;
+    unsigned long _lastLatestCheck = 0;
+    bool _latestChecked = false;
+    std::vector<PresetManagerClass::PresetInfo> _presets;
+    uint32_t _presetRevision = 0xFFFFFFFF;
+    uint8_t _sceneId = 0;          // shown as the current scene until something changes
+    uint32_t _sceneSig = 0;
+    uint32_t _seenApplyCount = 0;
+    std::map<uint8_t, SlaveCache> _slaveCache;
+    uint8_t _buttonQueue[8];
+    uint8_t _buttonQueueLen = 0;
+
     // What a segment's hardware can show, mapped onto Home Assistant's colour modes.
     enum Caps : uint8_t { CAP_ONOFF, CAP_BRIGHTNESS, CAP_COLOR_TEMP, CAP_RGB, CAP_RGBW, CAP_RGB_CT };
     struct SegInfo {
