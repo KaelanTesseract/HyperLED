@@ -340,7 +340,6 @@ void MqttManagerClass::onConnected() {
     // Home Assistant announces itself here after a restart; discovery has to be sent again then.
     _client.subscribe("homeassistant/status");
 
-    _connectedAt = millis();
     refreshSlaveTypes();
     publishDiscovery();
     _stateSigs.clear();

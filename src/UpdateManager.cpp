@@ -45,6 +45,8 @@ int UpdateManagerClass::compareVersions(const String& a, const String& b) {
 
 void UpdateManagerClass::requestLatestCheck() {
     if (_latestRunning || WiFi.status() != WL_CONNECTED) return;
+    if (_lastCheckAt && millis() - _lastCheckAt < 60000) return;
+    _lastCheckAt = millis();
     _latestRunning = true;
     if (xTaskCreatePinnedToCore(latestTask, "latestCheck", 10240, this, 1, nullptr, 1) != pdPASS) {
         _latestRunning = false;
@@ -53,11 +55,22 @@ void UpdateManagerClass::requestLatestCheck() {
 
 void UpdateManagerClass::latestTask(void* arg) {
     UpdateManagerClass* self = static_cast<UpdateManagerClass*>(arg);
+    bool master = fetchLatestTag("HyperLED", self->_latestBuf, sizeof(self->_latestBuf));
+    bool slave = fetchLatestTag("HyperLED-Slave", self->_latestSlaveBuf, sizeof(self->_latestSlaveBuf));
+    if (master || slave) self->_latestFresh = true;
+    if (!master) self->_latestFailed = true;
+    self->_latestRunning = false;
+    vTaskDelete(nullptr);
+}
+
+bool UpdateManagerClass::fetchLatestTag(const char* repo, char* out, size_t outLen) {
+    bool ok = false;
     WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.setTimeout(10000);
-    if (http.begin(client, "https://api.github.com/repos/KaelanTesseract/HyperLED/releases/latest")) {
+    String url = String("https://api.github.com/repos/KaelanTesseract/") + repo + "/releases/latest";
+    if (http.begin(client, url)) {
         http.setUserAgent("HyperLED");  // GitHub refuses API requests without one
         if (http.GET() == HTTP_CODE_OK) {
             // Only the tag: the release also carries its notes and asset list.
@@ -70,22 +83,38 @@ void UpdateManagerClass::latestTask(void* arg) {
             if (!deserializeJson(doc, body, DeserializationOption::Filter(filter))) {
                 String tag = doc["tag_name"] | "";
                 if (tag.startsWith("v")) tag.remove(0, 1);
-                if (tag.length() > 0 && tag.length() < sizeof(self->_latestBuf)) {
-                    strncpy(self->_latestBuf, tag.c_str(), sizeof(self->_latestBuf) - 1);
-                    self->_latestFresh = true;
+                // Digits and dots only: the version becomes part of a download URL.
+                bool clean = tag.length() > 0 && tag.length() < outLen;
+                for (size_t i = 0; clean && i < tag.length(); i++) clean = isDigit(tag[i]) || tag[i] == '.';
+                if (clean) {
+                    strncpy(out, tag.c_str(), outLen - 1);
+                    out[outLen - 1] = 0;
+                    ok = true;
                 }
             }
         }
         http.end();
     }
-    self->_latestRunning = false;
-    vTaskDelete(nullptr);
+    return ok;
 }
 
 void UpdateManagerClass::loop() {
     if (_latestFresh) {
         _latestFresh = false;
-        _latest = String(_latestBuf);
+        if (_latestBuf[0]) _latest = String(_latestBuf);
+        if (_latestSlaveBuf[0]) _latestSlave = String(_latestSlaveBuf);
+        _lastCheckOkAt = millis();
+        _checkFailed = false;
+    }
+    if (_latestFailed) {
+        _latestFailed = false;
+        _checkFailed = true;
+    }
+    // A minute after start, then twice a day; after a failed check (no internet, GitHub busy)
+    // again in half an hour.
+    if (!_latestRunning && !isUpdating() && WiFi.status() == WL_CONNECTED && millis() > 60000) {
+        unsigned long wait = _lastCheckAt == 0 ? 0 : _checkFailed ? 30UL * 60 * 1000 : 12UL * 3600 * 1000;
+        if (_lastCheckAt == 0 || millis() - _lastCheckAt >= wait) requestLatestCheck();
     }
     if (_updatePending) {
         _updatePending = false;

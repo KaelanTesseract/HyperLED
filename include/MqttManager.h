@@ -114,9 +114,6 @@ private:
     uint32_t _updateSig = 0;
     uint32_t _statusLedSig = 0;
     unsigned long _lastDiag = 0;
-    unsigned long _connectedAt = 0;
-    unsigned long _lastLatestCheck = 0;
-    bool _latestChecked = false;
     std::vector<PresetManagerClass::PresetInfo> _presets;
     uint32_t _presetRevision = 0xFFFFFFFF;
     uint8_t _sceneId = 0;          // shown as the current scene until something changes

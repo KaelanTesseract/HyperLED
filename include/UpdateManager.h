@@ -36,19 +36,32 @@ public:
     String getStatus();
     bool isUpdating() const { return _updatePending || _status.startsWith("updating"); }
 
-    // The newest release on GitHub, for Home Assistant's update entity. Asked for in a task of its
-    // own: the TLS handshake takes seconds, and the LEDs would stand still meanwhile.
+    // The newest Master and Slave releases on GitHub, for the web interface and Home Assistant -
+    // one source, so both always agree. Checked a minute after start and then twice a day, in a
+    // task of its own: the TLS handshake takes seconds, and the LEDs would stand still meanwhile.
+    // requestLatestCheck() asks for a check now (at most once a minute).
     void requestLatestCheck();
-    const String& latestVersion() const { return _latest; }  // empty while unknown
+    const String& latestVersion() const { return _latest; }            // empty while unknown
+    const String& latestSlaveVersion() const { return _latestSlave; }  // empty while unknown
+    bool latestCheckRunning() const { return _latestRunning; }
+    // Seconds since the last successful check, -1 if there has been none yet.
+    long lastCheckAgo() const { return _lastCheckOkAt ? (long)((millis() - _lastCheckOkAt) / 1000) : -1; }
     // Compares dotted version numbers ("0.2.001"): >0 if a is newer than b.
     static int compareVersions(const String& a, const String& b);
 
 private:
     static void latestTask(void* arg);
+    static bool fetchLatestTag(const char* repo, char* out, size_t outLen);
     volatile bool _latestRunning = false;
     volatile bool _latestFresh = false;
+    volatile bool _latestFailed = false;
     char _latestBuf[17] = {0};
+    char _latestSlaveBuf[17] = {0};
     String _latest;
+    String _latestSlave;
+    unsigned long _lastCheckAt = 0;    // last attempt
+    unsigned long _lastCheckOkAt = 0;  // last success
+    bool _checkFailed = false;
 
     bool _updatePending = false;
     String _targetVersion;

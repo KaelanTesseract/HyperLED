@@ -51,9 +51,6 @@ const char* const NO_BACKGROUND = "Kein Hintergrund";
 const char* const BUTTON_EVENT_NAMES[] = {"kurz", "lang", "umgelegt"};
 
 constexpr unsigned long DIAG_INTERVAL_MS = 60000;
-// The newest release is looked up a minute after connecting, then twice a day.
-constexpr unsigned long LATEST_FIRST_MS = 60000;
-constexpr unsigned long LATEST_INTERVAL_MS = 12UL * 3600UL * 1000UL;
 
 struct Fnv {
     uint32_t h = 2166136261u;
@@ -607,13 +604,6 @@ void MqttManagerClass::loopExtras(bool force) {
     if (force) publishSlaves(true);
     if (force || _lastDiag == 0 || now - _lastDiag >= DIAG_INTERVAL_MS) publishDiagnostics();
 
-    bool due = _latestChecked ? now - _lastLatestCheck >= LATEST_INTERVAL_MS
-                              : now - _connectedAt >= LATEST_FIRST_MS;
-    if (due) {
-        UpdateManager.requestLatestCheck();
-        _latestChecked = true;
-        _lastLatestCheck = now;
-    }
     publishUpdateState(force);
     flushButtonEvents();
 }

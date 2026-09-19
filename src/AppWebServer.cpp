@@ -282,6 +282,26 @@ void WebServerManagerClass::setupRoutes() {
     });
     server.addHandler(onlineUpdateHandler);
 
+    // What the Master's own release check found (see UpdateManager). The web interface shows its
+    // update notices from this, the same source as Home Assistant.
+    server.on("/api/update_status", HTTP_GET, [](AsyncWebServerRequest *request){
+        JsonDocument doc;
+        doc["installed"] = SOFTWARE_VERSION;
+        doc["latest"] = UpdateManager.latestVersion();
+        doc["slaveLatest"] = UpdateManager.latestSlaveVersion();
+        doc["checking"] = UpdateManager.latestCheckRunning();
+        doc["checkedAgo"] = UpdateManager.lastCheckAgo();
+        doc["updating"] = UpdateManager.isUpdating();
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
+    server.on("/api/update_check", HTTP_POST, [](AsyncWebServerRequest *request){
+        UpdateManager.requestLatestCheck();
+        request->send(202, "application/json", "{\"status\":\"checking\"}");
+    });
+
     server.on("/api/update_progress", HTTP_GET, [](AsyncWebServerRequest *request){
         String json = "{\"progress\":" + String(UpdateManager.getProgress()) + ",\"status\":\"" + UpdateManager.getStatus() + "\"}";
         request->send(200, "application/json", json);
@@ -427,7 +447,13 @@ void WebServerManagerClass::setupRoutes() {
         if (!jsonObj.isNull() && jsonObj["url"].is<String>()) {
             url = jsonObj["url"].as<String>();
         } else {
-            url = "https://raw.githubusercontent.com/KaelanTesseract/HyperLED-Slave/main/.pio/build/esp32-s3/firmware.bin";
+            // The newest Slave release the Master knows of - so the browser needs no internet.
+            const String& ver = UpdateManager.latestSlaveVersion();
+            if (ver.isEmpty()) {
+                request->send(409, "application/json", "{\"error\":\"no_release\"}");
+                return;
+            }
+            url = "https://github.com/KaelanTesseract/HyperLED-Slave/releases/download/" + ver + "/firmware.bin";
         }
         
         // We need the current WiFi credentials

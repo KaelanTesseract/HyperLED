@@ -2761,53 +2761,35 @@ document.addEventListener('DOMContentLoaded', () => {
                     btnUpdateSlaves.disabled = false;
                 };
 
-                btnUpdateSlaves.innerText = t('dyn_searching_update');
+                btnUpdateSlaves.innerText = t('dyn_sending_cmd');
                 btnUpdateSlaves.disabled = true;
 
-                fetch('https://api.github.com/repos/KaelanTesseract/HyperLED-Slave/releases/latest')
-                    .then(r => { if (r.ok) return r.json(); throw new Error('No release found'); })
-                    .then(ghData => {
-                        let downloadUrl = "";
-                        if (ghData.assets && ghData.assets.length > 0) {
-                            let asset = ghData.assets.find(a => a.name === "firmware.bin");
-                            if (!asset) asset = ghData.assets[0];
-                            downloadUrl = asset.browser_download_url;
-                        }
-
-                        if (!downloadUrl) {
-                            showToast(t('dyn_no_bin'), 'error');
-                            done();
-                            return;
-                        }
-
-                        btnUpdateSlaves.innerText = t('dyn_sending_cmd');
-                        fetch('/api/slaves/update', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ url: downloadUrl })
-                        })
-                        .then(res => res.json().catch(() => ({})).then(data => ({ ok: res.ok, data })))
-                        .then(({ ok, data }) => {
-                            if (!ok) {
-                                showToast(t(data.error === 'url_too_long' ? 'dyn_update_url_long' : 'dyn_cmd_err'), 'error');
-                            } else if (data.skipped > 0) {
-                                // Older devices on radio no longer get the Wi-Fi password over the air.
-                                showToast(t('dyn_update_skipped', { n: data.skipped }), 'error');
-                                if (data.sealed > 0 || data.wired > 0) showToast(t('dyn_cmd_sent'), 'ok');
-                            } else {
-                                showToast(t('dyn_cmd_sent'), 'ok');
-                            }
-                            done();
-                        })
-                        .catch(() => {
-                            showToast(t('dyn_conn_err'), 'error');
-                            done();
-                        });
-                    })
-                    .catch(() => {
-                        showToast(t('dyn_no_release'), 'error');
-                        done();
-                    });
+                // Without a URL the Master takes the newest Slave release it knows of - the
+                // browser needs no internet for this.
+                fetch('/api/slaves/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                })
+                .then(res => res.json().catch(() => ({})).then(data => ({ ok: res.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok) {
+                        const key = data.error === 'url_too_long' ? 'dyn_update_url_long'
+                                  : data.error === 'no_release' ? 'dyn_no_release' : 'dyn_cmd_err';
+                        showToast(t(key), 'error');
+                    } else if (data.skipped > 0) {
+                        // Older devices on radio no longer get the Wi-Fi password over the air.
+                        showToast(t('dyn_update_skipped', { n: data.skipped }), 'error');
+                        if (data.sealed > 0 || data.wired > 0) showToast(t('dyn_cmd_sent'), 'ok');
+                    } else {
+                        showToast(t('dyn_cmd_sent'), 'ok');
+                    }
+                    done();
+                })
+                .catch(() => {
+                    showToast(t('dyn_conn_err'), 'error');
+                    done();
+                });
             });
         });
     }
@@ -2959,8 +2941,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return 0;
     }
 
-    function fetchVersion() {
-        sysVersion.innerText = t('sys_loading');
+    // Update notices come from the Master's own release check (/api/update_status) - the same
+    // source Home Assistant uses, so both always agree, and the browser needs no internet for it.
+    // Refreshed every ten minutes, so a page left open still learns about a new release.
+    let updateInfoTries = 0;
+    function refreshUpdateInfo() {
         const stateLine = document.getElementById('updateStateLine');
         // "Up to date" is a state, not an action - it belongs in a line of text, and the button
         // only exists while there is actually something to install.
@@ -2978,93 +2963,77 @@ document.addEventListener('DOMContentLoaded', () => {
             btnCheckUpdate.innerText = label;
             btnCheckUpdate.onclick = run;
         };
-        showState(t('sys_checking_update'));
-        fetch('/api/info')
-            .then(res => res.json())
-            .then(data => {
-                const currentVer = data.version || '0.1.001';
-                sysVersion.innerText = currentVer;
-                const mainVer = document.getElementById('mainVersionDisplay');
-                if (mainVer) mainVer.innerText = currentVer;
+        const banner = document.getElementById('updateBanner');
+        const bannerTitle = document.getElementById('updateBannerTitle');
+        const bannerText = document.getElementById('updateBannerText');
+        const setBanner = (title, text) => {
+            if (!banner || !bannerTitle || !bannerText) return;
+            if (!title) {
+                banner.style.display = 'none';
+                return;
+            }
+            bannerTitle.innerText = title;
+            bannerText.innerText = text;
+            banner.style.display = 'block';
+        };
 
-                // GitHub OTA Check
-                const GITHUB_USER = 'KaelanTesseract';
-                const GITHUB_REPO = 'HyperLED';
+        Promise.all([
+            fetch('/api/update_status').then(r => r.json()),
+            fetch('/api/slaves').then(r => r.json()).catch(() => [])
+        ]).then(([u, slaves]) => {
+            const currentVer = u.installed || '';
+            const mainVer = document.getElementById('mainVersionDisplay');
+            if (mainVer) mainVer.innerText = currentVer;
 
-                fetch(`https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/latest`)
-                    .then(r => { if(r.ok) return r.json(); throw new Error('No release found'); })
-                    .then(ghData => {
-                        let latestVer = ghData.tag_name;
-                        let displayVer = latestVer;
-                        if (displayVer.startsWith('v')) displayVer = displayVer.substring(1);
+            if (!u.latest) {
+                sysVersion.innerHTML = `<span style="color: var(--text-main);">${escapeText(currentVer)}</span>`;
+                // Not checked yet (the Master checks a minute after starting): ask for it and
+                // look again shortly.
+                if (u.checkedAgo < 0 && updateInfoTries < 12) {
+                    updateInfoTries++;
+                    showState(t('sys_checking_update'));
+                    if (!u.checking) fetch('/api/update_check', { method: 'POST' }).catch(() => {});
+                    setTimeout(refreshUpdateInfo, 5000);
+                } else {
+                    showState(t('dyn_update_unknown'));
+                }
+                return;
+            }
+            updateInfoTries = 0;
 
-                        if (compareVersions(displayVer, currentVer) > 0) {
-                            sysVersion.innerHTML = `<span style="color: var(--text-main);">${escapeText(currentVer)}</span> <span style="color: var(--text-muted);">(${t('dyn_latest')}${escapeText(latestVer)})</span>`;
-                            offerUpdate(t('dyn_update_to', { ver: latestVer }),
-                                        () => startOnlineUpdate(latestVer));
+            const masterNew = compareVersions(u.latest, currentVer) > 0;
+            const activeSlaves = (Array.isArray(slaves) ? slaves : []).filter(s => s.id !== 254);
+            const slaveNew = !!u.slaveLatest &&
+                activeSlaves.some(s => s.version && compareVersions(u.slaveLatest, s.version) > 0);
 
-                            const banner = document.getElementById('updateBanner');
-                            const bannerTitle = document.getElementById('updateBannerTitle');
-                            const bannerText = document.getElementById('updateBannerText');
-                            if (banner && bannerTitle && bannerText) {
-                                bannerTitle.innerText = t('dyn_update_banner_title', { ver: latestVer });
-                                bannerText.innerText = t('update_banner_text');
-                                banner.style.display = 'block';
-                            }
-                        } else {
-                            sysVersion.innerHTML = `<span style="color: var(--text-main);">${escapeText(currentVer)}</span>`;
-                            showState(t('dyn_firmware_up_to_date'));
-                        }
-                    })
-                    .catch(err => {
-                        console.log('GitHub API error or no releases yet', err);
-                        sysVersion.innerHTML = `<span style="color: var(--text-main);">${escapeText(currentVer)}</span>`;
-                        showState(t('dyn_firmware_up_to_date'));
-                    });
-            })
-            .catch(() => {
-                sysVersion.innerText = t('dyn_version_error');
-                showState(t('dyn_version_error'));
-            });
-    }
+            if (masterNew) {
+                sysVersion.innerHTML = `<span style="color: var(--text-main);">${escapeText(currentVer)}</span> <span style="color: var(--text-muted);">(${t('dyn_latest')}${escapeText(u.latest)})</span>`;
+                offerUpdate(t('dyn_update_to', { ver: u.latest }), () => startOnlineUpdate(u.latest));
+            } else {
+                sysVersion.innerHTML = `<span style="color: var(--text-main);">${escapeText(currentVer)}</span>`;
+                showState(t('dyn_firmware_up_to_date') + ' · ' +
+                          t('dyn_update_checked_ago', { time: formatDuration(Math.max(0, u.checkedAgo)) }));
+            }
 
-    function checkSlaveUpdates() {
-        fetch('/api/slaves')
-            .then(res => res.json())
-            .then(slaves => {
-                const activeSlaves = slaves.filter(s => s.id !== 254);
-                if (activeSlaves.length === 0) return;
-
-                fetch('https://api.github.com/repos/KaelanTesseract/HyperLED-Slave/releases/latest')
-                    .then(r => { if(r.ok) return r.json(); throw new Error('No release found'); })
-                    .then(ghData => {
-                        let latestVer = ghData.tag_name;
-                        let displayVer = latestVer;
-                        if (displayVer.startsWith('v')) displayVer = displayVer.substring(1);
-
-                        let needsUpdate = activeSlaves.some(s => s.version && compareVersions(displayVer, s.version) > 0);
-                        if (needsUpdate) {
-                            const banner = document.getElementById('updateBanner');
-                            if (banner) {
-                                if (banner.style.display === 'block') {
-                                    document.getElementById('updateBannerTitle').innerText = t('dyn_update_banner_both_title');
-                                    document.getElementById('updateBannerText').innerText = t('dyn_update_banner_both_text');
-                                } else {
-                                    banner.style.display = 'block';
-                                    document.getElementById('updateBannerTitle').innerText = t('dyn_update_banner_slave_title');
-                                    document.getElementById('updateBannerText').innerText = t('dyn_update_banner_slave_text', { ver: displayVer });
-                                }
-                            }
-                        }
-                    })
-                    .catch(e => console.log("Slave update check failed", e));
-            })
-            .catch(e => console.log("Failed to fetch slaves for update check"));
+            if (masterNew && slaveNew) {
+                setBanner(t('dyn_update_banner_both_title'), t('dyn_update_banner_both_text'));
+            } else if (masterNew) {
+                setBanner(t('dyn_update_banner_title', { ver: u.latest }), t('update_banner_text'));
+            } else if (slaveNew) {
+                setBanner(t('dyn_update_banner_slave_title'), t('dyn_update_banner_slave_text', { ver: u.slaveLatest }));
+            } else {
+                setBanner(null);
+            }
+        }).catch(() => {
+            sysVersion.innerText = t('dyn_version_error');
+            showState(t('dyn_version_error'));
+        });
     }
 
     if (!isAPMode) {
-        fetchVersion();
-        checkSlaveUpdates();
+        sysVersion.innerText = t('sys_loading');
+        refreshUpdateInfo();
+        setInterval(refreshUpdateInfo, 10 * 60 * 1000);
     }
 
     function startOnlineUpdate(version) {
