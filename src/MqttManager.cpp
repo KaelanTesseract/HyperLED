@@ -79,12 +79,11 @@ void MqttManagerClass::begin() {
     _macAddress.replace(":", "");
     loadConfig();
 
-    // Connecting blocks the main loop - the LEDs stand still meanwhile. A broker on the home
-    // network answers within milliseconds; one that is switched off should cost 1 s, not 3.
-    _wifiClient.setConnectionTimeout(1000);
     _client.setClient(_wifiClient);
     _client.setBufferSize(2048);   // a discovery message with the full effect list is ~1.3 KB
-    _client.setSocketTimeout(3);   // waiting for CONNACK must not stall the LEDs for 15 s
+    // How long the main loop waits for the broker's answer to CONNECT (and for the rest of a
+    // message that arrived in part). A broker on the home network answers within milliseconds.
+    _client.setSocketTimeout(1);
     _client.setServer(_server.c_str(), _port);
     _client.setCallback([this](char* topic, uint8_t* payload, unsigned int length) {
         handleMessage(topic, payload, length);
@@ -119,9 +118,29 @@ void MqttManagerClass::requestResync() {
 }
 
 void MqttManagerClass::loop() {
+    // Every pass is timed: MQTT must never hold up the LEDs, and a pass that does is reported
+    // (at most once a minute, a flood of serial output can stall a board with native USB).
+    unsigned long started = millis();
+    loopStep();
+    unsigned long took = millis() - started;
+    if (took > SLOW_PASS_MS && (_lastSlowLog == 0 || millis() - _lastSlowLog >= 60000)) {
+        _lastSlowLog = millis();
+        Serial.printf("[MQTT] A pass took %lu ms\n", took);
+    }
+}
+
+void MqttManagerClass::loopStep() {
+    // While the connect task owns the socket, nothing here may touch it - not even connected().
+    if (_connectState == CONNECT_RUNNING) return;
+
+    if (_removalRequested) {
+        _removalRequested = false;
+        if (_connectState == CONNECT_IDLE && _client.connected()) removeFromHomeAssistant();
+        _enabled = false;
+    }
     if (!_enabled) return;
 
-    if (!_client.connected()) {
+    if (_connectState != CONNECT_IDLE || !_client.connected()) {
         reconnect();
         return;
     }
@@ -146,7 +165,23 @@ void MqttManagerClass::loop() {
     }
 }
 
+// Name lookup and the TCP handshake block for as long as the broker takes to answer - seconds
+// when it is switched off, and the LEDs used to stand still meanwhile. This task does just that
+// part and ends; the main loop only sees the finished connection (see reconnect()).
+void MqttManagerClass::connectTask(void* arg) {
+    MqttManagerClass* self = static_cast<MqttManagerClass*>(arg);
+    bool ok = self->_wifiClient.connect(self->_server.c_str(), self->_port, CONNECT_TIMEOUT_MS) == 1;
+    self->_connectState = ok ? CONNECT_OK : CONNECT_FAILED;
+    vTaskDelete(nullptr);
+}
+
 void MqttManagerClass::reconnect() {
+    if (_connectState == CONNECT_OK || _connectState == CONNECT_FAILED) {
+        bool tcpOk = _connectState == CONNECT_OK;
+        _connectState = CONNECT_IDLE;
+        finishConnect(tcpOk);
+        return;
+    }
     if (_server.isEmpty() || WiFi.status() != WL_CONNECTED) return;
 
     unsigned long now = millis();
@@ -154,11 +189,26 @@ void MqttManagerClass::reconnect() {
     _everAttempted = true;
     _lastReconnectAttempt = now;
 
+    _connectState = CONNECT_RUNNING;
+    if (xTaskCreatePinnedToCore(connectTask, "mqttConnect", 6144, this, 1, nullptr, 1) != pdPASS) {
+        _connectState = CONNECT_FAILED;
+    }
+}
+
+void MqttManagerClass::finishConnect(bool tcpOk) {
+    if (!tcpOk) {
+        _reconnectDelay = min(_reconnectDelay * 2, RECONNECT_MAX_MS);
+        Serial.printf("[MQTT] Cannot reach %s:%u, next try in %lu s\n", _server.c_str(), _port,
+                      (unsigned long)(_reconnectDelay / 1000));
+        return;
+    }
+
     String clientId = "HyperLED-" + _macAddress;
     String willTopic = _base + "/status";
     const char* user = _user.isEmpty() ? nullptr : _user.c_str();
     const char* pass = _user.isEmpty() ? nullptr : _pass.c_str();
 
+    // The TCP connection stands, so PubSubClient only sends CONNECT and waits for the answer.
     if (_client.connect(clientId.c_str(), user, pass, willTopic.c_str(), 0, true, "offline")) {
         Serial.printf("[MQTT] Connected to %s:%u as %s, base topic %s\n",
                       _server.c_str(), _port, clientId.c_str(), _base.c_str());
@@ -167,6 +217,7 @@ void MqttManagerClass::reconnect() {
         // answering straight away should not be retried every 5 s.
         _reconnectDelay = _client.connected() ? RECONNECT_MIN_MS : min(_reconnectDelay * 2, RECONNECT_MAX_MS);
     } else {
+        _wifiClient.stop();  // PubSubClient leaves the socket open when writing CONNECT failed
         _reconnectDelay = min(_reconnectDelay * 2, RECONNECT_MAX_MS);
         // PubSubClient's state: -4 timeout, -2 connect failed, 4 bad credentials, 5 not authorised.
         Serial.printf("[MQTT] Connecting to %s:%u failed (state %d), next try in %lu s\n",
@@ -186,6 +237,29 @@ void MqttManagerClass::onConnected() {
     publishDiscovery();
     _stateSigs.clear();
     _forceState = true;
+}
+
+// Everything this controller left on the broker goes: the discovery entries (Home Assistant then
+// removes the device and its lights), the retained states and the availability.
+void MqttManagerClass::removeFromHomeAssistant() {
+    String groupId = "hyperled_" + _macAddress;
+    uint8_t count = max(_announcedSegs, LEDManager.getNumSegments());
+    publish(discoveryTopic(groupId), "");
+    clearSegmentDiscovery(0, count);
+    for (uint8_t i = 0; i < count; i++) publish(segTopic(i) + "/ha/state", "");
+    publish(_base + "/ha/state", "");
+    publish(_base + "/status", "");
+    bool removed = _client.connected();
+    _client.disconnect();
+    Serial.printf("[MQTT] %s Home Assistant (%u lights)\n", removed ? "Removed from" : "Could not fully remove from",
+                  (unsigned)count + 1);
+    if (removed) {
+        _announcedSegs = 0;
+        Preferences prefs;
+        prefs.begin(PREF_NAMESPACE, false);
+        prefs.remove(PREF_MQTT_ANNOUNCED);
+        prefs.end();
+    }
 }
 
 // ---------------------------------------------------------------------------

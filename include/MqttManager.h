@@ -43,9 +43,12 @@ public:
     void loop();
     // Publishes discovery and the complete state again on the next loop pass.
     void requestResync();
+    // MQTT is being switched off: on the next loop pass the controller takes its lights out of
+    // Home Assistant (so they do not linger there as unavailable) and stops. Safe from any task.
+    void requestRemoval() { _removalRequested = true; }
 
     bool isEnabled() const { return _enabled; }
-    bool isConnected() { return _client.connected(); }
+    bool isConnected() { return _connectState == CONNECT_IDLE && _client.connected(); }
     const String& baseTopic() const { return _base; }
 
 private:
@@ -56,6 +59,21 @@ private:
         bool hub75;   // clock/text and the panel showcase effects
         bool matrix;  // any 2D layout - the image effect
     };
+
+    // Connecting happens in two halves: connectTask() does the name lookup and the TCP handshake
+    // in its own task, finishConnect() the short MQTT handshake in the main loop.
+    enum ConnectState : uint8_t { CONNECT_IDLE, CONNECT_RUNNING, CONNECT_OK, CONNECT_FAILED };
+    static const int32_t CONNECT_TIMEOUT_MS = 3000;
+    volatile ConnectState _connectState = CONNECT_IDLE;
+    static void connectTask(void* arg);
+    void finishConnect(bool tcpOk);
+
+    volatile bool _removalRequested = false;
+    void removeFromHomeAssistant();
+
+    void loopStep();
+    static const unsigned long SLOW_PASS_MS = 200;
+    unsigned long _lastSlowLog = 0;
 
     void reconnect();
     void loadConfig();

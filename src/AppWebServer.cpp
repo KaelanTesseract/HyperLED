@@ -731,9 +731,12 @@ void WebServerManagerClass::setupRoutes() {
     server.on("/api/mqtt", HTTP_POST, [](AsyncWebServerRequest *request){
         Preferences prefs;
         prefs.begin(PREF_NAMESPACE, false);
-        
+
+        bool switchedOff = false;
         if (request->hasParam("enabled", true)) {
-            prefs.putBool(PREF_MQTT_ENABLE, request->getParam("enabled", true)->value() == "true");
+            bool enable = request->getParam("enabled", true)->value() == "true";
+            switchedOff = !enable && prefs.getBool(PREF_MQTT_ENABLE, false);
+            prefs.putBool(PREF_MQTT_ENABLE, enable);
         }
         
         if (request->hasParam("server", true)) {
@@ -771,8 +774,11 @@ void WebServerManagerClass::setupRoutes() {
         prefs.end();
         
         request->send(200, "application/json", "{\"status\":\"ok\"}");
+        // Switched off: the lights leave Home Assistant first instead of lingering there as
+        // unavailable. That happens in the main loop, well within the extra second.
+        if (switchedOff) MqttManager.requestRemoval();
         // The connection is set up once at start, and the web interface announces a restart.
-        WiFiManager.requestRestart(1000);
+        WiFiManager.requestRestart(switchedOff ? 2000 : 1000);
     });
 
 
@@ -931,7 +937,8 @@ void WebServerManagerClass::setupRoutes() {
         prefs.remove(PREF_MQTT_PASS);
         prefs.remove(PREF_MQTT_TOPIC);
         prefs.remove(PREF_MQTT_ANNOUNCED);
-        
+        MqttManager.requestRemoval();  // a reset controller should not stay behind in Home Assistant
+
         // WLAN löschen
         prefs.remove(PREF_WIFI_SSID);
         prefs.remove(PREF_WIFI_PASS);

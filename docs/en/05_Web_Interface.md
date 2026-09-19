@@ -44,6 +44,7 @@ Saving restarts the controller, which then connects. Home Assistant finds it on 
 * **Effects** with the same names as in the web interface. Clock/text, image and the panel effects are only offered for segments on a HUB75 panel (or a matrix).
 * **"Alle Segmente"** switches and dims all segments together (only with more than one segment).
 * **Availability:** When the controller is off or unreachable, Home Assistant shows its lights as unavailable.
+* **Leaving:** Switching MQTT off (or resetting the controller) removes its lights from Home Assistant instead of leaving them behind as unavailable. Switching it on again brings them back with the same IDs.
 * Every change – from the web interface, buttons, schedules, scenes or the playlist – reaches Home Assistant right away. New, renamed or deleted segments are picked up automatically.
 
 > [!TIP]

@@ -44,6 +44,7 @@ Beim Speichern startet der Controller neu und verbindet sich. Home Assistant fin
 * **Effekte** mit denselben Namen wie in der Weboberfläche. Uhr/Text, Bild und die Panel-Effekte stehen nur bei Segmenten auf einem HUB75-Panel (bzw. einer Matrix) zur Auswahl.
 * **„Alle Segmente“** schaltet und dimmt alle Segmente zusammen (nur bei mehr als einem Segment).
 * **Verfügbarkeit:** Ist der Controller aus oder nicht erreichbar, zeigt Home Assistant die Lichter als „nicht verfügbar“.
+* **Abmelden:** Schaltest du MQTT aus (oder setzt den Controller zurück), entfernt er seine Lichter aus Home Assistant, statt sie als „nicht verfügbar“ zurückzulassen. Beim Wiedereinschalten erscheinen sie mit denselben IDs wieder.
 * Jede Änderung – aus der Weboberfläche, über Taster, Zeitpläne, Szenen oder die Playlist – kommt sofort in Home Assistant an. Neue, umbenannte oder gelöschte Segmente übernimmt Home Assistant automatisch.
 
 > [!TIP]

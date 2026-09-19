@@ -32,16 +32,6 @@ offen ist. Neu entdeckte Folgearbeiten kommen ebenfalls hierher.
 2. **Knopf „In Home Assistant neu anmelden“** – sendet Discovery und Zustand erneut.
 3. **Kurzanleitung in der Doku** – Einrichtung in Home Assistant Schritt für Schritt (de/en).
 
-## D. Stabilität und Aufräumen (bei der Umsetzung von A gefunden)
-
-1. **Verbindungsaufbau aus der Hauptschleife nehmen** – `connect()` blockiert die Hauptschleife,
-   solange der Broker nicht antwortet (auf 1 s begrenzt, mit Hostname plus DNS-Auflösung länger);
-   die LEDs stehen in der Zeit. Bei ausgeschaltetem Broker passiert das höchstens einmal pro Minute.
-   Sauber wäre ein eigener Task für Verbindungsaufbau und Namensauflösung.
-2. **MQTT abschalten räumt Home Assistant nicht auf** – nach dem Deaktivieren bleiben die Lichter in
-   Home Assistant als „nicht verfügbar“ stehen. Vor dem Neustart die Discovery-Einträge leeren
-   (leere retained-Nachrichten), damit das Gerät verschwindet.
-
 ## Optional
 
 - **Verschlüsselte Verbindung (MQTTS, Port 8883)** – kostet Speicher und ist im Heimnetz meist
