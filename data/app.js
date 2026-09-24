@@ -3653,10 +3653,33 @@ document.addEventListener('DOMContentLoaded', () => {
             ${control}${suffix || ''}
         </div>`;
     }
+    // Bits of a weather element's format - see WEATHER_FMT_* in WidgetRender.h.
+    const WX_FMT_CONTENT = 0x03;
+    const WX_FMT_LARGE = 0x04;
+    const WX_FMT_OWN_COLOR = 0x08;
+
+    // The two extra choices a weather element has: which icon set, and whether the icons keep
+    // their own colours.
+    function widgetWeatherOptionsHtml(w) {
+        if (w.type !== 5) return '';
+        const fmt = w.format || 0;
+        const large = (fmt & WX_FMT_LARGE) !== 0;
+        const own = (fmt & WX_FMT_OWN_COLOR) !== 0;
+        return widgetRowHtml(w, 'widgetWxSize', 'widget_wx_size',
+            `<select id="widgetWxSize_${w.id}" data-field="wxSize" class="field field-flex">
+                <option value="0" ${!large ? 'selected' : ''}>${t('widget_wx_size_small')}</option>
+                <option value="1" ${large ? 'selected' : ''}>${t('widget_wx_size_large')}</option>
+            </select>`) +
+            widgetRowHtml(w, 'widgetWxColor', 'widget_wx_color',
+            `<select id="widgetWxColor_${w.id}" data-field="wxColor" class="field field-flex">
+                <option value="0" ${!own ? 'selected' : ''}>${t('widget_wx_color_natural')}</option>
+                <option value="1" ${own ? 'selected' : ''}>${t('widget_wx_color_element')}</option>
+            </select>`);
+    }
     function widgetFormatOptionsHtml(w) {
         const keys = WIDGET_FORMAT_KEYS[w.type];
         if (!keys) return '';
-        const current = w.format || 0;
+        const current = w.type === 5 ? ((w.format || 0) & WX_FMT_CONTENT) : (w.format || 0);
         const opts = keys.map((_, idx) =>
             `<option value="${idx}" ${current === idx ? 'selected' : ''}>${widgetFormatLabel(w.type, idx)}</option>`
         ).join('');
@@ -3717,6 +3740,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function analogDiameter(w) {
         return Math.max(8, w.w || 16);
     }
+    // 11x11 or 16x16, see WEATHER_ICON_* in WeatherIcons.h.
+    function weatherIconSide(w) {
+        return ((w.format || 0) & WX_FMT_LARGE) ? 16 : 11;
+    }
     function widgetPixelWidth(w) {
         const scale = widgetScale(w);
         const cell = widgetGlyphCell(w);
@@ -3725,10 +3752,12 @@ document.addEventListener('DOMContentLoaded', () => {
             case 3: return (w.w || 1) * scale;                       // Bild
             case 4: return analogDiameter(w) + 1;                     // Analoguhr, no scale
             case 5: {                                                 // Wetter
+                // Same numbers the firmware uses, so the frame in the preview matches the panel.
+                const content = (w.format || 0) & WX_FMT_CONTENT;
                 let width = 0;
-                if (w.format !== 2) width += 7 * scale;               // icon
-                if (w.format !== 1) {
-                    if (w.format !== 2) width += scale;               // gap after the icon
+                if (content !== 2) width += weatherIconSide(w) * scale;
+                if (content !== 1) {
+                    if (content !== 2) width += scale;                // gap after the icon
                     width += textWidth(weatherTextLen);
                 }
                 return width;
@@ -3745,7 +3774,10 @@ document.addEventListener('DOMContentLoaded', () => {
         switch (w.type) {
             case 3: return (w.h || 1) * scale;
             case 4: return analogDiameter(w) + 1;
-            case 5: return Math.max(w.format !== 2 ? 7 : 0, w.format !== 1 ? cell.h : 0) * scale;
+            case 5: {
+                const content = (w.format || 0) & WX_FMT_CONTENT;
+                return Math.max(content !== 2 ? weatherIconSide(w) : 0, content !== 1 ? cell.h : 0) * scale;
+            }
             default: return cell.h * scale;
         }
     }
@@ -4063,6 +4095,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     `<input type="number" id="widgetScale_${w.id}" data-field="scale" min="1" max="8" value="${widgetScale(w)}" class="field field-narrow">`,
                     `<span class="widget-bri-label">×</span>`) : ''}
                 ${widgetFontOptionsHtml(w)}
+                ${widgetWeatherOptionsHtml(w)}
                 ${widgetFormatOptionsHtml(w)}
                 ${(w.type === 2 || w.type === 6) ? widgetRowHtml(w, 'widgetText', 'widget_text',
                     `<input type="text" id="widgetText_${w.id}" data-field="text" maxlength="64" value="${safeText}" placeholder="HELLO" class="field field-flex">`) : ''}
@@ -4125,7 +4158,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const formatSelect = card.querySelector('[data-field="format"]');
             if (formatSelect) {
                 formatSelect.addEventListener('change', () => {
-                    w.format = parseInt(formatSelect.value) || 0;
+                    const value = parseInt(formatSelect.value) || 0;
+                    // A weather element keeps its size and colouring in the upper bits.
+                    w.format = w.type === 5 ? (((w.format || 0) & ~WX_FMT_CONTENT) | (value & WX_FMT_CONTENT))
+                                            : value;
+                    saveWidgets(widgets);
+                });
+            }
+            const wxSizeSelect = card.querySelector('[data-field="wxSize"]');
+            if (wxSizeSelect) {
+                wxSizeSelect.addEventListener('change', () => {
+                    const large = wxSizeSelect.value === '1';
+                    w.format = large ? ((w.format || 0) | WX_FMT_LARGE) : ((w.format || 0) & ~WX_FMT_LARGE);
+                    saveWidgets(widgets);
+                });
+            }
+            const wxColorSelect = card.querySelector('[data-field="wxColor"]');
+            if (wxColorSelect) {
+                wxColorSelect.addEventListener('change', () => {
+                    const own = wxColorSelect.value === '1';
+                    w.format = own ? ((w.format || 0) | WX_FMT_OWN_COLOR) : ((w.format || 0) & ~WX_FMT_OWN_COLOR);
                     saveWidgets(widgets);
                 });
             }

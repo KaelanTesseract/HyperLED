@@ -47,14 +47,16 @@ static String urlEncode(const String& s) {
     return out;
 }
 
-// Maps Open-Meteo's WMO weather codes to our 5 icon categories.
-// https://open-meteo.com/en/docs (WMO Weather interpretation codes)
-uint8_t WeatherManagerClass::weatherCodeToIcon(int code) {
-    if (code == 0 || code == 1) return WEATHER_ICON_SUN;
+// Maps Open-Meteo's WMO weather codes to our pictures, with the time of day and the wind the
+// forecast reports alongside. https://open-meteo.com/en/docs (WMO Weather interpretation codes)
+uint8_t WeatherManagerClass::weatherCodeToIcon(int code, bool isDay, float windKmh) {
     if (code >= 95) return WEATHER_ICON_THUNDER;
+    if (windKmh >= WEATHER_STORM_WIND_KMH) return WEATHER_ICON_STORM;
     if ((code >= 71 && code <= 77) || code == 85 || code == 86) return WEATHER_ICON_SNOW;
     if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return WEATHER_ICON_RAIN;
-    return WEATHER_ICON_CLOUD; // 2,3 (partly cloudy/overcast), 45/48 (fog), unknown
+    if (code == 0 || code == 1) return isDay ? WEATHER_ICON_SUN : WEATHER_ICON_MOON;
+    if (code == 2) return isDay ? WEATHER_ICON_PARTLY_DAY : WEATHER_ICON_PARTLY_NIGHT;
+    return WEATHER_ICON_CLOUD;  // 3 (overcast), 45/48 (fog), unknown
 }
 
 void WeatherManagerClass::begin() {
@@ -171,7 +173,10 @@ bool WeatherManagerClass::fetchWeather() {
     http.setTimeout(10000);
 
     char url[160];
-    snprintf(url, sizeof(url), "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code", _lat, _lon);
+    snprintf(url, sizeof(url),
+             "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
+             "&current=temperature_2m,weather_code,is_day,wind_speed_10m",
+             _lat, _lon);
     if (!http.begin(client, url)) {
         Serial.println("WeatherManager: http.begin() failed");
         return false;
@@ -189,7 +194,11 @@ bool WeatherManagerClass::fetchWeather() {
             JsonObject current = doc["current"];
             if (!current.isNull() && !current["temperature_2m"].isNull()) {
                 _temperature = current["temperature_2m"].as<float>();
-                _icon = weatherCodeToIcon(current["weather_code"] | 0);
+                // is_day and the wind speed are missing from an older cached answer; then it is
+                // treated as daytime and calm, which is what this used to do.
+                bool isDay = (current["is_day"] | 1) != 0;
+                float wind = current["wind_speed_10m"] | 0.0f;
+                _icon = weatherCodeToIcon(current["weather_code"] | 0, isDay, wind);
                 _hasData = true;
                 success = true;
             } else {

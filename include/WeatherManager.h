@@ -20,13 +20,21 @@
 
 #include <Arduino.h>
 
-// Weather icon categories - matches the bitmap set in WeatherIcons.h and the
-// numbers used by the "Wetter" widget (see LEDManagerClass::effectText).
+// Weather icon categories - matches the drawings in WeatherIcons.h and the numbers the "Wetter"
+// element shows. 0-4 have been these numbers from the start, so a Slave with older firmware still
+// shows the right picture for them.
 #define WEATHER_ICON_SUN 0
 #define WEATHER_ICON_CLOUD 1
 #define WEATHER_ICON_RAIN 2
 #define WEATHER_ICON_SNOW 3
 #define WEATHER_ICON_THUNDER 4
+#define WEATHER_ICON_STORM 5
+#define WEATHER_ICON_MOON 6            // clear, at night
+#define WEATHER_ICON_PARTLY_DAY 7
+#define WEATHER_ICON_PARTLY_NIGHT 8
+// From this wind speed on (km/h, Beaufort 8) the storm picture takes over, unless there is a
+// thunderstorm - that one says more.
+#define WEATHER_STORM_WIND_KMH 62
 
 // Fetches current temperature + weather condition for a user-set location from
 // Open-Meteo (free, no API key needed). The city name is resolved to
@@ -63,7 +71,7 @@ private:
     void startFetch();
     static void fetchTaskEntry(void* arg);
     volatile bool _fetchRunning = false;
-    static uint8_t weatherCodeToIcon(int code);
+    static uint8_t weatherCodeToIcon(int code, bool isDay, float windKmh);
 
     String _city;
     float _lat = 0;
