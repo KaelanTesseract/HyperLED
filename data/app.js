@@ -4324,15 +4324,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (widgetOverlayCanvas) {
+        // A refresh from the device replaces the list of elements. The one being dragged is
+        // therefore looked up again by its id on every move, and the state poll is held off
+        // while the mouse or finger is down - otherwise the drag moved an object that was no
+        // longer on screen, and after a second or two nothing followed the pointer any more.
+        let draggingWidgetId = 0;
+        const startDrag = (hit, mx, my) => {
+            draggingWidget = hit;
+            draggingWidgetId = hit.id || 0;
+            dragStart = { mx, my, ox: hit.x, oy: hit.y };
+            setInteracting();
+            drawWidgetOverlay(currentWidgets());
+        };
+        const endDrag = () => {
+            const widgets = currentWidgets();
+            draggingWidget = null;
+            draggingWidgetId = 0;
+            clearInteracting();
+            saveWidgets(widgets);
+        };
         widgetOverlayCanvas.addEventListener('mousedown', (e) => {
             const { mx, my } = overlayCellFromEvent(e.clientX, e.clientY);
             const hit = findWidgetAt(mx, my, currentWidgets());
             if (!hit) return;
-            draggingWidget = hit;
-            dragStart = { mx, my, ox: hit.x, oy: hit.y };
-            drawWidgetOverlay(currentWidgets());
+            startDrag(hit, mx, my);
         });
         const dragTo = (clientX, clientY) => {
+            const live = draggingWidgetId
+                ? currentWidgets().find(w => w.id === draggingWidgetId)
+                : null;
+            if (live) draggingWidget = live;
             const { mx, my } = overlayCellFromEvent(clientX, clientY);
             const { w: mw, h: mh } = editorDims();
             draggingWidget.x = Math.max(0, Math.min(mw - 1, dragStart.ox + (mx - dragStart.mx)));
@@ -4346,18 +4367,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         window.addEventListener('mouseup', () => {
             if (!draggingWidget) return;
-            const widgets = currentWidgets();
-            draggingWidget = null;
-            saveWidgets(widgets);
+            endDrag();
         });
         widgetOverlayCanvas.addEventListener('touchstart', (e) => {
             const t0 = e.touches[0];
             const { mx, my } = overlayCellFromEvent(t0.clientX, t0.clientY);
             const hit = findWidgetAt(mx, my, currentWidgets());
             if (!hit) return;
-            draggingWidget = hit;
-            dragStart = { mx, my, ox: hit.x, oy: hit.y };
-            drawWidgetOverlay(currentWidgets());
+            startDrag(hit, mx, my);
             e.preventDefault();
         }, { passive: false });
         widgetOverlayCanvas.addEventListener('touchmove', (e) => {
@@ -4368,9 +4385,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }, { passive: false });
         widgetOverlayCanvas.addEventListener('touchend', () => {
             if (!draggingWidget) return;
-            const widgets = currentWidgets();
-            draggingWidget = null;
-            saveWidgets(widgets);
+            endDrag();
+        });
+        // A touch that is cancelled (a call comes in, the browser takes over the gesture) must
+        // not leave the refresh switched off.
+        widgetOverlayCanvas.addEventListener('touchcancel', () => {
+            if (!draggingWidget) return;
+            endDrag();
         });
     }
 
@@ -4387,9 +4408,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const weatherCityInput = document.getElementById('weatherCityInput');
     const btnSaveWeatherLocation = document.getElementById('btnSaveWeatherLocation');
     const weatherStatus = document.getElementById('weatherStatus');
-    const WEATHER_ICON_NAMES = ['weather_icon_sun', 'weather_icon_cloud', 'weather_icon_rain', 'weather_icon_snow', 'weather_icon_thunder'];
+    const WEATHER_ICON_NAMES = ['weather_icon_sun', 'weather_icon_cloud', 'weather_icon_rain', 'weather_icon_snow',
+                                'weather_icon_thunder', 'weather_icon_storm', 'weather_icon_moon',
+                                'weather_icon_partly_day', 'weather_icon_partly_night'];
     // Only reached if a translation is missing - the labels themselves live in i18n.js.
-    const WEATHER_ICON_FALLBACK = ['Sun', 'Cloudy', 'Rain', 'Snow', 'Storm'];
+    const WEATHER_ICON_FALLBACK = ['Sun', 'Cloudy', 'Rain', 'Snow', 'Thunderstorm', 'Storm', 'Clear night',
+                                   'Partly cloudy', 'Partly cloudy at night'];
 
     function weatherIconLabel(icon) {
         const key = WEATHER_ICON_NAMES[icon] || WEATHER_ICON_NAMES[1];
