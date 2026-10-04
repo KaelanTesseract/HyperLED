@@ -28,6 +28,7 @@
 #include "PresetManager.h"
 #include "ScheduleManager.h"
 #include "WeatherManager.h"
+#include "PluginManager.h"
 #include "StatusLedManager.h"
 #include "LoopWatch.h"
 #include "esp_task_wdt.h"
@@ -55,6 +56,7 @@ void setup() {
     ButtonManager.begin();
     PresetManager.begin();
     WeatherManager.begin();
+    PluginManager.begin();
 
     // Last line of defence. Everything above has been made not to block, but "not supposed to"
     // is not a guarantee, and a loop that stops leaves no trace at all: the board stays
@@ -104,6 +106,7 @@ void loop() {
     HYPERLED_LOOP_STEP(8, ScheduleManager.loop());
     HYPERLED_LOOP_STEP(9, WeatherManager.loop());
     HYPERLED_LOOP_STEP(10, StatusLedManager.loop());
+    HYPERLED_LOOP_STEP(11, PluginManager.loop());
 
 #if DEBUG_SERIAL
     static unsigned long lastMemPrint = 0;

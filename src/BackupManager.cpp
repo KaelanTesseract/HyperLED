@@ -36,6 +36,7 @@ const char* const BackupManagerClass::RESTORE_PATH = "/restore.json";
 // with the firmware and must never be replaced from a backup file.
 static const char* const USER_FILES[] = {"/presets.json", "/playlist.json", "/schedules.json"};
 static const char* const IMAGE_DIR = "/img";
+static const char* const PLUGIN_DIR = "/plugins";
 
 // "/img/w<id>.rgb" - the element images (see widgetImagePath in LEDManager.cpp).
 static bool isImagePath(const String& path) {
@@ -48,15 +49,41 @@ static bool isImagePath(const String& path) {
     return true;
 }
 
+// "/plugins/<id>.json" and "/plugins/<id>.set.json" - an installed plugin and what the user set
+// for it (see PluginManager.cpp). A leftover ".tmp" file is not one.
+static bool isPluginPath(const String& path) {
+    if (!path.startsWith("/plugins/") || !path.endsWith(".json")) return false;
+    String name = path.substring(9);
+    if (name.length() < 6 || name.length() > 60) return false;
+    for (size_t i = 0; i < name.length(); i++) {
+        char c = name[i];
+        bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+// Adds the plugin files to `paths`.
+static void addPluginFiles(std::vector<String>& paths) {
+    File dir = LittleFS.open(PLUGIN_DIR);
+    if (!dir || !dir.isDirectory()) return;
+    for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
+        String path = String(PLUGIN_DIR) + "/" + f.name();
+        f.close();
+        if (isPluginPath(path)) paths.push_back(path);
+    }
+}
+
 static bool isUserFile(const String& path) {
     for (const char* f : USER_FILES) {
         if (path == f) return true;
     }
-    return isImagePath(path);
+    return isImagePath(path) || isPluginPath(path);
 }
 
 void BackupManagerClass::listUserFiles(std::vector<String>& paths) {
     paths.clear();
+    addPluginFiles(paths);
     for (const char* path : USER_FILES) {
         if (LittleFS.exists(path)) paths.push_back(path);
     }
@@ -244,6 +271,9 @@ bool BackupManagerClass::writeBackup(String& error) {
 
     // The user files, as base64 so images and text travel the same way.
     JsonObject files = doc["files"].to<JsonObject>();
+    // This backup knows about plugins, so restoring it replaces the installed ones; a backup from
+    // before plugins existed has no such key and leaves them alone.
+    doc["plugins"] = true;
     std::vector<uint8_t> data;
     std::vector<String> paths;
     listUserFiles(paths);
@@ -385,6 +415,20 @@ void BackupManagerClass::applyRestore() {
             if (isImagePath(path)) LittleFS.remove(path);
         }
     }
+    if (doc["plugins"] | false) {
+        std::vector<String> oldPlugins;
+        File pluginDir = LittleFS.open(PLUGIN_DIR);
+        if (pluginDir && pluginDir.isDirectory()) {
+            for (File e = pluginDir.openNextFile(); e; e = pluginDir.openNextFile()) {
+                oldPlugins.push_back(String(PLUGIN_DIR) + "/" + e.name());
+                e.close();
+            }
+            pluginDir.close();
+        }
+        for (const String& path : oldPlugins) {
+            if (isPluginPath(path)) LittleFS.remove(path);
+        }
+    }
     uint32_t filesWritten = 0;
     for (JsonPairConst kv : doc["files"].as<JsonObjectConst>()) {
         String path = kv.key().c_str();
@@ -392,6 +436,7 @@ void BackupManagerClass::applyRestore() {
         if (!isUserFile(path) || !kv.value().is<const char*>() ||
             !fromBase64(kv.value().as<const char*>(), data)) continue;
         if (isImagePath(path) && !LittleFS.exists(IMAGE_DIR)) LittleFS.mkdir(IMAGE_DIR);
+        if (isPluginPath(path) && !LittleFS.exists(PLUGIN_DIR)) LittleFS.mkdir(PLUGIN_DIR);
         File out = LittleFS.open(path, "w");
         if (!out) continue;
         if (out.write(data.data(), data.size()) == data.size()) filesWritten++;

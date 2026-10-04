@@ -39,6 +39,7 @@ private:
     void setupOTA();
     void setupSceneAPI();
     void setupBackupAPI();
+    void setupPluginAPI();
 };
 
 extern WebServerManagerClass WebServerManager;

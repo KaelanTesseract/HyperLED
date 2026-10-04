@@ -61,6 +61,18 @@
 #define PREF_MQTT_TOPIC "mqtt_top"
 // Encrypted connection to the broker (MQTTS, usually port 8883).
 #define PREF_MQTT_TLS "mqtt_tls"
+// The plugin interface level. Raised only when a change would break plugins that exist; every
+// plugin states which level it was written for, and is switched off with a clear reason when this
+// firmware offers a different one. PLUGIN_API_MIN is the oldest level still understood: it is
+// raised only when a change would break plugins that exist.
+// See docs/en/10_Plugins_entwickeln.md.
+#define PLUGIN_API_VERSION 1
+#define PLUGIN_API_MIN 1
+// Script support of this firmware. 0 = none: a plugin with a script (needs.script >= 1) is installed
+// and kept but switched off with a reason, and runs after a firmware that offers its level.
+// 1 = Lua scripts (see ScriptHost.h), on Master segments and, with Slave firmware 0.3.000 or later,
+// on Slave segments.
+#define PLUGIN_SCRIPT_LEVEL 1
 // How many segment lights were last announced to Home Assistant, so the ones since deleted can
 // be removed there after a restart.
 #define PREF_MQTT_ANNOUNCED "mqtt_ann"

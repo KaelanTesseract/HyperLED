@@ -24,6 +24,7 @@
 #include <sys/time.h>
 #include <ArduinoJson.h>
 #include <algorithm>
+#include <esp_rom_crc.h>
 
 SlaveManagerClass SlaveManager;
 
@@ -75,6 +76,7 @@ void SlaveManagerClass::loop() {
     // and the web interface still answers while a panel is being filled.
     pumpLedTx();
     pumpImageTransfers();
+    serviceScripts();
 
     if (anySlaveRendersAllWidgets()) {
         if (_clockBroadcastDue || now - _lastClockBroadcast >= CLOCK_BROADCAST_MS) {
@@ -130,6 +132,7 @@ static bool versionRendersLocally(const String& version);
 static bool versionReportsConfig(const String& version);
 static bool versionRendersWidgets(const String& version);
 static bool versionRendersAllWidgets(const String& version);
+static bool versionRunsScripts(const String& version);
 
 // A corrupted/garbled PONG (e.g. from a protocol-version mismatch or a noisy wire) can contain raw
 // control bytes. ArduinoJson does not escape those, which produces invalid JSON on /api/slaves and
@@ -194,6 +197,7 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                     s.rendersLocally = versionRendersLocally(sVersion);
                     s.rendersWidgets = versionRendersWidgets(sVersion);
                     s.rendersAllWidgets = versionRendersAllWidgets(sVersion);
+                    s.runsScripts = versionRunsScripts(sVersion);
                     if (sType != 255) {
                         s.ledType = sType;
                         s.matrixWidth = sMatW;
@@ -210,6 +214,7 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
             SlaveCapability& caps = _slaveCaps[packet.senderId];
             caps.rendersLocally = versionRendersLocally(sVersion);
             caps.rendersWidgets = versionRendersWidgets(sVersion);
+            caps.runsScripts = versionRunsScripts(sVersion);
             bool drawsAll = versionRendersAllWidgets(sVersion);
             // A Slave that draws the clock should not wait up to ten seconds to learn the time.
             if (drawsAll && (!found || !caps.rendersAllWidgets)) _clockBroadcastDue = true;
@@ -225,6 +230,7 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                 ds.rendersLocally = versionRendersLocally(sVersion);
                 ds.rendersWidgets = versionRendersWidgets(sVersion);
                 ds.rendersAllWidgets = drawsAll;
+                ds.runsScripts = versionRunsScripts(sVersion);
                 ds.ledType = sType;
                 ds.matrixWidth = sMatW;
                 ds.matrixHeight = sMatH;
@@ -236,6 +242,10 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
         }
     } else if (packet.command == CMD_REQUEST_WIDGET_IMAGE) {
         handleImageRequest(packet.senderId, packet.payload, packet.length);
+    } else if (packet.command == CMD_REQUEST_SCRIPT) {
+        handleScriptRequest(packet.senderId, packet.payload, packet.length);
+    } else if (packet.command == CMD_SCRIPT_STATUS) {
+        handleScriptStatus(packet.senderId, packet.payload, packet.length);
     } else if (packet.command == CMD_UPDATE_KEY) {
         handleUpdateKey(packet);
     }
@@ -1012,3 +1022,222 @@ void SlaveManagerClass::pumpLedTx() {
 
 
 
+
+// ---------------------------------------------------------------------------------------------
+// Scripts
+
+SlaveManagerClass::ScriptJob* SlaveManagerClass::findScriptJob(uint8_t slaveId) {
+    for (auto& job : _scriptJobs) {
+        if (job.slaveId == slaveId) return &job;
+    }
+    return nullptr;
+}
+
+bool SlaveManagerClass::slaveRunsScripts(uint8_t slaveId) const {
+    Guard guard(_lock);
+    auto known = _slaveCaps.find(slaveId);
+    return known != _slaveCaps.end() && known->second.runsScripts;
+}
+
+SlaveManagerClass::ScriptStart SlaveManagerClass::runScript(uint8_t slaveId, const String& text, uint8_t brightness, bool on) {
+    Guard guard(_lock);
+    if (!slaveIsOnline(slaveId)) return ScriptStart::UnknownSlave;
+    if (!slaveRunsScripts(slaveId)) return ScriptStart::TooOld;
+    if (text.length() == 0 || text.length() > Script::Wire::MAX_SCRIPT_BYTES) return ScriptStart::TooLong;
+    uint32_t crc = esp_rom_crc32_le(0, (const uint8_t*)text.c_str(), text.length());
+    ScriptJob* job = findScriptJob(slaveId);
+    if (!job) {
+        _scriptJobs.push_back(ScriptJob());
+        job = &_scriptJobs.back();
+        job->slaveId = slaveId;
+    }
+    bool changed = job->crc != crc;
+    bool settingsChanged = changed || job->brightness != brightness || job->on != on;
+    job->brightness = brightness;
+    job->on = on;
+    if (changed) {
+        job->text = text;
+        job->crc = crc;
+        job->haveStatus = false;
+        job->valuesDirty = true;
+        // A transfer of the old text is pointless now.
+        for (auto it = _scriptTransfers.begin(); it != _scriptTransfers.end();) {
+            if (it->slaveId == slaveId) it = _scriptTransfers.erase(it);
+            else ++it;
+        }
+    }
+    // Asked for on every pass by the plugin manager: only a real change is sent at once, otherwise
+    // the 2 s refresh goes on undisturbed.
+    if (settingsChanged) job->lastConfigAt = 0;
+    return ScriptStart::Ok;
+}
+
+// What the script on this Slave is, by checksum; 0 when there is none. Lets a caller that asks on
+// every pass skip handing over the text again - and notice that the job is gone (a Master restart).
+uint32_t SlaveManagerClass::scriptCrc(uint8_t slaveId) const {
+    Guard guard(_lock);
+    for (const auto& job : _scriptJobs) {
+        if (job.slaveId == slaveId) return job.crc;
+    }
+    return 0;
+}
+
+// Changes the brightness and the on/off state of the script on this Slave without handing the text
+// over again. False when there is no script job for it.
+bool SlaveManagerClass::updateScript(uint8_t slaveId, uint8_t brightness, bool on) {
+    Guard guard(_lock);
+    ScriptJob* job = findScriptJob(slaveId);
+    if (!job) return false;
+    if (job->brightness != brightness || job->on != on) {
+        job->brightness = brightness;
+        job->on = on;
+        job->lastConfigAt = 0;
+    }
+    return true;
+}
+
+void SlaveManagerClass::setScriptValues(uint8_t slaveId, const std::vector<Script::Item>& settings,
+                                        const std::vector<Script::Item>& values) {
+    Guard guard(_lock);
+    ScriptJob* job = findScriptJob(slaveId);
+    if (!job) return;
+    job->settings = settings;
+    job->values = values;
+    job->valuesDirty = true;
+}
+
+void SlaveManagerClass::releaseScript(uint8_t slaveId) {
+    Guard guard(_lock);
+    ScriptJob* job = findScriptJob(slaveId);
+    if (!job) return;
+    // Said three times, because it is not repeated: the Slave would otherwise stop only when its
+    // own 10 s timeout runs out.
+    for (int i = 0; i < 3; i++) {
+        sendScriptConfig(*job, true);
+        delay(20);
+    }
+    for (auto it = _scriptTransfers.begin(); it != _scriptTransfers.end();) {
+        if (it->slaveId == slaveId) it = _scriptTransfers.erase(it);
+        else ++it;
+    }
+    for (auto it = _scriptJobs.begin(); it != _scriptJobs.end(); ++it) {
+        if (it->slaveId == slaveId) {
+            _scriptJobs.erase(it);
+            break;
+        }
+    }
+}
+
+bool SlaveManagerClass::scriptStatus(uint8_t slaveId, Script::Wire::Status& status, unsigned long& ageMs) const {
+    Guard guard(_lock);
+    for (const auto& job : _scriptJobs) {
+        if (job.slaveId != slaveId || !job.haveStatus) continue;
+        status = job.status;
+        ageMs = millis() - job.statusAt;
+        return true;
+    }
+    return false;
+}
+
+void SlaveManagerClass::sendScriptConfig(ScriptJob& job, bool release) {
+    BusInterface* bus = slaveIsOnline(job.slaveId) ? busFor(job.slaveId, false) : nullptr;
+    if (!bus) return;
+    Script::Wire::Config config;
+    config.flags = (job.on ? Script::Wire::FLAG_ON : 0) | (release ? Script::Wire::FLAG_RELEASE : 0);
+    config.brightness = job.brightness;
+    config.level = 1;
+    config.length = (uint16_t)job.text.length();
+    config.crc = job.crc;
+    uint8_t payload[Script::Wire::CONFIG_LEN];
+    Script::Wire::encodeConfig(config, payload);
+    bus->sendPacket(job.slaveId, HYPERBUS_MASTER_ID, CMD_SET_SCRIPT, payload, sizeof(payload));
+}
+
+void SlaveManagerClass::handleScriptRequest(uint8_t slaveId, const uint8_t* payload, uint16_t length) {
+    uint32_t crc = 0;
+    if (!Script::Wire::decodeRequest(payload, length, crc)) return;
+    ScriptJob* job = findScriptJob(slaveId);
+    if (!job || job->crc != crc) return;  // not the script this Slave was told about
+    // Already on its way: the Slave asks again while it waits, and restarting would mean it never finishes.
+    for (const auto& t : _scriptTransfers) {
+        if (t.slaveId == slaveId && t.crc == crc) return;
+    }
+    ScriptTransfer t;
+    t.slaveId = slaveId;
+    t.crc = crc;
+    t.offset = 0;
+    _scriptTransfers.push_back(t);
+    Serial.printf("Slave %u asked for its script (%u bytes)\n", (unsigned)slaveId, (unsigned)job->text.length());
+}
+
+void SlaveManagerClass::handleScriptStatus(uint8_t slaveId, const uint8_t* payload, uint16_t length) {
+    ScriptJob* job = findScriptJob(slaveId);
+    if (!job) return;
+    Script::Wire::Status status;
+    if (!Script::Wire::decodeStatus(payload, length, status)) return;
+    bool changed = !job->haveStatus || job->status.state != status.state || job->status.result != status.result;
+    job->status = status;
+    job->statusAt = millis();
+    job->haveStatus = true;
+    // Said only when something changes: this board's USB serial can stall on constant output.
+    if (changed) {
+        Serial.printf("Slave %u script: state %u, result %u%s%s\n", (unsigned)slaveId, (unsigned)status.state,
+                      (unsigned)status.result, status.message.length() ? ": " : "", status.message.c_str());
+    }
+}
+
+// From loop(): the refresh of what should run, the values, and one piece of a requested script.
+void SlaveManagerClass::serviceScripts() {
+    Guard guard(_lock);
+    unsigned long now = millis();
+    for (auto& job : _scriptJobs) {
+        if (now - job.lastConfigAt >= SCRIPT_REFRESH_MS || job.lastConfigAt == 0) {
+            job.lastConfigAt = now;
+            sendScriptConfig(job, false);
+        }
+        if (job.valuesDirty || now - job.lastValuesAt >= SCRIPT_REFRESH_MS) {
+            BusInterface* bus = slaveIsOnline(job.slaveId) ? busFor(job.slaveId, false) : nullptr;
+            if (bus) {
+                uint8_t payload[Script::Wire::VALUES_MAX];
+                size_t dropped = 0;
+                if (job.valuesDirty) job.valuesSequence++;
+                size_t length = Script::Wire::encodeItems(job.valuesSequence, job.settings, job.values, payload, sizeof(payload), dropped);
+                if (dropped > 0 && job.valuesDirty) {
+                    Serial.printf("Slave %u script: %u values did not fit in one packet\n", (unsigned)job.slaveId, (unsigned)dropped);
+                }
+                bus->sendPacket(job.slaveId, HYPERBUS_MASTER_ID, CMD_SET_SCRIPT_VALUES, payload, (uint16_t)length);
+            }
+            job.valuesDirty = false;
+            job.lastValuesAt = now;
+        }
+    }
+
+    if (_scriptTransfers.empty() || now - _lastScriptChunk < SCRIPT_CHUNK_INTERVAL_MS) return;
+    _lastScriptChunk = now;
+    ScriptTransfer& t = _scriptTransfers.front();
+    ScriptJob* job = findScriptJob(t.slaveId);
+    BusInterface* bus = (job && slaveIsOnline(t.slaveId)) ? busFor(t.slaveId, false) : nullptr;
+    if (!bus || !job || job->crc != t.crc || t.offset >= job->text.length()) {
+        _scriptTransfers.erase(_scriptTransfers.begin());
+        return;
+    }
+    size_t total = job->text.length();
+    size_t piece = total - t.offset;
+    if (piece > Script::Wire::CHUNK_DATA) piece = Script::Wire::CHUNK_DATA;
+    uint8_t packet[Script::Wire::CHUNK_HEADER + Script::Wire::CHUNK_DATA];
+    size_t length = Script::Wire::encodeChunk(t.crc, t.offset, (uint16_t)total, (const uint8_t*)job->text.c_str() + t.offset, piece, packet);
+    bus->sendPacket(t.slaveId, HYPERBUS_MASTER_ID, CMD_SCRIPT_CHUNK, packet, (uint16_t)length);
+    t.offset += (uint16_t)piece;
+    if (t.offset >= total) _scriptTransfers.erase(_scriptTransfers.begin());
+}
+
+// Scripts run on Slaves from 0.3.000 on.
+static bool versionRunsScripts(const String& version) {
+    int firstDot = version.indexOf('.');
+    if (firstDot < 0) return false;
+    long major = version.substring(0, firstDot).toInt();
+    int secondDot = version.indexOf('.', firstDot + 1);
+    if (secondDot < 0) return false;
+    long minor = version.substring(firstDot + 1, secondDot).toInt();
+    return major > 0 || minor >= 3;
+}

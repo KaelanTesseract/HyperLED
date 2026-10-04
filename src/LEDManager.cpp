@@ -17,6 +17,7 @@
  * limitations under the Licence.
  */
 #include "LEDManager.h"
+#include "MasterScripts.h"
 #include "EffectEngine.h"
 #include "SlaveManager.h"
 #include "Font5x7.h"
@@ -638,7 +639,7 @@ void LEDManagerClass::getCanvasPanelsJson(JsonArray array) const {
 
 void LEDManagerClass::setSegmentPixelColor(Segment& seg, uint16_t index, uint8_t r, uint8_t g, uint8_t b, uint8_t w) {
     if (!_bus) return;
-    if (seg.whiteOnly || seg.effect == 10) {
+    if (seg.whiteOnly || viewOf(seg).effect == 10) {
         uint8_t bri = r > g ? (r > b ? r : b) : (g > b ? g : b);
         if (w > bri) bri = w;
         uint8_t w1 = (bri * (255 - seg.cct)) / 255;
@@ -837,6 +838,20 @@ void LEDManagerClass::setSegmentsFromJson(JsonArray segmentsArray) {
     saveSettings();
 }
 
+void LEDManagerClass::addPluginInfoJson(JsonArray array) const {
+    size_t i = 0;
+    for (JsonObject s : array) {
+        if (i >= _segments.size()) break;
+        const SegmentOverlay& o = _segments[i].overlay;
+        if (o.active && o.pluginId.length() > 0) {
+            JsonObject p = s["plugin"].to<JsonObject>();
+            p["id"] = o.pluginId;
+            p["name"] = o.pluginName;
+        }
+        i++;
+    }
+}
+
 void LEDManagerClass::getSegmentsJson(JsonArray array) const {
     for (const auto& seg : _segments) {
         JsonObject s = array.add<JsonObject>();
@@ -995,12 +1010,13 @@ void LEDManagerClass::renderWithEngine(Segment& seg, uint8_t ablCap, uint8_t eff
     // per-pixel buffers in here, and rebuilding them every frame would reset every effect that
     // depends on what the previous frame drew.
     EffectState& st = seg.renderState;
-    st.effect = (effectOverride == 255) ? seg.effect : effectOverride;
+    const SegmentView view = viewOf(seg);
+    st.effect = (effectOverride == 255) ? view.effect : effectOverride;
     // The engine scales colours by brightness alone, so the ABL cap is folded in here - the same
     // (brightness * ablCap) / 255 the effects used to compute for themselves.
     st.brightness = (uint8_t)(((uint16_t)seg.brightness * segmentAblCap(seg, ablCap)) / 255);
-    st.speed = seg.speed;
-    st.intensity = seg.intensity;
+    st.speed = view.speed;
+    st.intensity = view.intensity;
     st.palette = seg.palette;
     st.isOn = true; // the caller already handled the off case
     st.color = getEffectiveColor(seg);
@@ -1037,7 +1053,7 @@ void LEDManagerClass::loop() {
     _syncStop = 0;
     if (_syncActive) {
         for (size_t i = 0; i < _segments.size(); i++) {
-            if (!_segments[i].syncEnabled) continue;
+            if (!_segments[i].syncEnabled || _segments[i].overlay.active) continue;
             if (_syncLeader < 0) {
                 _syncLeader = (int)i;
                 _syncStart = _segments[i].start;
@@ -1093,7 +1109,21 @@ void LEDManagerClass::loop() {
     {
         for (auto& seg : _segments) {
             // Members of the sync group were drawn as one above.
-            if (_syncLeader >= 0 && seg.syncEnabled) continue;
+            // A segment a plugin controls has left the group for as long as it does.
+            if (_syncLeader >= 0 && seg.syncEnabled && !seg.overlay.active) continue;
+
+            // What this segment shows right now: its own settings with a plugin's overlay on top.
+            const SegmentView view = viewOf(seg);
+
+            // A script draws this segment: on a Slave the Slave does it itself and nothing is sent
+            // from here; on the Master the finished frame is copied in.
+            if (seg.overlay.active && seg.overlay.script) {
+                if (!(seg.isSlave && seg.slaveId != 254) &&
+                    drawScriptSegment(seg, (size_t)(&seg - &_segments[0]), ablCap)) {
+                    shouldShow = true;
+                }
+                continue;
+            }
 
             // Skip segments a Slave draws for itself. Computing those pixels here would be pure
             // waste - nothing reads them, since only the effect parameters get sent - and for a
@@ -1111,9 +1141,9 @@ void LEDManagerClass::loop() {
             uint16_t widgetSkipMask = 0;
             bool masterWidgetLayer = true;
             if (seg.isSlave && seg.slaveId != 254) {
-                slaveDrawsEffect = EffectEngine::canRender(seg.effect) &&
+                slaveDrawsEffect = EffectEngine::canRender(view.effect) &&
                                    SlaveManager.slaveRendersLocally(seg.slaveId);
-                if (seg.effect == 29 && SlaveManager.slaveRendersWidgets(seg.slaveId)) {
+                if (view.effect == 29 && SlaveManager.slaveRendersWidgets(seg.slaveId)) {
                     bool allTypes = SlaveManager.slaveRendersAllWidgets(seg.slaveId);
                     if (allTypes) {
                         // The checksum the Slave is told about needs the pixels loaded.
@@ -1138,13 +1168,13 @@ void LEDManagerClass::loop() {
                 }
             }
 
-            unsigned int delayMs = 500 - (seg.speed * 490 / 255);
-            if (seg.effect == 0) delayMs = 100;
+            unsigned int delayMs = 500 - (view.speed * 490 / 255);
+            if (view.effect == 0) delayMs = 100;
             // A background effect is drawn here only where nothing is streamed: on this Master's own
             // matrix, or for the preview of a panel whose Slave draws everything itself. It animates
             // at its own pace, so the elements are redrawn often enough to show it.
             bool slavePanel = seg.isSlave && seg.slaveId != 254;
-            bool backgroundHere = seg.effect == 29 && seg.background.active() &&
+            bool backgroundHere = view.effect == 29 && seg.background.active() &&
                                   (!slavePanel || !masterWidgetLayer);
             if (backgroundHere && delayMs > 20) delayMs = 20;
             // Safety floor for a "Uhr / Text" segment whose frame has to be streamed to a Slave -
@@ -1153,7 +1183,7 @@ void LEDManagerClass::loop() {
             // every 10ms, and a scrolling Lauftext changes most of a 64x64 panel each time, which
             // is the traffic that took both links down. The marquee's position comes from millis(),
             // so a slower redraw only costs smoothness, never speed.
-            if (seg.effect == 29 && seg.isSlave && seg.slaveId != 254 && delayMs < 200) {
+            if (view.effect == 29 && seg.isSlave && seg.slaveId != 254 && delayMs < 200) {
                 delayMs = 200;
             }
 
@@ -1161,15 +1191,15 @@ void LEDManagerClass::loop() {
                 seg.lastUpdate = now;
                 shouldShow = true;
 
-                if (!seg.isOn) {
+                if (!view.isOn) {
                     for (uint16_t i = seg.start; i < seg.stop; i++) {
                         setSegmentPixelColor(seg, i, 0, 0, 0, 0);
                     }
                 } else {
-                    if (EffectEngine::canRender(seg.effect)) {
+                    if (EffectEngine::canRender(view.effect)) {
                         // Shared implementation - identical to what a Slave renders locally.
                         renderWithEngine(seg, ablCap);
-                    } else switch (seg.effect) {
+                    } else switch (view.effect) {
                         case 25: effectImage(seg, ablCap); break;
                         case 29: effectText(seg, ablCap, widgetSkipMask, backgroundHere); break;
                         default: renderWithEngine(seg, ablCap); break;
@@ -1192,7 +1222,8 @@ void LEDManagerClass::loop() {
             }
 
             for (const auto& seg : _segments) {
-                if (seg.isSlave && seg.slaveId != 254 && seg.stop > seg.start) {
+                if (seg.isSlave && seg.slaveId != 254 && seg.stop > seg.start &&
+                    !(seg.overlay.active && seg.overlay.script)) {  // a script on the Slave needs nothing from here
                     // Hand the effect to the Slave when it can draw it itself. A panel of any real
                     // size cannot be fed frame by frame - 64x64 alone is 4096 pixels - so the
                     // parameters go over instead and the Slave renders. Effects the Slave has no
@@ -1205,8 +1236,9 @@ void LEDManagerClass::loop() {
                     // the span; anything else is driven by its own segment as usual. Offsets are
                     // relative to the group's start, so a group that does not begin at pixel 0
                     // still renders as one continuous run.
-                    bool inSyncGroup = (_syncLeader >= 0) && seg.syncEnabled;
+                    bool inSyncGroup = (_syncLeader >= 0) && seg.syncEnabled && !seg.overlay.active;
                     const Segment& src = inSyncGroup ? _segments[_syncLeader] : seg;
+                    const SegmentView srcView = viewOf(src);
                     uint16_t winOffset = inSyncGroup ? (uint16_t)(seg.start - _syncStart) : 0;
                     uint16_t winTotal = inSyncGroup ? (uint16_t)(_syncStop - _syncStart) : 0;
 
@@ -1218,7 +1250,7 @@ void LEDManagerClass::loop() {
 
                     // "Uhr / Text" widgets the Slave draws itself. Not in a sync group: those
                     // members are rendered as one span above, with every widget drawn into it.
-                    bool widgetMode = !inSyncGroup && src.effect == 29 &&
+                    bool widgetMode = !inSyncGroup && srcView.effect == 29 &&
                                       SlaveManager.slaveRendersWidgets(seg.slaveId);
                     WidgetLink& link = _widgetLink[seg.slaveId];
                     if (!widgetMode && link.active) {
@@ -1231,11 +1263,11 @@ void LEDManagerClass::loop() {
                         link = WidgetLink();
                     }
 
-                    if (EffectEngine::canRender(src.effect) &&
+                    if (EffectEngine::canRender(srcView.effect) &&
                         SlaveManager.slaveRendersLocally(seg.slaveId)) {
-                        SlaveManager.sendSegmentConfig(seg.slaveId, src.effect, srcBri,
-                                                       src.speed, src.intensity, src.palette,
-                                                       src.isOn, getEffectiveColor(src), src.color2,
+                        SlaveManager.sendSegmentConfig(seg.slaveId, srcView.effect, srcBri,
+                                                       srcView.speed, srcView.intensity, src.palette,
+                                                       srcView.isOn, getEffectiveColor(src), src.color2,
                                                        src.color2Enabled, src.whiteOnly, src.cct,
                                                        src.effectStep, winOffset, winTotal);
                         continue;
@@ -1256,7 +1288,7 @@ void LEDManagerClass::loop() {
                         bool masterLayer = __builtin_popcount(mask) < (int)src.textWidgets.size();
                         uint8_t widgetPayload[HYPERBUS_WIDGETS_MAX_PAYLOAD];
                         uint16_t widgetLen = serializeWidgetsForSlave(src.textWidgets, mask, srcBri,
-                                                                      src.isOn, masterLayer, allTypes,
+                                                                      srcView.isOn, masterLayer, allTypes,
                                                                       widgetPayload);
                         SlaveManager.sendWidgetConfig(seg.slaveId, widgetPayload, widgetLen);
                         if (allTypes) {
@@ -1314,7 +1346,10 @@ uint8_t LEDManagerClass::getGlobalAblCap() {
     uint32_t total_led_mA_full = 0;
     
     for (const auto& seg : _segments) {
-        if (!seg.isOn || seg.brightness == 0) continue;
+        // The current estimate reads what the segment shows, not only what the user stored: a
+        // plugin that switches a segment on must count against the budget too.
+        const SegmentView view = viewOf(seg);
+        if (!view.isOn || seg.brightness == 0) continue;
         
         // Skip slaves that don't share power
         if (seg.isSlave && !seg.sharesPower) continue;
@@ -1322,12 +1357,16 @@ uint8_t LEDManagerClass::getGlobalAblCap() {
         if (count == 0) continue;
         uint32_t seg_mA = 0;
         
-        if (seg.effect == 0) {
-            uint32_t r = (seg.color >> 16) & 0xFF;
-            uint32_t g = (seg.color >> 8) & 0xFF;
-            uint32_t b = seg.color & 0xFF;
+        uint32_t effectiveRgb = (seg.overlay.active && seg.overlay.color >= 0) ? (uint32_t)seg.overlay.color : seg.color;
+        if (seg.overlay.active && seg.overlay.script) {
+            // A script may light every pixel at full colour.
+            seg_mA = (uint32_t)count * 50;
+        } else if (view.effect == 0) {
+            uint32_t r = (effectiveRgb >> 16) & 0xFF;
+            uint32_t g = (effectiveRgb >> 8) & 0xFF;
+            uint32_t b = effectiveRgb & 0xFF;
             seg_mA = ((uint32_t)count * (r + g + b) * 50) / 765;
-        } else if (seg.effect == 2 || seg.effect == 3) {
+        } else if (view.effect == 2 || view.effect == 3) {
             seg_mA = ((uint32_t)count * 50) / 2;
         } else {
             seg_mA = (uint32_t)count * 50;
@@ -1899,7 +1938,88 @@ uint32_t LEDManagerClass::getPaletteColor(uint8_t paletteId, uint8_t pos) const 
     return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
 }
 
+void LEDManagerClass::setPluginOverlay(uint8_t segId, const SegmentOverlay& overlay) {
+    if (segId >= _segments.size()) return;
+    _segments[segId].overlay = overlay;
+    _segments[segId].overlay.active = true;
+    // Draw on the next pass instead of waiting out the segment's own frame delay. Deliberately no
+    // triggerSave(): the overlay is never stored.
+    _segments[segId].lastUpdate = 0;
+}
+
+void LEDManagerClass::clearPluginOverlay(uint8_t segId) {
+    if (segId >= _segments.size() || !_segments[segId].overlay.active) return;
+    _segments[segId].overlay = SegmentOverlay();
+    _segments[segId].lastUpdate = 0;
+}
+
+bool LEDManagerClass::isPluginControlled(uint8_t segId) const {
+    return segId < _segments.size() && _segments[segId].overlay.active;
+}
+
+bool LEDManagerClass::segmentIsSlave(uint8_t segId, uint8_t& slaveId) const {
+    if (segId >= _segments.size()) return false;
+    const Segment& seg = _segments[segId];
+    slaveId = seg.slaveId;
+    return seg.isSlave && seg.slaveId != 254;
+}
+
+void LEDManagerClass::scriptGeometry(uint8_t segId, uint16_t& width, uint16_t& height) const {
+    width = 0;
+    height = 0;
+    if (segId >= _segments.size()) return;
+    const Segment& seg = _segments[segId];
+    if (_isMatrix && !(seg.isSlave && seg.slaveId != 254)) {
+        width = _matrixWidth;
+        height = _matrixHeight;
+    } else {
+        width = seg.stop > seg.start ? (uint16_t)(seg.stop - seg.start) : 0;
+        height = 1;
+    }
+}
+
+uint8_t LEDManagerClass::effectiveBrightness(uint8_t segId) {
+    if (segId >= _segments.size()) return 0;
+    const Segment& seg = _segments[segId];
+    return (uint8_t)(((uint16_t)seg.brightness * segmentAblCap(seg, getGlobalAblCap())) / 255);
+}
+
+// Copies the latest finished frame of the segment's script into the segment, dimmed like an effect
+// would be (brightness and current limit). Nothing to do while no new frame is there: the pixels of
+// the last one stay in the bus buffer.
+bool LEDManagerClass::drawScriptSegment(Segment& seg, size_t index, uint8_t ablCap) {
+    Script::Task* task = MasterScripts.get((uint8_t)index);
+    if (!task || !task->running()) return false;
+    uint16_t w = task->width(), h = task->height();
+    size_t bytes = (size_t)w * h * 3;
+    if (_scriptFrame.size() < bytes) _scriptFrame.resize(bytes);
+    // The segment's on/off follows the user's switch or the plugin's overlay.
+    task->setOn(viewOf(seg).isOn);
+    if (!task->takeFrame(_scriptFrame.data(), bytes)) return false;
+    uint16_t scale = ((uint16_t)seg.brightness * segmentAblCap(seg, ablCap)) / 255;
+    const uint8_t* px = _scriptFrame.data();
+    if (_isMatrix) {
+        for (uint16_t y = 0; y < h; y++) {
+            for (uint16_t x = 0; x < w; x++, px += 3) {
+                setCanvasPixelColor(x, y, (uint8_t)((px[0] * scale) / 255), (uint8_t)((px[1] * scale) / 255),
+                                    (uint8_t)((px[2] * scale) / 255), 0);
+            }
+        }
+    } else {
+        uint16_t count = seg.stop - seg.start;
+        for (uint16_t i = 0; i < count && i < w; i++, px += 3) {
+            setSegmentPixelColor(seg, seg.start + i, (uint8_t)((px[0] * scale) / 255), (uint8_t)((px[1] * scale) / 255),
+                                 (uint8_t)((px[2] * scale) / 255), 0);
+        }
+    }
+    return true;
+}
+
 uint32_t LEDManagerClass::getEffectiveColor(const Segment& seg) const {
+    if (seg.overlay.active && seg.overlay.color >= 0) {
+        return (seg.color & 0xFF000000) | ((uint32_t)seg.overlay.color & 0x00FFFFFF);
+    }
+
     if (seg.palette == 0) return seg.color;
     uint8_t pos = (seg.effectStep / 2) & 0xFF; // slow cycle through the palette over time
     uint32_t rgb = getPaletteColor(seg.palette, pos);

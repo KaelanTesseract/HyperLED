@@ -39,7 +39,7 @@ static RTC_NOINIT_ATTR LoopWatchRecord g_record;
 static const char* const STEP_NAMES[] = {
     "WiFiManager", "WebServerManager", "MqttManager", "ButtonManager", "LEDManager",
     "UpdateManager", "SlaveManager", "PresetManager", "ScheduleManager", "WeatherManager",
-    "StatusLedManager"
+    "StatusLedManager", "PluginManager"
 };
 static const uint8_t STEP_COUNT = sizeof(STEP_NAMES) / sizeof(STEP_NAMES[0]);
 

@@ -35,6 +35,8 @@
 #include "ScheduleManager.h"
 #include "StatusLedManager.h"
 #include "BackupManager.h"
+#include "PluginHttp.h"
+#include "PluginManager.h"
 
 WebServerManagerClass WebServerManager;
 AsyncWebServer server(80);
@@ -47,6 +49,7 @@ void WebServerManagerClass::begin() {
     setupRoutes();
     setupSceneAPI();
     setupBackupAPI();
+    setupPluginAPI();
     
     if (WiFiManager.isAPMode()) {
         setupCaptivePortal();
@@ -151,7 +154,8 @@ void WebServerManagerClass::setupRoutes() {
         doc["on"] = anyOn;
         JsonArray segArr = doc["seg"].to<JsonArray>();
         LEDManager.getSegmentsJson(segArr);
-        
+        LEDManager.addPluginInfoJson(segArr);
+
         String json;
         serializeJson(doc, json);
         AsyncWebServerResponse *response = request->beginResponse(200, "application/json", json);
@@ -384,6 +388,22 @@ void WebServerManagerClass::setupRoutes() {
             obj["isWireless"] = s.isWireless;
             obj["lastSeenAge"] = millis() - s.lastSeen;
             obj["configPending"] = SlaveManager.isConfigPending(s.currentId);
+            obj["scripts"] = SlaveManager.slaveRunsScripts(s.currentId);
+            Script::Wire::Status status;
+            unsigned long age = 0;
+            if (SlaveManager.scriptStatus(s.currentId, status, age)) {
+                JsonObject script = obj["script"].to<JsonObject>();
+                script["state"] = status.state;
+                script["result"] = status.result;
+                script["fps"] = status.fps;
+                script["frameMs"] = status.frameUs10 / 10.0;
+                char crc[9];
+                snprintf(crc, sizeof(crc), "%08x", (unsigned)status.frameCrc);
+                script["frameCrc"] = crc;
+                script["memoryKb"] = status.memoryKb;
+                script["message"] = status.message;
+                script["ageMs"] = age;
+            }
             // Only present once the Slave has reported it (firmware 0.2.1+). The UI leaves its
             // fields alone when it is missing rather than showing a default it would then save.
             if (s.ledType != 255) {
@@ -463,7 +483,11 @@ void WebServerManagerClass::setupRoutes() {
         String pass = prefs.getString(PREF_WIFI_PASS, "");
         prefs.end();
         
-        SlaveManagerClass::UpdateStart started = SlaveManager.triggerSlaveUpdate(HYPERBUS_BROADCAST_ID, ssid, pass, url);
+        // Optional "id": update only that Slave instead of all of them.
+        uint8_t target = HYPERBUS_BROADCAST_ID;
+        if (!jsonObj.isNull() && jsonObj["id"].is<int>()) target = (uint8_t)jsonObj["id"].as<int>();
+
+        SlaveManagerClass::UpdateStart started = SlaveManager.triggerSlaveUpdate(target, ssid, pass, url);
         if (pass.length()) UpdateSeal::wipe(&pass[0], pass.length());
         if (started.urlTooLong) {
             request->send(400, "application/json", "{\"error\":\"url_too_long\"}");
@@ -1221,6 +1245,173 @@ void WebServerManagerClass::setupSceneAPI() {
             strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ti);
             doc["localTime"] = buf;
         }
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+}
+
+static void sendPluginResult(AsyncWebServerRequest *request, PluginResult result, const String& error) {
+    if (result == PluginResult::Ok) {
+        request->send(200, "application/json", "{\"status\":\"ok\"}");
+    } else {
+        sendJsonError(request, result == PluginResult::NotFound ? 404 : 400, error);
+    }
+}
+
+void WebServerManagerClass::setupPluginAPI() {
+    // The plugin file itself is the request body, sent as application/json (a form-encoded body is
+    // read as form fields and never reaches the body callback). It arrives in pieces; it is collected
+    // into one buffer (freed with the request) and handled once it is complete.
+    server.on("/api/plugins/install", HTTP_POST,
+        [](AsyncWebServerRequest *request){
+            if (!request->_tempObject) {
+                sendJsonError(request, 400, "Leere oder zu große Datei (höchstens 16 KB)");
+                return;
+            }
+            String json((const char*)request->_tempObject);
+            String error, id;
+            PluginResult result = PluginManager.install(json, error, id);
+            if (result != PluginResult::Ok) {
+                sendJsonError(request, 400, error);
+                return;
+            }
+            request->send(200, "application/json", "{\"id\":\"" + id + "\"}");
+        },
+        nullptr,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
+            if (total == 0 || total > PluginDef::MAX_FILE) return;
+            if (index == 0) request->_tempObject = malloc(total + 1);
+            if (!request->_tempObject) return;
+            memcpy((uint8_t*)request->_tempObject + index, data, len);
+            if (index + len == total) ((char*)request->_tempObject)[total] = 0;
+        });
+
+    // What install would check, without saving: what the person is told before they say yes. The body
+    // is the plugin file, collected the same way as for install.
+    server.on("/api/plugins/preview", HTTP_POST,
+        [](AsyncWebServerRequest *request){
+            if (!request->_tempObject) {
+                sendJsonError(request, 400, "Leere oder zu große Datei (höchstens 16 KB)");
+                return;
+            }
+            String json((const char*)request->_tempObject);
+            String error;
+            JsonDocument doc;
+            PluginResult result = PluginManager.preview(json, doc.to<JsonObject>(), error);
+            if (result != PluginResult::Ok) {
+                sendJsonError(request, 400, error);
+                return;
+            }
+            String out;
+            serializeJson(doc, out);
+            request->send(200, "application/json", out);
+        },
+        nullptr,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
+            if (total == 0 || total > PluginDef::MAX_FILE) return;
+            if (index == 0) request->_tempObject = malloc(total + 1);
+            if (!request->_tempObject) return;
+            memcpy((uint8_t*)request->_tempObject + index, data, len);
+            if (index + len == total) ((char*)request->_tempObject)[total] = 0;
+        });
+
+    // POST /api/plugins/fetch {"url": ...} starts loading a plugin file from an address; GET
+    // /api/plugins/fetch_result asks how it is going and hands over the text once it is there (a separate
+    // address: this library does not tell the two apart by method).
+    AsyncCallbackJsonWebHandler* pluginFetchHandler = new AsyncCallbackJsonWebHandler("/api/plugins/fetch", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject body = json.as<JsonObject>();
+        String error;
+        if (!PluginManager.startFetch(String(body["url"] | ""), error)) {
+            sendJsonError(request, error.indexOf("schon eine Datei") >= 0 ? 409 : 400, error);
+            return;
+        }
+        request->send(202, "application/json", "{\"state\":\"running\"}");
+    });
+    server.addHandler(pluginFetchHandler);
+    server.on("/api/plugins/fetch_result", HTTP_GET, [](AsyncWebServerRequest *request){
+        JsonDocument doc;
+        PluginManager.fetchJson(doc.to<JsonObject>());
+        String out;
+        serializeJson(doc, out);
+        request->send(200, "application/json", out);
+    });
+
+    // GET /api/plugins/values?id=... - what the plugin reads right now, for the live view.
+    server.on("/api/plugins/values", HTTP_GET, [](AsyncWebServerRequest *request){
+        String id = request->hasParam("id") ? request->getParam("id")->value() : String();
+        JsonDocument doc;
+        if (!PluginManager.valuesJson(id, doc.to<JsonObject>())) {
+            sendJsonError(request, 404, "Kein Plugin mit der id '" + id + "'");
+            return;
+        }
+        String out;
+        serializeJson(doc, out);
+        request->send(200, "application/json", out);
+    });
+
+    // GET /api/plugins/definition?id=... - the settings of a plugin, for building its form.
+    server.on("/api/plugins/definition", HTTP_GET, [](AsyncWebServerRequest *request){
+        String id = request->hasParam("id") ? request->getParam("id")->value() : String();
+        JsonDocument doc;
+        if (!PluginManager.definitionJson(id, doc.to<JsonObject>())) {
+            sendJsonError(request, 404, "Kein Plugin mit der id '" + id + "'");
+            return;
+        }
+        String out;
+        serializeJson(doc, out);
+        request->send(200, "application/json", out);
+    });
+
+    AsyncCallbackJsonWebHandler* pluginRemoveHandler = new AsyncCallbackJsonWebHandler("/api/plugins/remove", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject body = json.as<JsonObject>();
+        String error;
+        PluginResult result = PluginManager.remove(String(body["id"] | ""), error);
+        sendPluginResult(request, result, error);
+    });
+    server.addHandler(pluginRemoveHandler);
+
+    AsyncCallbackJsonWebHandler* pluginEnableHandler = new AsyncCallbackJsonWebHandler("/api/plugins/enable", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject body = json.as<JsonObject>();
+        String error;
+        PluginResult result = PluginManager.setEnabled(String(body["id"] | ""), body["enabled"] | false, error);
+        sendPluginResult(request, result, error);
+    });
+    server.addHandler(pluginEnableHandler);
+
+    // {"id": …, "force": bool, "allow_power": bool}; a field that is left out stays as it is.
+    AsyncCallbackJsonWebHandler* pluginOptionsHandler = new AsyncCallbackJsonWebHandler("/api/plugins/options", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject body = json.as<JsonObject>();
+        int8_t force = body["force"].is<bool>() ? (body["force"].as<bool>() ? 1 : 0) : -1;
+        int8_t allowPower = body["allow_power"].is<bool>() ? (body["allow_power"].as<bool>() ? 1 : 0) : -1;
+        String error;
+        PluginResult result = PluginManager.setOptions(String(body["id"] | ""), force, allowPower, error);
+        sendPluginResult(request, result, error);
+    });
+    server.addHandler(pluginOptionsHandler);
+
+    // {"id": …, "values": {"<key>": …}}
+    AsyncCallbackJsonWebHandler* pluginSettingsHandler = new AsyncCallbackJsonWebHandler("/api/plugins/settings", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject body = json.as<JsonObject>();
+        String error;
+        if (!body["values"].is<JsonObject>()) {
+            sendJsonError(request, 400, "Das Feld 'values' fehlt");
+            return;
+        }
+        PluginResult result = PluginManager.setSettings(String(body["id"] | ""), body["values"].as<JsonObjectConst>(), error);
+        sendPluginResult(request, result, error);
+    });
+    server.addHandler(pluginSettingsHandler);
+
+    // Registered last: this library matches a handler for "/api/plugins" against every address below it
+    // as well, so the routes with a longer address (definition, values, fetch) must come first.
+    server.on("/api/plugins", HTTP_GET, [](AsyncWebServerRequest *request){
+        JsonDocument doc;
+        JsonObject root = doc.to<JsonObject>();
+        root["api"] = PLUGIN_API_VERSION;
+        root["max"] = (unsigned)PluginManagerClass::MAX_PLUGINS;
+        root["task_stack_free"] = PluginManager.taskStackFree();
+        PluginManager.listJson(root["plugins"].to<JsonArray>());
         String json;
         serializeJson(doc, json);
         request->send(200, "application/json", json);

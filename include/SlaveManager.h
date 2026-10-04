@@ -27,6 +27,7 @@
 #include <freertos/semphr.h>
 #include "EspNowBus.h"
 #include "UpdateSeal.h"
+#include "ScriptWire.h"
 
 struct DiscoveredSlave {
     uint8_t currentId; // Usually 254 if unconfigured
@@ -43,6 +44,8 @@ struct DiscoveredSlave {
     bool rendersWidgets = false;
     // Firmware 0.2.004 and later draw every element type - see slaveRendersAllWidgets().
     bool rendersAllWidgets = false;
+    // Firmware 0.3.000 and later run Lua scripts - see slaveRunsScripts().
+    bool runsScripts = false;
     // What the Slave reports about its own output. Only a Slave knows this - the Master stores
     // nothing about it - so without it the UI cannot show an existing configuration and would
     // overwrite it with its defaults on the next save. 255 means the Slave did not report.
@@ -131,6 +134,18 @@ public:
     // show that a change is still in flight rather than presenting it as already applied.
     bool isConfigPending(uint8_t slaveId) const;
 
+    // Scripts a Slave runs itself. The Master keeps saying what should run (a refresh every 2 s) and
+    // answers the Slave's requests for the text; see CMD_SET_SCRIPT in HyperBus.h.
+    enum class ScriptStart : uint8_t { Ok, UnknownSlave, TooOld, TooLong };
+    ScriptStart runScript(uint8_t slaveId, const String& text, uint8_t brightness, bool on);
+    void setScriptValues(uint8_t slaveId, const std::vector<Script::Item>& settings, const std::vector<Script::Item>& values);
+    void releaseScript(uint8_t slaveId);
+    bool scriptStatus(uint8_t slaveId, Script::Wire::Status& status, unsigned long& ageMs) const;
+    bool slaveRunsScripts(uint8_t slaveId) const;
+    uint32_t scriptCrc(uint8_t slaveId) const;  // 0 when no script was handed to this Slave
+    bool updateScript(uint8_t slaveId, uint8_t brightness, bool on);
+
+
 private:
     // A configuration that has been sent but not yet acknowledged. CMD_SET_CONFIG goes out as a
     // single ESP-NOW broadcast, which has no link-layer acknowledgement or retry - one lost frame
@@ -194,6 +209,7 @@ private:
         bool rendersLocally = false;
         bool rendersWidgets = false;
         bool rendersAllWidgets = false;
+        bool runsScripts = false;
         bool isWireless = true;
     };
 
@@ -231,6 +247,39 @@ private:
     void handleImageRequest(uint8_t slaveId, const uint8_t* payload, uint16_t length);
     void pumpImageTransfers();
     std::map<uint8_t, SlaveCapability> _slaveCaps;
+
+    struct ScriptJob {
+        uint8_t slaveId = 0;
+        String text;
+        uint32_t crc = 0;
+        uint8_t brightness = 255;
+        bool on = true;
+        std::vector<Script::Item> settings;
+        std::vector<Script::Item> values;
+        uint8_t valuesSequence = 0;
+        bool valuesDirty = true;
+        unsigned long lastConfigAt = 0;
+        unsigned long lastValuesAt = 0;
+        Script::Wire::Status status;
+        unsigned long statusAt = 0;
+        bool haveStatus = false;
+    };
+    std::vector<ScriptJob> _scriptJobs;
+    struct ScriptTransfer {
+        uint8_t slaveId;
+        uint32_t crc;
+        uint16_t offset;
+    };
+    std::vector<ScriptTransfer> _scriptTransfers;
+    unsigned long _lastScriptChunk = 0;
+    static const unsigned long SCRIPT_REFRESH_MS = 2000;
+    static const unsigned long SCRIPT_CHUNK_INTERVAL_MS = 20;
+    void serviceScripts();
+    void handleScriptRequest(uint8_t slaveId, const uint8_t* payload, uint16_t length);
+    void handleScriptStatus(uint8_t slaveId, const uint8_t* payload, uint16_t length);
+    void sendScriptConfig(ScriptJob& job, bool release);
+    ScriptJob* findScriptJob(uint8_t slaveId);
+
 
     // Which bus to talk to a Slave on. fallbackToUart is for the small control packets that must
     // still go out to a Slave that has not been discovered (yet); it is never used for pixel data.

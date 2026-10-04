@@ -137,6 +137,21 @@ struct PanelBackground {
     bool active() const { return effect != HYPERBUS_BACKGROUND_NONE && EffectEngine::canRender(effect); }
 };
 
+// What a plugin lays over a segment. It is applied while drawing and never stored: nothing here
+// reaches the saved settings, the API or MQTT, and when the plugin lets go the segment is exactly
+// as the user left it. -1 means "keep the segment's own value".
+struct SegmentOverlay {
+    bool active = false;   // a plugin controls this segment right now
+    int16_t effect = -1;   // index into EFFECT_NAMES
+    int32_t color = -1;    // 0xRRGGBB
+    int16_t speed = -1;    // 0-255
+    int16_t intensity = -1;  // 0-255
+    int8_t power = -1;     // 0 off, 1 on
+    bool script = false;   // a script draws this segment (see MasterScripts, SlaveManager::runScript)
+    String pluginId;       // who controls the segment, for the interface (not part of what is compared)
+    String pluginName;
+};
+
 struct Segment {
     String name;
     uint16_t start;
@@ -189,7 +204,28 @@ struct Segment {
     PanelBackground background;
     EffectState bgState;
     std::vector<uint8_t> bgFrame;
+
+    // A plugin's overlay, see SegmentOverlay. Never persisted.
+    SegmentOverlay overlay;
 };
+
+// What a segment shows right now: its own settings with a plugin's overlay on top. The drawing
+// code reads this; everything else keeps reading the segment's own fields.
+struct SegmentView {
+    uint8_t effect;
+    uint8_t speed;
+    uint8_t intensity;
+    bool isOn;
+};
+
+inline SegmentView viewOf(const Segment& s) {
+    SegmentView v;
+    v.effect = s.overlay.effect >= 0 ? (uint8_t)s.overlay.effect : s.effect;
+    v.speed = s.overlay.speed >= 0 ? (uint8_t)s.overlay.speed : s.speed;
+    v.intensity = s.overlay.intensity >= 0 ? (uint8_t)s.overlay.intensity : s.intensity;
+    v.isOn = s.overlay.power >= 0 ? s.overlay.power == 1 : s.isOn;
+    return v;
+}
 
 class LEDManagerClass {
 public:
@@ -277,6 +313,16 @@ public:
     // page showed the checkbox cleared even while sync was still on.
     void setSync(bool sync);
     bool getSync() const { return _syncActive; }
+    // A plugin's overlay on a segment (see SegmentOverlay). Not persisted; main loop only.
+    void setPluginOverlay(uint8_t segId, const SegmentOverlay& overlay);
+    void clearPluginOverlay(uint8_t segId);
+    bool isPluginControlled(uint8_t segId) const;
+    // For plugin scripts. The size a segment of this Master draws its script on (a strip is
+    // count x 1, in matrix mode the Master's own matrix), the segment's brightness with the current
+    // limiting applied, and whether the segment lives on a Slave (and which one).
+    void scriptGeometry(uint8_t segId, uint16_t& width, uint16_t& height) const;
+    uint8_t effectiveBrightness(uint8_t segId);
+    bool segmentIsSlave(uint8_t segId, uint8_t& slaveId) const;
     void triggerSave() {
         _savePending = true;
         _saveTimer = millis();
@@ -296,6 +342,10 @@ public:
     // Writes the CMD_SET_BACKGROUND payload (HYPERBUS_BACKGROUND_PAYLOAD_LEN bytes).
     static void serializeBackground(const PanelBackground& bg, uint8_t* out);
     void getSegmentsJson(JsonArray array) const;
+    // Adds "plugin": {id, name} to the entries of `array` (as getSegmentsJson wrote them) whose segment a
+    // plugin controls right now. Separate on purpose: getSegmentsJson also feeds the stored presets, and
+    // nothing a plugin does may reach the flash.
+    void addPluginInfoJson(JsonArray array) const;
     uint8_t getNumSegments() const;
     const Segment* getSegment(uint8_t segId) const;
     void addSlaveSegment(uint8_t slaveId, uint16_t count, const String& name);
@@ -464,6 +514,11 @@ private:
     // HUB75 showcase effects (see EFFECT_HUB75_SHOWCASE_START above).
 
     uint8_t getGlobalAblCap();
+
+    // Copies the latest finished frame of a segment's script into the segment (Master-owned
+    // segments only). True when there was a new frame.
+    bool drawScriptSegment(Segment& seg, size_t index, uint8_t ablCap);
+    std::vector<uint8_t> _scriptFrame;
 
     // Palettes: seg.palette == 0 means "Solid" (use seg.color as-is). Any other
     // palette id returns a color interpolated from that palette's stops, sampled
