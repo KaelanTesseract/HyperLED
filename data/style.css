@@ -33,6 +33,8 @@
     --primary-tint: rgba(52, 211, 153, 0.14);
     --danger: #FF6B6B;              /* 6.5:1 */
     --danger-tint: rgba(255, 107, 107, 0.12);
+    --warning: #F5B14A;             /* a source that does not answer: not wrong, but not fine */
+    --warning-tint: rgba(245, 177, 74, 0.14);
 
     /* Neutral layers, named by role so both appearances can give them their own values. */
     --fill: rgba(0, 0, 0, 0.2);                 /* inside of fields and inset blocks */
@@ -77,6 +79,8 @@
         --primary-tint: rgba(29, 132, 95, 0.12);
         --danger: #C62828;              /* 5.6:1 */
         --danger-tint: rgba(198, 40, 40, 0.08);
+        --warning: #8A5A00;             /* 5.8:1 */
+        --warning-tint: rgba(138, 90, 0, 0.1);
         --fill: rgba(0, 0, 0, 0.04);
         --fill-subtle: rgba(0, 0, 0, 0.03);
         --fill-strong: rgba(0, 0, 0, 0.08);
@@ -1826,4 +1830,384 @@ label[data-slider-value]::after {
     .toast {
         animation: none !important;
     }
+}
+
+/* --- Plugins ---------------------------------------------------------------------------------
+   The list under Einstellungen > Plugins, its dialogs, and the badges on the light page. Colours only
+   from the tokens above, so both appearances work. */
+.plugin-intro {
+    margin-bottom: 16px;
+    font-size: var(--text-body);
+    color: var(--text-muted);
+}
+
+.plugin-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.plugin-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.plugin-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.plugin-title {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+}
+
+.plugin-name {
+    font-size: var(--text-headline);
+    overflow-wrap: anywhere;
+}
+
+.plugin-meta,
+.plugin-hint,
+.plugin-count {
+    font-size: var(--text-caption);
+    color: var(--text-muted);
+}
+
+.plugin-desc {
+    font-size: var(--text-body);
+    color: var(--text-main);
+    overflow-wrap: anywhere;
+}
+
+.plugin-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.plugin-reason,
+.plugin-script,
+.plugin-source-line {
+    font-size: var(--text-caption);
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+
+/* The state in words, with a colour as a second hint (never the only one). */
+.plugin-state {
+    padding: 3px 10px;
+    border: 1px solid var(--outline);
+    border-radius: 999px;
+    font-size: var(--text-caption);
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.plugin-state-running {
+    border-color: var(--primary);
+    background: var(--primary-tint);
+    color: var(--primary);
+}
+
+.plugin-state-no_connection {
+    border-color: var(--warning);
+    background: var(--warning-tint);
+    color: var(--warning);
+}
+
+.plugin-state-incompatible,
+.plugin-state-invalid {
+    border-color: var(--danger);
+    background: var(--danger-tint);
+    color: var(--danger);
+}
+
+.plugin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.plugin-remove {
+    margin-left: auto;
+    color: var(--danger);
+}
+
+.plugin-empty {
+    padding: 24px 12px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.plugin-empty strong {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text-main);
+    font-size: var(--text-headline);
+}
+
+.plugin-count {
+    text-align: center;
+}
+
+.plugin-note {
+    padding: 10px 12px;
+    border: 1px solid var(--separator);
+    border-radius: 10px;
+    background: var(--fill);
+    font-size: var(--text-caption);
+    color: var(--text-main);
+    overflow-wrap: anywhere;
+}
+
+.plugin-note-warn {
+    border-color: var(--warning);
+    background: var(--warning-tint);
+}
+
+.plugin-note-error {
+    border-color: var(--danger);
+    background: var(--danger-tint);
+}
+
+/* Dialogs: the confirmation card, wider, and scrolling inside when the content is long. */
+.plugin-modal {
+    z-index: 200;
+}
+
+.plugin-dialog {
+    max-width: 560px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.plugin-dialog h3 {
+    overflow-wrap: anywhere;
+}
+
+.plugin-dialog-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    margin-bottom: 18px;
+    padding-right: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.plugin-dialog-body .form-group,
+.plugin-dialog-body p {
+    margin-bottom: 0;
+}
+
+.plugin-dialog-lead {
+    font-size: var(--text-body);
+    color: var(--text-muted);
+}
+
+.plugin-url-row {
+    display: flex;
+    gap: 8px;
+}
+
+.plugin-url-row input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.plugin-url-row .btn {
+    flex: 0 0 auto;
+    min-height: 44px;
+}
+
+.plugin-file {
+    width: 100%;
+    font-size: var(--text-body);
+    color: var(--text-main);
+}
+
+.plugin-error-slot:empty {
+    display: none;
+}
+
+.plugin-preview-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.plugin-preview-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.plugin-preview-label {
+    font-size: var(--text-caption);
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.plugin-address {
+    display: block;
+    padding: 10px 12px;
+    border: 1px solid var(--separator);
+    border-radius: 8px;
+    background: var(--fill);
+    font-size: var(--text-caption);
+    color: var(--text-main);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.plugin-can {
+    padding-left: 20px;
+    font-size: var(--text-body);
+    color: var(--text-main);
+}
+
+.plugin-can li {
+    margin-bottom: 4px;
+}
+
+.plugin-field .toggle-chip,
+.plugin-options .toggle-chip,
+.plugin-enable-row .toggle-chip {
+    display: inline-flex;
+    margin-bottom: 0;
+    color: var(--text-main);
+}
+
+.plugin-field-error {
+    margin-top: 6px;
+    font-size: var(--text-caption);
+    color: var(--danger);
+    overflow-wrap: anywhere;
+}
+
+.plugin-field-error[hidden] {
+    display: none;
+}
+
+.plugin-required {
+    color: var(--text-muted);
+}
+
+.plugin-color-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.plugin-color-picker {
+    width: 48px;
+    height: 44px;
+    padding: 2px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--fill);
+    cursor: pointer;
+}
+
+.plugin-color-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.plugin-enable-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.plugin-options {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid var(--separator);
+}
+
+.plugin-values {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.plugin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-body);
+}
+
+.plugin-table th,
+.plugin-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--separator);
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+
+.plugin-table th {
+    width: 40%;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.plugin-raw {
+    max-height: 160px;
+    overflow: auto;
+    padding: 10px 12px;
+    border: 1px solid var(--separator);
+    border-radius: 8px;
+    background: var(--fill);
+    font-size: var(--text-caption);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--text-main);
+}
+
+/* "Controlled by ..." on the light page. */
+.plugin-badges {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.plugin-badges[hidden] {
+    display: none;
+}
+
+.plugin-badge {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--primary);
+    border-radius: 12px;
+    background: var(--primary-tint);
+}
+
+.plugin-badge-text {
+    font-size: var(--text-body);
+    color: var(--text-main);
+    overflow-wrap: anywhere;
 }

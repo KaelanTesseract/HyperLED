@@ -26,7 +26,7 @@
     <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
     <title>HyperLED</title>
     <link rel="icon" type="image/png" href="logo.png">
-    <link rel="stylesheet" href="style.css?v=15">
+    <link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 
@@ -114,6 +114,9 @@
             <!-- Licht: everything that changes how the light looks right now. -->
             <main id="mainControls" class="area active" data-area="light">
                 <h1 class="area-title" data-i18n="nav_light">Licht</h1>
+
+                <!-- Which segments a plugin is controlling right now (filled by plugins.js). -->
+                <div id="pluginBadges" class="plugin-badges" hidden></div>
 
                 <!-- What the selected segment is showing right now. The one element on this page
                      that carries the light itself - everything else stays quiet around it. -->
@@ -699,8 +702,20 @@
                 <div class="subnav-wrapper">
                     <div class="subnav" role="tablist">
                     <button type="button" class="tab-btn active" data-tab="modalWifiContainer" data-i18n="sub_wifi" aria-current="page">WLAN &amp; MQTT</button>
+                    <button type="button" class="tab-btn" data-tab="tab-plugins" data-i18n="tab_plugins">Plugins</button>
                     <button type="button" class="tab-btn" data-tab="tab-system" data-i18n="tab_system">System</button>
                     </div>
+                </div>
+
+                <!-- Plugins: small files that read a value from the network and show it on a segment.
+                     The list and its dialogs are built by plugins.js. -->
+                <div class="card glass tab-content" id="tab-plugins">
+                    <div class="row-between card-header">
+                        <h2 data-i18n="tab_plugins">Plugins</h2>
+                        <button type="button" class="btn btn-secondary btn-chip" id="btnPluginAdd" data-i18n="plugin_add">+ Plugin hinzufügen</button>
+                    </div>
+                    <p class="plugin-intro" data-i18n="plugin_intro">Ein Plugin holt einen Wert aus dem Netzwerk, zum Beispiel vom 3D-Drucker, und zeigt ihn auf einem Segment an.</p>
+                    <div id="pluginList" class="plugin-list" aria-live="polite"></div>
                 </div>
 
                 <div class="card glass tab-content active" id="modalWifiContainer">
@@ -910,8 +925,9 @@
         </div>
 
     <script src="iro.min.js"></script>
-    <script src="i18n.js?v=24"></script>
-    <script src="app.js?v=30"></script>
+    <script src="i18n.js?v=28"></script>
+    <script src="app.js?v=35"></script>
+    <script src="plugins.js?v=2"></script>
 </body>
 </html>
 

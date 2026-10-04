@@ -3065,10 +3065,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 bar.style.width = data.progress + '%';
                 updateStatus.innerText = data.status || t('dyn_update_downloading', { p: data.progress });
 
-                if (data.progress < 100 && data.status !== 'error') {
+                if (data.progress < 100 && !(data.status || '').startsWith('error')) {
                     setTimeout(pollUpdateProgress, 1000);
-                } else if (data.status === 'error') {
-                    showToast(t('dyn_update_failed'), 'error');
+                } else if ((data.status || '').startsWith('error')) {
+                    showToast(data.status === 'error_slot' ? t('dyn_update_slot_small') : t('dyn_update_failed'), 'error');
                     btnCheckUpdate.disabled = false;
                     btnCheckUpdate.innerText = t('btn_start_update');
                 } else {
@@ -4618,6 +4618,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return uploadInto(created.id);
         });
     }
+
+    // What plugins.js (the plugin pages) needs from here: messages, the confirmation dialog, and the
+    // name of a segment as the light page shows it.
+    window.HyperUI = { showToast, askConfirm, flashButton, translateSegmentName };
 
 });
 
