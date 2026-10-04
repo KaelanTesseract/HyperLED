@@ -34,6 +34,11 @@ enum WifiSetupState : uint8_t {
     WIFI_SETUP_FAILED
 };
 
+// Prints what the radio and the tasks look like right now, on the serial port: the radio's settings,
+// the access point it holds, and every task with its state and stack. For the moment a link dies - to
+// see whether the Wi-Fi task is blocked, starved or gone, which the counters alone cannot say.
+void hyperledDumpRadioState(const char* why);
+
 class WiFiManagerClass {
 public:
     void begin();

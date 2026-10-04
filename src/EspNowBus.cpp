@@ -17,6 +17,7 @@
  * limitations under the Licence.
  */
 #include "EspNowBus.h"
+#include "WiFiManager.h"
 
 EspNowBusClass* EspNowBusClass::_instance = nullptr;
 
@@ -107,6 +108,7 @@ void EspNowBusClass::noteSendResult(esp_err_t result) {
     _sendFailStreak++;
     // Once per run, when it starts to look like more than a full queue.
     if (_sendFailStreak == 20) {
+        hyperledDumpRadioState("esp-now refused");
         Serial.printf("EspNowBus: every send refused for %lums, first reason 0x%x (%s), now 0x%x\n",
                       (unsigned long)(millis() - _sendFailSince), (unsigned)_failRunFirstError,
                       esp_err_to_name((esp_err_t)_failRunFirstError), (unsigned)result);

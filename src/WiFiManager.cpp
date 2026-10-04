@@ -23,6 +23,10 @@
 #include "SlaveManager.h"
 #include "EspNowBus.h"
 #include <esp_heap_caps.h>
+#include <esp_wifi.h>
+#include <esp_now.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 WiFiManagerClass WiFiManager;
 
@@ -54,6 +58,44 @@ struct LinkSnapshotRecord {
 };
 static RTC_NOINIT_ATTR LinkSnapshotRecord g_linkSnapshot;
 
+void hyperledDumpRadioState(const char* why) {
+    wifi_mode_t mode = WIFI_MODE_NULL;
+    wifi_ps_type_t ps = WIFI_PS_NONE;
+    uint8_t channel = 0;
+    wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+    int8_t txPower = 0;
+    esp_now_peer_num_t peers = {0, 0};
+    esp_wifi_get_mode(&mode);
+    esp_wifi_get_ps(&ps);
+    esp_wifi_get_channel(&channel, &second);
+    esp_wifi_get_max_tx_power(&txPower);
+    esp_now_get_peer_num(&peers);
+    Serial.printf("RADIO[%s] up %lus: mode %d ps %d channel %u tx power %d (0.25 dBm) peers %d (%d encrypted) wifi status %d\n",
+                  why, (unsigned long)(millis() / 1000), (int)mode, (int)ps, (unsigned)channel, (int)txPower,
+                  (int)peers.total_num, (int)peers.encrypt_num, (int)WiFi.status());
+    wifi_ap_record_t ap;
+    if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+        Serial.printf("RADIO[%s] access point %02x:%02x:%02x:%02x:%02x:%02x rssi %d phy b%d g%d n%d lr%d\n", why,
+                      ap.bssid[0], ap.bssid[1], ap.bssid[2], ap.bssid[3], ap.bssid[4], ap.bssid[5], (int)ap.rssi,
+                      (int)ap.phy_11b, (int)ap.phy_11g, (int)ap.phy_11n, (int)ap.phy_lr);
+    } else {
+        Serial.printf("RADIO[%s] no access point record\n", why);
+    }
+    UBaseType_t count = uxTaskGetNumberOfTasks();
+    TaskStatus_t* tasks = (TaskStatus_t*)malloc(count * sizeof(TaskStatus_t));
+    if (!tasks) return;
+    count = uxTaskGetSystemState(tasks, count, nullptr);
+    static const char STATES[] = {'R', 'r', 'B', 'S', 'D', '?'};  // running, ready, blocked, suspended, deleted
+    for (UBaseType_t i = 0; i < count; i++) {
+        int st = (int)tasks[i].eCurrentState;
+        Serial.printf("RADIO[%s] task %-12s state %c prio %2u/%2u stack left %5u bytes core %d\n", why, tasks[i].pcTaskName,
+                      STATES[st >= 0 && st < 5 ? st : 5], (unsigned)tasks[i].uxCurrentPriority,
+                      (unsigned)tasks[i].uxBasePriority, (unsigned)tasks[i].usStackHighWaterMark,
+                      (int)tasks[i].xCoreID);
+    }
+    free(tasks);
+}
+
 void WiFiManagerClass::recordLinkFailure(bool restarting, uint32_t reason) {
     LinkFailureSnapshot& s = g_linkSnapshot.data;
     // A fresh picture at the first failed probe; later calls keep it and only add to it, so the
@@ -78,6 +120,7 @@ void WiFiManagerClass::recordLinkFailure(bool restarting, uint32_t reason) {
         g_linkSnapshot.magic = LINK_SNAPSHOT_MAGIC;
     }
     s.probeFailures = _probeFailures;
+    if (_probeFailures <= 1) hyperledDumpRadioState("gateway silent");
     if (restarting) {
         s.uptimeAtRestart = millis() / 1000;
         s.reason = reason;
