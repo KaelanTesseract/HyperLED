@@ -22,6 +22,7 @@
 #include <LittleFS.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
+#include <esp_ota_ops.h>
 
 UpdateManagerClass UpdateManager;
 
@@ -143,11 +144,39 @@ String UpdateManagerClass::getStatus() {
     return _status;
 }
 
+// The size of a file on the release server, or -1 when it cannot be told. Only the headers are read.
+static int remoteFileSize(const String& url) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.setTimeout(10000);
+    int size = -1;
+    if (http.begin(client, url) && http.GET() == HTTP_CODE_OK) size = http.getSize();
+    http.end();
+    return size;
+}
+
+
 void UpdateManagerClass::performUpdate() {
     _status = "updating FS";
     _progress = 5;
 
     String baseUrl = "https://github.com/KaelanTesseract/HyperLED/releases/download/" + _targetVersion + "/";
+
+    // Does the new firmware fit into the update slot? Found out before anything is touched: the file
+    // system is replaced first, and a firmware that then does not fit would leave a new web
+    // interface on an old firmware. A controller flashed with an older partition table has smaller
+    // slots; for it a larger firmware needs one reinstall over USB.
+    const esp_partition_t* slot = esp_ota_get_next_update_partition(nullptr);
+    int firmwareSize = remoteFileSize(baseUrl + "firmware.bin");
+    if (slot && firmwareSize > 0 && (uint32_t)firmwareSize > slot->size) {
+        Serial.printf("Update: firmware is %d bytes, the update slot holds %u - needs a USB reinstall\n",
+                      firmwareSize, (unsigned)slot->size);
+        _status = "error_slot";
+        return;
+    }
+
 
     // Nothing is overwritten unless every user file could be read first.
     if (!keepUserFiles()) {
