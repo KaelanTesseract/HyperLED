@@ -30,3 +30,7 @@ test2.py
 Ideen.md
 
 __pycache__/
+
+# Internal design notes, plans and working notes of the development. They name devices and
+# addresses of one test setup and are not documentation for users (see docs/de and docs/en).
+docs/superpowers/
