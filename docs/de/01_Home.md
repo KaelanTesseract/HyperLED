@@ -14,3 +14,6 @@ HyperLED verbindet eine schnelle, visuell ansprechende Web-Oberfläche mit einer
 4. [Das Web-Interface (inkl. MQTT)](05_Web_Interface.md)
 5. [Master/Slave Architektur](07_Master_Slave_Architektur.md)
 6. [API Referenz](08_API_Referenz.md)
+7. [Plugins nutzen](09_Plugins_nutzen.md)
+8. [Plugins entwickeln](10_Plugins_entwickeln.md)
+9. [Plugin-Skripte (Lua)](11_Plugin_Skripte.md)

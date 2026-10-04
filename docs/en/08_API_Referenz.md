@@ -75,9 +75,9 @@ Per segment, `on`, `bri`, `effect`, `speed`, `intensity`, `palette`, `color`, `c
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/slaves` | GET | List of all currently reachable Slaves (ID, name, LED count, version, wired/wireless). |
+| `/api/slaves` | GET | List of all currently reachable Slaves (ID, name, LED count, version, wired/wireless, `scripts`: whether the Slave runs Lua scripts - firmware 0.3.000 and later). While a script runs on a Slave, `script` shows its state (`state`: 0 none, 1 loading, 2 running, 3 failed), `result`, `fps`, `frameMs`, `frameCrc`, `memoryKb`, `message` and `ageMs`. |
 | `/api/slaves/config` | POST | Configure a Slave (name, LED type, pins, or HUB75 matrix size/driver). |
-| `/api/slaves/update` | POST | Trigger a remote firmware update of the slaves (`{"url": "https://…"}`, at most 116 characters; without `url` the newest Slave release the Master knows of – `409` with `no_release` while it knows none). Response: `sealed` (credentials handed over encrypted, slave 0.2.008 and later), `wired` (older slaves over the cable), `skipped` (older slaves over radio – they no longer get the Wi-Fi password over the air and need one update over USB). |
+| `/api/slaves/update` | POST | Trigger a remote firmware update of the slaves (`{"url": "https://…"}`, at most 116 characters, optionally `"id"` to update only that Slave instead of all; without `url` the newest Slave release the Master knows of – `409` with `no_release` while it knows none). Response: `sealed` (credentials handed over encrypted, slave 0.2.008 and later), `wired` (older slaves over the cable), `skipped` (older slaves over radio – they no longer get the Wi-Fi password over the air and need one update over USB). |
 
 See [Master/Slave Architecture](07_Master_Slave_Architektur.md) for how this works.
 
@@ -94,6 +94,28 @@ See [Master/Slave Architecture](07_Master_Slave_Architektur.md) for how this wor
 | `/api/playlist` | GET / POST | Read or set the playlist (sequence of several presets). |
 | `/api/schedules` | GET / POST | Read or set schedules. |
 | `/api/time` | GET | Current NTP time and sync status. |
+
+---
+
+## Plugins
+
+A plugin is one JSON file that reads a value from the network and shows it on one segment (see the plugin documentation). The web interface (Settings > Plugins) uses these routes; they can also be called from scripts. Bodies are JSON (`Content-Type: application/json`); errors come as `{"error": "…"}` with a message in German and the place where the problem is.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/plugins` | GET | All plugins: `id`, `state` (`off`, `waiting`, `running`, `no_connection`, `incompatible`, `invalid`), `reason`, `enabled`, `name`, `version`, `author`, `license`, `description`, `force`, `allow_power`, `wants_power`, `script_level`, `warning`, `settings` (a password is returned as `***`, or empty when unset, and never otherwise), `data` (the values read). A plugin with a script also has `script`: `mode` (`script` or `rules`), `note` (why the rules apply instead of the script), `state`, `message`, `fps`, `frame_ms`, `memory_kb`. Also `api` (the interface level of this firmware), `max` (how many plugins fit). |
+| `/api/plugins/preview` | POST | Checks a plugin file completely (format, expressions, script, compatibility) **without saving anything**. The body is the plugin file. Returns `name`, `version`, `author`, `license`, `description`, `source_url` (the address template, with `{setting}` placeholders), `segment_setting`, `wants_power`, `has_script`, `script_level`, `compatible`, `compat_note`, `replaces` (and `installed_version`), `limit_reached`. |
+| `/api/plugins/install` | POST | Installs (or replaces) a plugin. The body is the plugin file (at most 16 KB). Settings of an installed version are kept as far as they still fit. A script is compiled first; a syntax error is refused with its line. Returns `{"id": "…"}`. |
+| `/api/plugins/fetch` | POST | `{"url": "https://…"}`: the controller loads a plugin file from an address (it follows redirects, up to 16 KB, 10 s). Returns `202`; `409` while another load is running. |
+| `/api/plugins/fetch_result` | GET | How that load is going: `{"state": "idle" \| "running" \| "done" \| "error", "text": "…", "error": "…"}`. A finished result is handed over once. |
+| `/api/plugins/definition` | GET | `?id=…`: the settings of a plugin for building a form (`type`, `label` and `hint` per language, `default`, `min`, `max`, `optional`, `options`), the `effects` a plugin may use, `segment_setting`, `wants_power`, `has_script`. |
+| `/api/plugins/settings` | POST | `{"id": "…", "values": {"key": value}}`: sets some settings. The device checks every value; an empty password keeps the stored one. |
+| `/api/plugins/enable` | POST | `{"id": "…", "enabled": true}`: switches a plugin on or off. Refused with the reason when a setting is still empty, or when another plugin controls the segment (one segment, one plugin). |
+| `/api/plugins/options` | POST | `{"id": "…", "force": bool, "allow_power": bool}`: `force` runs a plugin although it needs another interface level; `allow_power` lets it switch the segment on and off. |
+| `/api/plugins/values` | GET | `?id=…`: what the plugin reads right now: `values`, `source` (who draws: `script`, `rules`, `on_error`, `none`), `rule` (`index`, `when`), `raw` (the beginning of the last answer of the source, at most 1 KB), and for a script its `script` state. |
+| `/api/plugins/remove` | POST | `{"id": "…"}`: removes a plugin with its settings. |
+
+While a plugin controls a segment, `GET /api/state` shows `plugin: {id, name}` on that segment. This is never stored: it does not reach presets, `/api/segments` or MQTT.
 
 ---
 

@@ -98,7 +98,7 @@ Spätere Versionen lassen sich direkt in der Weboberfläche unter *Einstellungen
 - 🇩🇪 [Deutsches Wiki](docs/de/01_Home.md)
 - 🇬🇧 [English Wiki](docs/en/01_Home.md)
 
-Darin: [Funktionen](docs/de/02_Features.md) · [Hardware und Pinbelegung](docs/de/03_Hardware_Setup.md) · [Installation](docs/de/04_Installation_Flash.md) · [Weboberfläche und MQTT](docs/de/05_Web_Interface.md) · [Master/Slave](docs/de/07_Master_Slave_Architektur.md) · [API-Referenz](docs/de/08_API_Referenz.md)
+Darin: [Funktionen](docs/de/02_Features.md) · [Hardware und Pinbelegung](docs/de/03_Hardware_Setup.md) · [Installation](docs/de/04_Installation_Flash.md) · [Weboberfläche und MQTT](docs/de/05_Web_Interface.md) · [Master/Slave](docs/de/07_Master_Slave_Architektur.md) · [API-Referenz](docs/de/08_API_Referenz.md) · [Plugins nutzen](docs/de/09_Plugins_nutzen.md) · [Plugins entwickeln](docs/de/10_Plugins_entwickeln.md) · [Plugin-Skripte](docs/de/11_Plugin_Skripte.md)
 
 ## Mitmachen
 

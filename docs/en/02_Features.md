@@ -8,6 +8,7 @@ HyperLED offers a huge range of features that make it suitable for anything from
 * **Segments:** Split a single LED strip into multiple virtual zones. Each zone can have its own effect, color, and speed.
 * **Presets & Playlists:** Save complete lighting moods as a preset and have several presets play back automatically in sequence.
 * **Schedules:** Trigger effects or presets on a schedule (timezone-aware via NTP).
+* **Plugins:** Small files read a value from the network (print progress, temperature, a service's state …) and show it on a segment - without a firmware update, with a preview before installing, a settings page, live values and, if wanted, a Lua script that draws the segment pixel by pixel (on Slaves too). See [Using Plugins](09_Plugins_nutzen.md).
 
 ## Matrix & Widgets
 * **2D matrix support:** Serpentine and progressive layout, including HUB75 scan-matrix panels.

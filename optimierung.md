@@ -8,8 +8,8 @@ dieser Datei gelöscht – hier steht nur, was noch offen ist.
 
 ## Arbeitsregeln für jeden Schritt
 
-- Nach Änderungen an `data/` die zugehörigen `.gz`-Dateien neu erzeugen (`gzip -9 -k -f <datei>`),
-  sonst liefert das Gerät die alte Version aus.
+- Die `.gz`-Dateien müssen nicht mehr von Hand erzeugt werden: `pack_data.py` packt `data/` bei jedem
+  `uploadfs` frisch (nur die gepackten Dateien kommen aufs Gerät).
 - `?v=` für `style.css`, `app.js` und `i18n.js` in `index.html` hochzählen (Browser-Cache).
 - WebUI flashen: `PYTHONIOENCODING=utf-8 pio run -e esp32-s3 -t uploadfs --upload-port COM11`.
   Achtung: `uploadfs` ersetzt das ganze Dateisystem des Masters – auch Szenen, Playlist,

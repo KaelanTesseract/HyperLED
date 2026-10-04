@@ -9,6 +9,7 @@ Ein Controller agiert als **Master**, andere Controller in der Kette agieren als
 - **Effekte:** Der Master schickt nur die Einstellungen (Effekt, Farbe, Helligkeit, Tempo …), sobald sich etwas ändert, und der Slave berechnet die Animation selbst.
 - **„Uhr / Text" auf einem HUB75-Panel:** Ab Slave-Firmware 0.2.004 zeichnet der Slave alle Elemente selbst – Uhrzeit, Datum, Analoguhr, Text, Lauftext, Wetter und Bild. Der Master schickt die Elementliste, alle paar Sekunden die Uhrzeit, das Wetter bei Änderung und Bilder genau einmal: Fehlt einem Slave ein Bild (etwa nach einem Neustart), fordert er es selbst an und prüft es per Prüfsumme.
 - **Hintergrund-Effekt hinter den Elementen:** Ab Slave-Firmware 0.2.007 kann hinter den Elementen ein Effekt laufen. Der Slave zeichnet ihn selbst, der Master schickt nur die Einstellungen. Damit die Elemente lesbar bleiben, bekommt jedes einen dunklen Umriss (oder einen abgedunkelten Kasten); die Helligkeit des Hintergrunds gilt wie die der Elemente im Verhältnis zur Segment-Helligkeit. Der Hintergrund läuft nur, wenn der Slave alle Elemente selbst zeichnet – ein bewegter Hintergrund lässt sich nicht als Pixelstrom übertragen.
+- **Lua-Skripte:** Ab Slave-Firmware 0.3.000 kann der Master einem Slave ein kurzes Lua-Skript übergeben, das das Bild des Slaves Pixel für Pixel auf dem Slave selbst zeichnet. Es wird nichts gestreamt: Der Master schickt das Skript einmal (in kleinen Stücken, die der Slave per Prüfsumme kontrolliert) und danach nur noch die Werte, die das Skript liest. Siehe [Skripte auf Slaves](#skripte-auf-slaves).
 - **Pixelstrom als Rückfall:** Nur was ein Slave nicht selbst kann (ältere Firmware, der Effekt „Bild", ein Element, das nicht mehr in ein Paket passt), berechnet der Master und überträgt die geänderten Pixel.
 
 So bleibt der Master frei für die Weboberfläche und die Koordination der Slaves, und die Funkverbindung wird nicht mit Bilddaten verstopft.
@@ -24,6 +25,16 @@ Ein Slave muss vor dem ersten Betrieb nicht manuell auf einen Übertragungsweg f
 
 > [!NOTE]
 > Im ESP-NOW-Betrieb müssen Master und Slave auf demselben WLAN-Kanal funken. Der Slave sucht die Kanäle nacheinander ab und übernimmt anschließend den Kanal, den der Master ihm mitteilt – der Kanal ergibt sich also aus dem WLAN, mit dem der Master verbunden ist, und muss nirgends eingestellt werden. Wechselt der Master den Kanal, beginnt der Slave nach wenigen Sekunden Funkstille automatisch von vorn zu suchen.
+
+## Skripte auf Slaves
+
+Ein Skript ist Lua-Text von höchstens 8 KB. Es definiert eine Funktion `frame(t, dt)`, die mit `px(x, y, r, g, b)`, `fill`, `clear` und `hsv` zeichnet, und kann die Einstellungen (`settings`) und die Werte (`v`) lesen, die der Master ihm gibt. Das Bild wird auf dem Slave berechnet, in einem eigenen Task, sodass ein langsames Skript weder den Funk noch das Panel aufhält.
+
+- **Übertragung:** Der Master sagt dem Slave alle 2 s, was laufen soll (`CMD_SET_SCRIPT`: an/aus, Helligkeit, Größe und Prüfsumme des Skripts) und welche Werte es lesen soll (`CMD_SET_SCRIPT_VALUES`). Hat der Slave das Skript nicht, fragt er danach (`CMD_REQUEST_SCRIPT`) und bekommt es in Stücken zu höchstens 224 Bytes, eines alle 20 ms (`CMD_SCRIPT_CHUNK`); er prüft die Prüfsumme des ganzen Textes, bevor er es ausführt, und fragt erneut, wenn ein Stück gefehlt hat. Der Slave meldet seinen Zustand bei Änderung und alle 5 s (`CMD_SCRIPT_STATUS`).
+- **Zustand:** `GET /api/slaves` zeigt je Slave, ob er Skripte kann (`scripts`), und solange eines läuft dessen Zustand, Bildrate, Bildzeit, Speicher, letzte Meldung und eine Prüfsumme des letzten Bildes (`script`).
+- **Grenzen:** Jeder Aufruf eines Skripts hat einen Speicherdeckel (auf einem Slave 32 KB) und ein Zeitbudget (40 ms). Ein Skript, das eines überschreitet oder drei Bilder in Folge (zehn in einer Minute) nicht schafft, wird gestoppt und gemeldet. Ein Slave, dessen Master 10 s lang schweigt, beendet sein Skript von selbst und dunkelt das Panel ab. Solange ein Skript läuft, ignoriert der Slave Befehle für Effekte, Elemente und Pixel.
+- **Sicherheit:** Ein Skript sieht nur sein eigenes Bild, die Einstellungen und die Werte. Es kommt weder an Dateien noch ans Netzwerk noch an sonstigen Zustand des Geräts.
+- **Geschwindigkeit (64×64-Panel):** rund 20 ms pro Bild für eine Flächenfüllung oder einen Verlauf (50 Bilder pro Sekunde), rund 70 ms für drei `sin`-Aufrufe je Pixel (14 Bilder pro Sekunde); ein Streifen mit 124 LEDs braucht unter 1 ms.
 
 ## Einrichtung
 

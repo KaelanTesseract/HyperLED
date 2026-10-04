@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/KaelanTesseract/HyperLED/plugins/plugin.schema.json",
+  "title": "HyperLED plugin (format 1)",
+  "description": "A HyperLED plugin file. The schema checks the shape and the limits; the controller additionally checks what a schema cannot: that every {placeholder} names a setting, that expressions compile, and that names used in rules are values or settings. Licence: EUPL-1.2.",
+  "type": "object",
+  "required": ["format", "id", "name", "version", "license", "source"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": 1, "description": "File format. Always 1." },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{1,32}$",
+      "description": "Unique name of the plugin; also the name of the file on the controller. Lower-case letters, digits, - and _, at most 32 characters."
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 40, "description": "What the person sees in the list." },
+    "version": { "type": "string", "minLength": 1, "maxLength": 16, "description": "For example 1.0.0. Installing a file with the same id replaces the installed plugin and keeps its settings." },
+    "author": { "type": "string", "maxLength": 60 },
+    "license": { "type": "string", "minLength": 1, "maxLength": 40, "description": "SPDX identifier, for example EUPL-1.2." },
+    "description": { "type": "string", "maxLength": 200, "description": "One or two sentences about what the plugin shows." },
+    "needs": { "$ref": "#/$defs/needs" },
+    "settings": {
+      "type": "array",
+      "maxItems": 16,
+      "items": { "$ref": "#/$defs/setting" },
+      "description": "What the person sets up. Keys must be unique; there may be one setting of type segment."
+    },
+    "source": { "$ref": "#/$defs/source" },
+    "values": {
+      "type": "object",
+      "maxProperties": 16,
+      "propertyNames": { "pattern": "^[a-z0-9_]{1,24}$", "not": { "enum": ["true", "false", "wahr", "falsch", "and", "or", "not", "und", "oder", "nicht", "round", "min", "max", "contains"] } },
+      "additionalProperties": { "$ref": "#/$defs/expression" },
+      "description": "Named values, each an expression over the answer of the source, for example \"current.temperature_2m\". A name may not be the key of a setting."
+    },
+    "rules": {
+      "type": "array",
+      "maxItems": 12,
+      "items": { "$ref": "#/$defs/rule" },
+      "description": "Checked from top to bottom; the first whose condition holds applies. If none holds, the segment stays as the person set it."
+    },
+    "on_error": { "$ref": "#/$defs/onError" },
+    "script": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192,
+      "description": "A Lua 5.4 script that draws the segment. Needs needs.script >= 1."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["script"] },
+      "then": {
+        "required": ["needs"],
+        "properties": { "needs": { "required": ["script"], "properties": { "script": { "minimum": 1 } } } }
+      }
+    },
+    {
+      "if": { "required": ["needs"], "properties": { "needs": { "required": ["script"], "properties": { "script": { "minimum": 1 } } } } },
+      "then": { "required": ["script"] }
+    }
+  ],
+  "$defs": {
+    "localized": {
+      "$comment": "Plain text, or one text per language (de, en, ru; other two-letter languages are accepted and ignored). A missing language falls back to German.",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "object", "propertyNames": { "pattern": "^[a-z]{2}$" }, "additionalProperties": { "type": "string" } }
+      ]
+    },
+    "needs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "api": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 1, "description": "Plugin interface level this plugin was written for." },
+        "firmware": { "type": "string", "maxLength": 16, "description": "Oldest firmware version that is enough, for example 0.2.004." },
+        "script": { "type": "integer", "minimum": 0, "maximum": 100, "default": 0, "description": "Script level the plugin needs; 0 or missing = no script." }
+      }
+    },
+    "setting": {
+      "type": "object",
+      "required": ["key", "type", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "type": "string", "pattern": "^[a-z0-9_]{1,24}$" },
+        "type": { "enum": ["text", "password", "number", "switch", "list", "color", "effect", "segment"] },
+        "label": {
+          "allOf": [
+            { "$ref": "#/$defs/localized" },
+            { "if": { "type": "string" }, "then": { "maxLength": 60 }, "else": { "additionalProperties": { "maxLength": 60 } } }
+          ]
+        },
+        "hint": {
+          "allOf": [
+            { "$ref": "#/$defs/localized" },
+            { "if": { "type": "string" }, "then": { "maxLength": 200 }, "else": { "additionalProperties": { "maxLength": 200 } } }
+          ]
+        },
+        "default": { "type": ["string", "number", "boolean"], "description": "Starting value. Must be valid for the type." },
+        "optional": { "type": "boolean", "default": false, "description": "An optional setting may stay empty; every other one must be filled in before the plugin can be switched on." },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "oneOf": [
+            { "items": { "type": "string", "maxLength": 60 } },
+            {
+              "items": {
+                "type": "object",
+                "required": ["value"],
+                "additionalProperties": false,
+                "properties": {
+                  "value": { "type": "string", "minLength": 1, "maxLength": 60 },
+                  "label": { "$ref": "#/$defs/localized" }
+                }
+              }
+            }
+          ],
+          "description": "For type list: the choices, as plain texts or as {value, label} objects (not mixed)."
+        }
+      },
+      "if": { "properties": { "type": { "const": "list" } }, "required": ["type"] },
+      "then": { "required": ["options"] }
+    },
+    "source": {
+      "type": "object",
+      "required": ["url"],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "pattern": "^https?://.+",
+          "maxLength": 300,
+          "description": "Where to ask (GET). {key} is replaced by the value of the setting with that key."
+        },
+        "every": { "type": "integer", "minimum": 2, "maximum": 3600, "default": 5, "description": "Seconds between two requests." },
+        "timeout": { "type": "integer", "minimum": 1, "maximum": 10, "default": 5, "description": "Seconds to wait for an answer." },
+        "header": {
+          "type": "object",
+          "maxProperties": 4,
+          "additionalProperties": { "type": "string" },
+          "description": "Extra request headers; a value may hold {key} placeholders (a header whose value is empty after that is left out)."
+        }
+      }
+    },
+    "expression": {
+      "$comment": "A number, or a text of at most 200 characters in the expression language of the plugin documentation.",
+      "oneOf": [
+        { "type": "number" },
+        { "type": "string", "minLength": 1, "maxLength": 200 }
+      ]
+    },
+    "effectName": {
+      "$comment": "The effects a plugin may use (by name, as in the web interface), or {key} of a setting of type effect. 'Nur Weiß', 'Bild' and 'Uhr / Text' are not available to plugins. New firmware may add effects; the controller is the judge.",
+      "anyOf": [
+        { "enum": ["Einfarbig", "Atmen", "Regenbogen", "Lauflicht", "Feuer", "Farbwisch", "Scanner", "Funkeln", "Meteor", "Matrix-Regen", "Stroboskop", "Prallen", "Paletten-Regenbogen", "Sinelon", "Konfetti", "Jonglieren", "BPM", "Theaterlicht Regenbogen", "Wanderlicht", "Farbwellen", "Plasma", "Kreiswellen", "Feuer (2D)", "Pacifica", "Feuerwerk", "Sternenfeld", "Springbälle"] },
+        { "type": "string", "pattern": "^\\{[a-z0-9_]{1,24}\\}$" }
+      ]
+    },
+    "show": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "effect": { "$ref": "#/$defs/effectName" },
+        "color": { "type": "string", "pattern": "^(#[0-9a-fA-F]{6}|\\{[a-z0-9_]{1,24}\\})$", "description": "#rrggbb, or {key} of a setting of type color." },
+        "speed": { "$ref": "#/$defs/expression", "description": "Percent, 0 to 100. Brightness is not available to plugins: the person's brightness slider stays literal." },
+        "intensity": { "$ref": "#/$defs/expression", "description": "Percent, 0 to 100." },
+        "value": { "$ref": "#/$defs/expression", "description": "Another name for intensity (not both)." },
+        "power": { "enum": ["on", "off"], "description": "Only with the person's permission." }
+      },
+      "not": { "required": ["intensity", "value"] }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["when", "show"],
+      "additionalProperties": false,
+      "properties": {
+        "when": { "$ref": "#/$defs/expression", "description": "A condition, for example \"state == 'printing'\"." },
+        "show": { "$ref": "#/$defs/show" }
+      }
+    },
+    "onError": {
+      "type": "object",
+      "required": ["show"],
+      "additionalProperties": false,
+      "properties": { "show": { "$ref": "#/$defs/show" } },
+      "description": "What to show while the source does not answer (three failed requests in a row)."
+    }
+  }
+}

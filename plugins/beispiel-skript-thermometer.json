@@ -1,0 +1,86 @@
+{
+  "format": 1,
+  "id": "beispiel-thermometer",
+  "name": "Beispiel: Thermometer (Skript)",
+  "version": "1.0.0",
+  "author": "HyperLED",
+  "license": "EUPL-1.2",
+  "description": "Ein Lua-Skript zeichnet ein Thermometer über das ganze Segment. Zum Lernen.",
+  "needs": {
+    "api": 1,
+    "script": 1
+  },
+  "settings": [
+    {
+      "key": "lat",
+      "type": "number",
+      "default": 52.52,
+      "min": -90,
+      "max": 90,
+      "label": {
+        "de": "Breitengrad",
+        "en": "Latitude",
+        "ru": "Широта"
+      }
+    },
+    {
+      "key": "lon",
+      "type": "number",
+      "default": 13.41,
+      "min": -180,
+      "max": 180,
+      "label": {
+        "de": "Längengrad",
+        "en": "Longitude",
+        "ru": "Долгота"
+      }
+    },
+    {
+      "key": "scale_min",
+      "type": "number",
+      "default": -10,
+      "min": -50,
+      "max": 50,
+      "label": {
+        "de": "Skala von (°C)",
+        "en": "Scale from (°C)",
+        "ru": "Шкала от (°C)"
+      }
+    },
+    {
+      "key": "scale_max",
+      "type": "number",
+      "default": 40,
+      "min": -50,
+      "max": 60,
+      "label": {
+        "de": "Skala bis (°C)",
+        "en": "Scale to (°C)",
+        "ru": "Шкала до (°C)"
+      }
+    },
+    {
+      "key": "segment",
+      "type": "segment",
+      "label": {
+        "de": "Segment",
+        "en": "Segment",
+        "ru": "Сегмент"
+      }
+    }
+  ],
+  "source": {
+    "url": "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m",
+    "every": 600
+  },
+  "values": {
+    "temp": "current.temperature_2m"
+  },
+  "on_error": {
+    "show": {
+      "effect": "Atmen",
+      "color": "#ffffff"
+    }
+  },
+  "script": "-- Thermometer: a bar over the whole segment, blue when it is cold and red when it is warm.\n-- v.temp is the temperature the plugin read; settings.scale_min / scale_max are the ends of the scale.\nfps = 10  -- a bar that changes every few minutes does not need more\n\nlocal lo = settings.scale_min or -10\nlocal hi = settings.scale_max or 40\n\nfunction frame(t)\n  clear()\n  local temp = v.temp\n  if temp == nil then\n    -- no value yet: one dim dot runs along the segment\n    px(math.floor(t / 100) % W, 0, 40, 40, 40)\n    return\n  end\n  local share = (temp - lo) / (hi - lo)\n  if share < 0 then share = 0 elseif share > 1 then share = 1 end\n  local filled = math.floor(share * W + 0.5)\n  local r, g, b = hsv(240 - math.floor(share * 240), 255, 255)\n  for y = 0, H - 1 do\n    for x = 0, filled - 1 do\n      px(x, y, r, g, b)\n    end\n  end\nend\n"
+}

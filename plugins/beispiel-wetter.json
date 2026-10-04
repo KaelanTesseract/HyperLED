@@ -1,0 +1,159 @@
+{
+  "format": 1,
+  "id": "beispiel-wetter",
+  "name": "Beispiel: Wetter-Farbe",
+  "version": "1.0.0",
+  "author": "HyperLED",
+  "license": "EUPL-1.2",
+  "description": "Färbt ein Segment nach der Außentemperatur eines Ortes (Open-Meteo, ohne Anmeldung).",
+  "needs": {
+    "api": 1
+  },
+  "settings": [
+    {
+      "key": "lat",
+      "type": "number",
+      "default": 52.52,
+      "min": -90,
+      "max": 90,
+      "label": {
+        "de": "Breitengrad",
+        "en": "Latitude",
+        "ru": "Широта"
+      },
+      "hint": {
+        "de": "Zum Beispiel 52.52 für Berlin",
+        "en": "For example 52.52 for Berlin",
+        "ru": "Например, 52.52 для Берлина"
+      }
+    },
+    {
+      "key": "lon",
+      "type": "number",
+      "default": 13.41,
+      "min": -180,
+      "max": 180,
+      "label": {
+        "de": "Längengrad",
+        "en": "Longitude",
+        "ru": "Долгота"
+      },
+      "hint": {
+        "de": "Zum Beispiel 13.41 für Berlin",
+        "en": "For example 13.41 for Berlin",
+        "ru": "Например, 13.41 для Берлина"
+      }
+    },
+    {
+      "key": "cold",
+      "type": "number",
+      "default": 5,
+      "min": -50,
+      "max": 50,
+      "label": {
+        "de": "Kalt bis (°C)",
+        "en": "Cold up to (°C)",
+        "ru": "Холодно до (°C)"
+      }
+    },
+    {
+      "key": "warm",
+      "type": "number",
+      "default": 22,
+      "min": -50,
+      "max": 60,
+      "label": {
+        "de": "Warm ab (°C)",
+        "en": "Warm from (°C)",
+        "ru": "Тепло от (°C)"
+      }
+    },
+    {
+      "key": "c_cold",
+      "type": "color",
+      "default": "#0066ff",
+      "label": {
+        "de": "Farbe bei Kälte",
+        "en": "Colour when cold",
+        "ru": "Цвет при холоде"
+      }
+    },
+    {
+      "key": "c_mild",
+      "type": "color",
+      "default": "#00cc66",
+      "label": {
+        "de": "Farbe dazwischen",
+        "en": "Colour in between",
+        "ru": "Цвет посередине"
+      }
+    },
+    {
+      "key": "c_warm",
+      "type": "color",
+      "default": "#ff3300",
+      "label": {
+        "de": "Farbe bei Wärme",
+        "en": "Colour when warm",
+        "ru": "Цвет при тепле"
+      }
+    },
+    {
+      "key": "fx_warm",
+      "type": "effect",
+      "default": "Atmen",
+      "label": {
+        "de": "Effekt bei Wärme",
+        "en": "Effect when warm",
+        "ru": "Эффект при тепле"
+      }
+    },
+    {
+      "key": "segment",
+      "type": "segment",
+      "label": {
+        "de": "Segment",
+        "en": "Segment",
+        "ru": "Сегмент"
+      }
+    }
+  ],
+  "source": {
+    "url": "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,wind_speed_10m",
+    "every": 600
+  },
+  "values": {
+    "temp": "current.temperature_2m",
+    "wind": "current.wind_speed_10m"
+  },
+  "rules": [
+    {
+      "when": "temp <= cold",
+      "show": {
+        "effect": "Einfarbig",
+        "color": "{c_cold}"
+      }
+    },
+    {
+      "when": "temp >= warm",
+      "show": {
+        "effect": "{fx_warm}",
+        "color": "{c_warm}",
+        "speed": "20 + wind"
+      }
+    },
+    {
+      "when": "temp > cold and temp < warm",
+      "show": {
+        "effect": "Einfarbig",
+        "color": "{c_mild}"
+      }
+    }
+  ],
+  "on_error": {
+    "show": {
+      "effect": "Atmen",
+      "color": "#ffffff"
+    }
+  }
+}

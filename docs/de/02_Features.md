@@ -8,6 +8,7 @@ HyperLED bietet eine riesige Bandbreite an Funktionen, die das System sowohl fü
 * **Segmente:** Teile einen einzelnen LED-Streifen in mehrere virtuelle Zonen auf. Jede Zone kann einen eigenen Effekt, eine eigene Farbe und Geschwindigkeit haben.
 * **Presets & Playlists:** Speichere komplette Lichtstimmungen als Preset und lass mehrere Presets automatisch nacheinander abspielen.
 * **Zeitpläne:** Schalte Effekte oder Presets zeitgesteuert (zeitzonenbewusst über NTP).
+* **Plugins:** Kleine Dateien holen einen Wert aus dem Netzwerk (Druckfortschritt, Temperatur, Dienstzustand …) und zeigen ihn auf einem Segment an – ohne Firmware-Update, mit Vorschau vor der Installation, Einstellungsseite, Live-Werten und auf Wunsch einem Lua-Skript, das das Segment Pixel für Pixel zeichnet (auch auf Slaves). Siehe [Plugins nutzen](09_Plugins_nutzen.md).
 
 ## Matrix & Widgets
 * **2D-Matrix-Unterstützung:** Serpentine- und fortlaufendes Layout, inklusive HUB75-Scan-Matrix-Panels.

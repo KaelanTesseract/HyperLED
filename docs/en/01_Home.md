@@ -14,3 +14,6 @@ HyperLED combines a fast, visually striking web interface with a robust Master/S
 4. [The Web Interface (incl. MQTT)](05_Web_Interface.md)
 5. [Master/Slave Architecture](07_Master_Slave_Architektur.md)
 6. [API Reference](08_API_Referenz.md)
+7. [Using Plugins](09_Plugins_nutzen.md)
+8. [Developing Plugins](10_Plugins_entwickeln.md)
+9. [Plugin Scripts (Lua)](11_Plugin_Skripte.md)

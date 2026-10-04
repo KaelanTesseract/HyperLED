@@ -1,0 +1,46 @@
+{
+  "format": 1,
+  "id": "beispiel-minimal",
+  "name": "Beispiel: warm oder kalt",
+  "version": "1.0.0",
+  "author": "HyperLED",
+  "license": "EUPL-1.2",
+  "description": "Zeigt rot, wenn es in Berlin über 25 Grad warm ist, sonst blau. Zum Lernen.",
+  "needs": {
+    "api": 1
+  },
+  "settings": [
+    {
+      "key": "segment",
+      "type": "segment",
+      "label": {
+        "de": "Segment",
+        "en": "Segment",
+        "ru": "Сегмент"
+      }
+    }
+  ],
+  "source": {
+    "url": "https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&current=temperature_2m",
+    "every": 600
+  },
+  "values": {
+    "temp": "current.temperature_2m"
+  },
+  "rules": [
+    {
+      "when": "temp > 25",
+      "show": {
+        "effect": "Einfarbig",
+        "color": "#ff3300"
+      }
+    },
+    {
+      "when": "temp <= 25",
+      "show": {
+        "effect": "Einfarbig",
+        "color": "#0066ff"
+      }
+    }
+  ]
+}
