@@ -94,8 +94,8 @@ S3). Gemeinsame Datei in beiden Repositories: `include/ChipId.h` (Chip-Name, Ken
 - [x] Am Gerät geprüft (Slave HUB75 und Slave 1 UART, Master 0.3.005): `{chip}` wird eingesetzt; ein Image mit falscher Kennung wird
       abgewiesen (der Slave fragt die Datei nur zweimal an, lädt sie aber nicht); mit passender Kennung läuft das Update (dreimal);
       der Master löst `{chip}` für den alten Slave 185 selbst auf, und beide Slaves kommen auf 0.3.005
-- [ ] Commit, Push und Releases 0.3.005 (Slave zuerst, dann Master)
-- [ ] Prüfung über „Geräte jetzt aktualisieren“ aus dem veröffentlichten Slave-Release (der Master holt `firmware-{chip}.bin`)
+- [x] Commit, Push und Releases 0.3.005 (Slave zuerst, dann Master)
+- [x] Prüfung über „Geräte jetzt aktualisieren“ aus dem veröffentlichten Slave-Release (der Master holt `firmware-{chip}.bin`): beide Slaves verschwanden nach dem Aufruf für etwa zehn Sekunden vom Funk und kamen mit 0.3.005 zurück (Download selbst nicht einsehbar, die Slaves haben keine Konsole am Rechner)
 - [ ] Für einen Slave mit anderem Chip (C6): in Phase 4 mit dem ersten C6-Slave durchspielen
 
 ## Phase 4: ESP32-C6
