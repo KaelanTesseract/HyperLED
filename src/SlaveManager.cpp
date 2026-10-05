@@ -418,11 +418,35 @@ static bool versionSealsUpdate(const String& version) {
     return (minor == 2 && patch >= 8);
 }
 
+// A Slave fills {chip} in the address of its update with its own chip from 0.3.005 on. Older ones
+// do not know the word; they are all ESP32-S3, so the Master writes that in for them.
+static bool versionFillsChipIn(const String& version) {
+    int firstDot = version.indexOf('.');
+    if (firstDot < 0) return false;
+    int secondDot = version.indexOf('.', firstDot + 1);
+    if (secondDot < 0) return false;
+    long major = version.substring(0, firstDot).toInt();
+    long minor = version.substring(firstDot + 1, secondDot).toInt();
+    long patch = version.substring(secondDot + 1).toInt();
+    if (major > 0) return true;
+    if (minor > 3) return true;
+    return (minor == 3 && patch >= 5);
+}
+
+static String urlForSlave(const String& url, const String& slaveVersion) {
+    String out = url;
+    if (!versionFillsChipIn(slaveVersion)) out.replace("{chip}", "esp32s3");
+    return out;
+}
+
 SlaveManagerClass::UpdateStart SlaveManagerClass::triggerSlaveUpdate(uint8_t slaveId, const String& ssid,
                                                                      const String& pass, const String& url) {
     Guard guard(_lock);
     UpdateStart result;
-    if (url.length() > UPDATE_SEAL_MAX_URL || ssid.length() > 32 || pass.length() > 64) {
+    // The longest form an address can take: with {chip} written out for an older Slave.
+    String longest = url;
+    longest.replace("{chip}", "esp32s3");
+    if (longest.length() > UPDATE_SEAL_MAX_URL || url.length() > UPDATE_SEAL_MAX_URL || ssid.length() > 32 || pass.length() > 64) {
         result.urlTooLong = true;
         Serial.printf("SlaveUpdate: URL (%u bytes) or credentials too long for a sealed update\n",
                       (unsigned)url.length());
@@ -433,10 +457,11 @@ SlaveManagerClass::UpdateStart SlaveManagerClass::triggerSlaveUpdate(uint8_t sla
     endSealedUpdate();
 
     // Older Slaves only understand the plain JSON. They get it over the cable, never over the air.
+    // They are all ESP32-S3, and none of them fills {chip} in.
     JsonDocument doc;
     doc["ssid"] = ssid;
     doc["pass"] = pass;
-    doc["url"] = url;
+    doc["url"] = longest;
     String legacyJson;
     serializeJson(doc, legacyJson);
 
@@ -445,6 +470,7 @@ SlaveManagerClass::UpdateStart SlaveManagerClass::triggerSlaveUpdate(uint8_t sla
         if (versionSealsUpdate(s.version)) {
             SealedUpdate u;
             u.slaveId = s.currentId;
+            u.url = urlForSlave(url, s.version);
             _sealedUpdates.push_back(u);
             result.sealed++;
         } else if (!s.isWireless) {
@@ -472,7 +498,6 @@ SlaveManagerClass::UpdateStart SlaveManagerClass::triggerSlaveUpdate(uint8_t sla
         } else {
             _updateSsid = ssid;
             _updatePass = pass;
-            _updateUrl = url;
             _updateStarted = millis();
         }
     }
@@ -522,10 +547,10 @@ void SlaveManagerClass::sendSealedUpdate(SealedUpdate& u) {
     plainLen += _updatePass.length();
 
     uint8_t payload[2 + UPDATE_SEAL_MAX_URL + sizeof(plain) + UpdateSeal::OVERHEAD];
-    size_t aadLen = 2 + _updateUrl.length();
+    size_t aadLen = 2 + u.url.length();
     payload[0] = UPDATE_SEAL_FORMAT;
-    payload[1] = _updateUrl.length();
-    memcpy(payload + 2, _updateUrl.c_str(), _updateUrl.length());
+    payload[1] = u.url.length();
+    memcpy(payload + 2, u.url.c_str(), u.url.length());
     bool ok = UpdateSeal::seal(key, payload, aadLen, plain, plainLen, payload + aadLen);
     UpdateSeal::wipe(plain, sizeof(plain));
     UpdateSeal::wipe(key, sizeof(key));
@@ -577,7 +602,7 @@ void SlaveManagerClass::endSealedUpdate() {
     if (_updatePass.length()) UpdateSeal::wipe(&_updatePass[0], _updatePass.length());
     _updateSsid = "";
     _updatePass = "";
-    _updateUrl = "";
+
 }
 
 // Local rendering arrived in Slave firmware 0.2.0. Anything older only understands streamed

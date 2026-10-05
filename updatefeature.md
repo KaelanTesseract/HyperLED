@@ -80,14 +80,23 @@ Ein Image für den falschen Chip kann ein Gerät lahmlegen. Der Kopf der Datei n
 
 ## Phase 3: Slaves
 
-- [ ] Frage klären: Wie erfährt der Master den Chip eines Slaves? Zwei Wege: (a) der Slave meldet ihn
-      im Ping/Pong (neues Feld, Protokolländerung in beiden Repos), (b) der Master schickt die URL der
-      `firmware-esp32s3.bin`, und der Slave ersetzt den Namen selbst durch `firmware-<chip>.bin` (keine
-      Protokolländerung). Empfehlung: (b)
+Entscheidung (2026-10-06): Weg (b). Der Master schickt die Adresse mit dem Wort `{chip}`
+(`…/firmware-{chip}.bin`), und der Slave setzt seinen eigenen Chip ein; das Funkprotokoll bleibt, wie es ist.
+Ein Slave unter 0.3.005 kennt das Wort nicht. Für ihn schreibt der Master `esp32s3` ein (alle alten Slaves sind
+S3). Gemeinsame Datei in beiden Repositories: `include/ChipId.h` (Chip-Name, Kennung und die Prüfung).
+
 - [x] Release-Datei der Slave-Firmware heißt `firmware-esp32s3.bin` (ab 0.3.002, kein alter Name)
-- [x] Master baut die Slave-URL (`src/AppWebServer.cpp`, `/api/slaves/update`) auf diesen Namen (alle Slaves sind bisher S3)
-- [ ] Für Slaves mit anderem Chip: den Dateinamen nach Weg (b) setzen lassen
-- [ ] Chip-Prüfung (Phase 2) auch im Slave
+- [x] Master baut die Slave-Adresse mit `{chip}` (`src/AppWebServer.cpp`) und löst sie je Slave auf (`SlaveManager::triggerSlaveUpdate`:
+      Slave ab 0.3.005 setzt selbst ein, ein älterer bekommt `esp32s3`; auch beim alten Kabelweg)
+- [x] Slave setzt `{chip}` ein und prüft vor dem Schreiben die ersten 16 Bytes der Datei (`performOtaUpdate`); bei falschem Chip
+      oder nicht lesbarer Datei startet er ohne Update neu
+- [x] `include/ChipId.h` in beiden Repositories (identisch), Master-Code darauf umgestellt; beide Firmwares 0.3.005
+- [x] Am Gerät geprüft (Slave HUB75 und Slave 1 UART, Master 0.3.005): `{chip}` wird eingesetzt; ein Image mit falscher Kennung wird
+      abgewiesen (der Slave fragt die Datei nur zweimal an, lädt sie aber nicht); mit passender Kennung läuft das Update (dreimal);
+      der Master löst `{chip}` für den alten Slave 185 selbst auf, und beide Slaves kommen auf 0.3.005
+- [ ] Commit, Push und Releases 0.3.005 (Slave zuerst, dann Master)
+- [ ] Prüfung über „Geräte jetzt aktualisieren“ aus dem veröffentlichten Slave-Release (der Master holt `firmware-{chip}.bin`)
+- [ ] Für einen Slave mit anderem Chip (C6): in Phase 4 mit dem ersten C6-Slave durchspielen
 
 ## Phase 4: ESP32-C6
 

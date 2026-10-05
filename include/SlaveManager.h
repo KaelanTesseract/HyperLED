@@ -180,6 +180,7 @@ private:
         unsigned long lastOffer = 0;
         unsigned long keyAt = 0;
         uint8_t slavePub[UpdateSeal::PUBLIC_LEN];
+        String url;  // the address this Slave is told: {chip} left to it or already filled in
     };
     static const uint8_t UPDATE_KEY_OFFERS = 5;
     static const unsigned long UPDATE_KEY_RETRY_MS = 1000;
@@ -187,7 +188,7 @@ private:
     static const unsigned long UPDATE_KEY_SETTLE_MS = 500;
     std::vector<SealedUpdate> _sealedUpdates;
     UpdateSeal::KeyPair _updateKeys;
-    String _updateSsid, _updatePass, _updateUrl;
+    String _updateSsid, _updatePass;
     unsigned long _updateStarted = 0;
     void handleUpdateKey(const HyperBusPacket& packet);
     void pumpSealedUpdates();
