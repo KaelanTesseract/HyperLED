@@ -36,6 +36,8 @@ struct DiscoveredSlave {
     String version;
     unsigned long lastSeen;
     bool isWireless;
+    // When this Slave was last sent a keep-alive PING of its own (see SlaveManagerClass::loop).
+    unsigned long lastKeepAlive = 0;
     // Set from the reported firmware version - see slaveRendersLocally().
     bool rendersLocally = false;
     // Set from the reported firmware version - see slaveRendersWidgets(). A Slave can render
@@ -368,6 +370,11 @@ private:
         bool valid = false;
     };
     static const unsigned long SEGMENT_REFRESH_MS = 2000;
+    // How often a wireless Slave gets a PING addressed to it alone. The broadcast PING goes out
+    // every 250ms and finds Slaves that scan for the channel; this one only has to keep a Slave
+    // that misses broadcasts (power save) reporting, and a Slave counts the Master as lost only
+    // after 5s of silence, the Master a Slave after 15s - so once a second is plenty.
+    static const unsigned long KEEPALIVE_MS = 1000;
     std::map<uint8_t, SentSegment> _sentSegments;
 
     // Same idea as SentSegment/_sentSegments, but for CMD_SET_WIDGETS: the payload is variable

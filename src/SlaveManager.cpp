@@ -106,9 +106,12 @@ void SlaveManagerClass::loop() {
         // Broadcast PING for discovery
         _espBus->sendPacket(HYPERBUS_BROADCAST_ID, HYPERBUS_MASTER_ID, CMD_PING, pingPayload, 1);
 
-        // Unicast PING for keep-alive (since Broadcasts drop in Power Save mode)
-        for (const auto& s : _discoveredSlaves) {
-            if (s.isWireless) {
+        // Unicast PING for keep-alive (since Broadcasts drop in Power Save mode). A unicast frame
+        // is acknowledged and retried by the radio, so it holds a place in the send queue longer
+        // than a broadcast - and it does not need to come as often as the discovery PING above.
+        for (auto& s : _discoveredSlaves) {
+            if (s.isWireless && now - s.lastKeepAlive >= KEEPALIVE_MS) {
+                s.lastKeepAlive = now;
                 _espBus->sendPacket(s.currentId, HYPERBUS_MASTER_ID, CMD_PING, pingPayload, 1);
             }
         }
@@ -789,6 +792,11 @@ bool SlaveManagerClass::getSlavePanelSize(uint8_t slaveId, uint16_t& w, uint16_t
     return false;
 }
 
+// Effects whose picture is the same whatever the step counter says (see sendSegmentConfig).
+static bool effectIgnoresStep(uint8_t effect) {
+    return effect == 0;  // solid colour
+}
+
 void SlaveManagerClass::sendSegmentConfig(uint8_t slaveId, uint8_t effect, uint8_t brightness,
                                           uint8_t speed, uint8_t intensity, uint8_t palette,
                                           bool isOn, uint32_t color, uint32_t color2,
@@ -827,8 +835,11 @@ void SlaveManagerClass::sendSegmentConfig(uint8_t slaveId, uint8_t effect, uint8
                    || memcmp(&sent.payload[15], &payload[15], 4) != 0;
     // In sync mode the step counter has to travel every frame, otherwise the Master and the Slave
     // advance the same effect on their own clocks and the pattern tears at the segment boundary -
-    // exactly what sync is meant to prevent. It is 19 bytes, so the traffic is negligible.
-    if (windowTotal == 0 && !changed && now - sent.lastSent < SEGMENT_REFRESH_MS) return;
+    // exactly what sync is meant to prevent. Unless the picture does not depend on the step at
+    // all (a solid colour, or off): then there is nothing to keep in step, and the packet only
+    // has to go out when something changed and as the refresh every two seconds.
+    bool stepMatters = windowTotal != 0 && isOn && !effectIgnoresStep(effect);
+    if (!stepMatters && !changed && now - sent.lastSent < SEGMENT_REFRESH_MS) return;
 
     memcpy(sent.payload, payload, HYPERBUS_SEGMENT_PAYLOAD_LEN);
     sent.lastSent = now;
