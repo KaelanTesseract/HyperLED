@@ -16,9 +16,15 @@ die Absicherung (Phase 2), dann die Slaves (Phase 3) und zuletzt der Chip selbst
   aktualisieren will, scheitert (es sucht `firmware.bin`), und weil seine alte Fassung das Dateisystem
   vor der Firmware ersetzt, bliebe es mit neuer Weboberfläche auf alter Firmware zurück. Solche Geräte
   müssen von Hand aktualisiert werden (USB oder Lokales Update).
-- Das Dateisystem heißt weiter `littlefs.bin` und ist chipunabhängig, solange die Partitionstabelle
-  gleich bleibt (4 MB, Dateisystem 704 KB). Wird sie beim C6 anders, bekommt es dort einen eigenen
-  Namen (`littlefs-<chip>.bin`).
+- Das Dateisystem heißt weiter `littlefs.bin` (Entscheidung vom 2026-10-06, Frage „umbenennen?“). Es ist
+  chipunabhängig, solange die Partitionstabelle gleich bleibt (4 MB, Dateisystem 704 KB) und die
+  Weboberfläche für beide Chips gleich ist. Das Image trägt keine Chip-Kennung, eine Prüfung wie bei
+  der Firmware (Phase 2) ist dort nicht möglich. Die Weboberfläche nennt aber feste S3-Pins (zum
+  Beispiel „Eingang 1 (Pin 39)“, HUB75-Pinbelegung). Sobald sich beim C6 die Partitionstabelle oder
+  die Weboberfläche unterscheidet, bekommt es dort einen eigenen Namen `littlefs-<chip>.bin`, und die
+  Firmware sucht erst diesen, dann `littlefs.bin` (Rückfall), damit die S3-Geräte nichts merken.
+  Eine Umbenennung jetzt hieße: Release 0.3.003 und alle drei Geräte noch einmal flashen, weil die
+  Geräte mit 0.3.002 `littlefs.bin` suchen.
 - Fehlt im Release die Datei für den Chip, bricht das Update ab, **bevor** etwas überschrieben wird
   (Status `error_nofw`), damit nie eine neue Weboberfläche auf einer alten Firmware landet.
 - Slaves: Der Master baut die Download-Adresse der Slave-Firmware auf `firmware-esp32s3.bin`
@@ -81,6 +87,7 @@ für den C6 gebaut):
 Schritte:
 
 - [ ] Klären: Steht ein ESP32-C6-Board zum Testen zur Verfügung?
+- [ ] Dateisystem: gleiche Partitionstabelle und gleiche Weboberfläche wie beim S3? Sonst `littlefs-<chip>.bin`
 - [ ] Build-Umgebung `esp32-c6` in `platformio.ini` (pioarduino-Plattform)
 - [ ] Slave für den C6 **nur kompilieren**, Fehlerliste festhalten
 - [ ] Master für den C6 **nur kompilieren**, Fehlerliste festhalten
