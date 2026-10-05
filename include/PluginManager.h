@@ -30,6 +30,7 @@
 #include "PluginRun.h"
 #include "ScriptHost.h"
 #include "ScriptWire.h"
+#include "TextVariables.h"
 
 // Plugins: JSON files that read a source on the network and show the result on one segment.
 // See docs/en/10_Plugins_entwickeln.md.
@@ -163,6 +164,12 @@ private:
     std::shared_ptr<PluginInstance> find(const String& id);
     String segmentOwner(const String& segment, const String& exceptId);
     String problemWith(const PluginInstance& p, const std::vector<PluginRun::SettingValue>& values);
+
+    // Makes the values of the running plugins available as text variables "<id>.<value>" (see
+    // TextVariables.h), so a Text or Lauftext element can show them as {<id>.<value>}. Main loop, under
+    // _lock. Only a plugin that is switched on, running and has data counts, and only a value that is
+    // known: anything else shows "--" - a stale value would pretend to be fresh.
+    void publishTextVariables();
 
     // running (Task 9)
     static void taskEntry(void* self);

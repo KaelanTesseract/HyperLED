@@ -25,6 +25,7 @@
 #include "PluginJson.h"
 #include "MasterScripts.h"
 #include "SlaveManager.h"
+#include "TextVariables.h"
 #include <esp_rom_crc.h>
 
 
@@ -479,7 +480,32 @@ void PluginManagerClass::loop() {
     }
     _pendingScriptStop.clear();
     for (auto& p : _plugins) apply(*p);
+    publishTextVariables();
     xSemaphoreGiveRecursive(_lock);
+}
+
+// A value as text for a placeholder: control characters (a source is not trusted) become spaces, and
+// it is cut to what a text element can show.
+static String textForPlaceholder(const String& text) {
+    String out = text.length() > TextTemplate::MAX_RESULT ? text.substring(0, TextTemplate::MAX_RESULT) : text;
+    for (size_t i = 0; i < out.length(); i++) {
+        uint8_t c = (uint8_t)out[i];
+        if (c < 0x20 || c == 0x7F) out.setCharAt(i, ' ');
+    }
+    return out;
+}
+
+void PluginManagerClass::publishTextVariables() {
+    std::map<String, String> all;
+    for (auto& p : _plugins) {
+        if (!p->valid || !p->enabled || p->state != PluginState::Running || !p->haveData) continue;
+        for (size_t i = 0; i < p->def.values.size() && i < p->results.size(); i++) {
+            const PluginExpr::Value& v = p->results[i];
+            if (!v.known()) continue;
+            all[p->id + "." + p->def.values[i].name] = textForPlaceholder(v.toText());
+        }
+    }
+    TextVariables.set(std::move(all));  // counts as a change only when something differs
 }
 
 // ---------------------------------------------------------------------------------------------

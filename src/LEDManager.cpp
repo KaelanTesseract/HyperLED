@@ -25,6 +25,7 @@
 #include "WeatherIcons.h"
 #include "WeatherManager.h"
 #include "WidgetRender.h"
+#include "TextVariables.h"
 #include <LittleFS.h>
 #include <math.h>
 #include <esp_rom_crc.h>
@@ -1523,8 +1524,9 @@ void LEDManagerClass::effectText(Segment& seg, uint8_t ablCap, uint16_t skipMask
         spec.speed = tw.speed;
         spec.width = tw.imgW;
         spec.height = tw.imgH;
-        spec.text = tw.text.c_str();
-        spec.textLen = (uint16_t)tw.text.length();
+        const String& shownT = shownText(tw);
+        spec.text = shownT.c_str();
+        spec.textLen = (uint16_t)shownT.length();
         spec.img = tw.imgData.empty() ? nullptr : tw.imgData.data();
         spec.imgLen = tw.imgData.size();
         spec.bri = tw.bri;
@@ -1773,6 +1775,8 @@ void LEDManagerClass::setTextWidgets(uint8_t segId, JsonArray widgets) {
     triggerSave();
 }
 
+// Always the template (`text`), never the text with its placeholders filled in: this is what the web
+// interface edits and sends back.
 void LEDManagerClass::getTextWidgetsJson(uint8_t segId, JsonArray array) const {
     if (segId >= _segments.size()) return;
     for (const auto& tw : _segments[segId].textWidgets) {
@@ -1794,6 +1798,28 @@ void LEDManagerClass::getTextWidgetsJson(uint8_t segId, JsonArray array) const {
     }
 }
 
+static uint32_t hashText(const String& s) {  // FNV-1a
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < s.length(); i++) {
+        h ^= (uint8_t)s[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+const String& LEDManagerClass::shownText(const TextWidget& tw) {
+    if (tw.type != WidgetRender::TYPE_TEXT && tw.type != WidgetRender::TYPE_MARQUEE) return tw.text;
+    if (tw.text.indexOf('{') < 0) return tw.text;
+    uint32_t generation = TextVariables.generation();
+    uint32_t hash = hashText(tw.text);
+    if (tw.shownGen != generation || tw.shownHash != hash) {
+        tw.shown = TextVariables.expand(tw.text);
+        tw.shownGen = generation;
+        tw.shownHash = hash;
+    }
+    return tw.shown;
+}
+
 uint16_t LEDManagerClass::localWidgetMask(const std::vector<TextWidget>& widgets, bool allTypes) {
     uint16_t mask = 0;
     size_t total = HYPERBUS_WIDGET_HEADER_LEN;
@@ -1806,7 +1832,7 @@ uint16_t LEDManagerClass::localWidgetMask(const std::vector<TextWidget>& widgets
         if (!allTypes && !textual) continue;
         // +2: the element's brightness and legibility bytes behind the entries.
         size_t entrySize = (allTypes ? HYPERBUS_WIDGET_ENTRY_V2_FIXED_LEN : HYPERBUS_WIDGET_ENTRY_FIXED_LEN) +
-                           (textual ? tw.text.length() : 0) + 2;
+                           (textual ? shownText(tw).length() : 0) + 2;
         // Rare (a lot of text over ESP-NOW's 240-byte cap): stop rather than build a payload nothing
         // could send. Whatever already fit still goes over; the rest stays with the Master.
         if (total + entrySize > HYPERBUS_WIDGETS_MAX_PAYLOAD) break;
@@ -1835,7 +1861,8 @@ uint16_t LEDManagerClass::serializeWidgetsForSlave(const std::vector<TextWidget>
         if (!(mask & (1u << i))) continue;
         const TextWidget& tw = widgets[i];
         bool textual = (tw.type == WidgetRender::TYPE_TEXT || tw.type == WidgetRender::TYPE_MARQUEE);
-        uint8_t textLen = textual ? (uint8_t)tw.text.length() : 0;
+        const String& shownT = shownText(tw);
+        uint8_t textLen = textual ? (uint8_t)shownT.length() : 0;
         // localWidgetMask() already sized the selection to fit; this only guards against the list
         // changing in between. The two trailing bytes of this and every earlier entry come after.
         if (len + fixedLen + textLen + 2 * ((size_t)count + 1) > HYPERBUS_WIDGETS_MAX_PAYLOAD) break;
@@ -1867,7 +1894,7 @@ uint16_t LEDManagerClass::serializeWidgetsForSlave(const std::vector<TextWidget>
             out[len++] = (uint8_t)((crc >> 24) & 0xFF);
         }
         out[len++] = textLen;
-        if (textLen > 0) memcpy(&out[len], tw.text.c_str(), textLen);
+        if (textLen > 0) memcpy(&out[len], shownT.c_str(), textLen);
         len += textLen;
         count++;
     }

@@ -32,6 +32,7 @@
 #include "StatusLedManager.h"
 #include "LoopWatch.h"
 #include "LogRing.h"
+#include "TextVariables.h"
 #include "esp_task_wdt.h"
 
 void setup() {
@@ -47,6 +48,7 @@ void setup() {
     Serial.println("HyperLED Starting...");
 
     LoopWatch.begin();
+    TextVariables.begin();  // before anything that draws text or provides values
 
     LEDManager.begin();
     StatusLedManager.begin();

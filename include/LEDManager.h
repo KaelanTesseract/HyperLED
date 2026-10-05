@@ -122,6 +122,12 @@ struct TextWidget {
     // compares it with what it holds and asks for the pixels when they differ - see
     // CMD_REQUEST_WIDGET_IMAGE. Kept in step with imgData wherever that changes.
     uint32_t imgCrc = 0;
+    // The text as it is shown: {name.part} placeholders filled in (see TextVariables.h). Runtime only
+    // - what is stored and sent to the web interface is always `text`, the template. Mutable so that
+    // a const widget can keep it; see LEDManagerClass::shownText().
+    mutable String shown;
+    mutable uint32_t shownGen = 0;   // the TextVariables generation `shown` was made for
+    mutable uint32_t shownHash = 0;  // a hash of the template it was made from
 };
 
 // An effect drawn behind a panel's "Uhr / Text" elements.
@@ -294,6 +300,10 @@ public:
     // SlaveManager::slaveRendersAllWidgets). Then the only elements left to the Master are those
     // that did not fit into the payload.
     static uint16_t localWidgetMask(const std::vector<TextWidget>& widgets, bool allTypes);
+    // What a text or Lauftext element shows: its text with the placeholders filled in. The common
+    // case - no '{' in the text - returns the text itself; otherwise the result is kept in the
+    // widget until the template or a variable changes, so drawing does not allocate every frame.
+    static const String& shownText(const TextWidget& tw);
     // Writes the CMD_SET_WIDGETS payload for the widgets selected by `mask` into `out`, which must
     // hold HYPERBUS_WIDGETS_MAX_PAYLOAD bytes, and returns its length. masterLayer tells the Slave
     // that a streamed frame covers the rest of the panel (see HYPERBUS_WIDGET_FLAG_MASTER_LAYER).
