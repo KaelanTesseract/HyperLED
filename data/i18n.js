@@ -531,7 +531,7 @@ const translations = {
         // Plugins
         "tab_plugins": "Plugins",
         "plugin_add": "+ Plugin hinzufügen",
-        "plugin_intro": "Ein Plugin holt einen Wert aus dem Netzwerk, zum Beispiel vom 3D-Drucker, und zeigt ihn auf einem Segment an.",
+        "plugin_intro": "Plugins erweitern HyperLED um eigene Funktionen. Ein Plugin kann Daten aus dem Netzwerk lesen, daraus Regeln ableiten, ein Segment steuern oder es mit einem eigenen Skript selbst zeichnen.",
         "plugin_state_off": "Aus",
         "plugin_state_waiting": "Wartet auf Antwort",
         "plugin_state_running": "Läuft",
@@ -1123,7 +1123,7 @@ const translations = {
         // Plugins
         "tab_plugins": "Plugins",
         "plugin_add": "+ Add plugin",
-        "plugin_intro": "A plugin reads a value from the network, for example from a 3D printer, and shows it on a segment.",
+        "plugin_intro": "Plugins add features of their own to HyperLED. A plugin can read data from the network, derive rules from it, control a segment or draw it itself with a script.",
         "plugin_state_off": "Off",
         "plugin_state_waiting": "Waiting for an answer",
         "plugin_state_running": "Running",
@@ -1698,7 +1698,7 @@ const translations = {
         // Plugins
         "tab_plugins": "Плагины",
         "plugin_add": "+ Добавить плагин",
-        "plugin_intro": "Плагин получает значение из сети, например от 3D-принтера, и показывает его на сегменте.",
+        "plugin_intro": "Плагины добавляют в HyperLED собственные функции. Плагин может читать данные из сети, выводить из них правила, управлять сегментом или рисовать его сам с помощью скрипта.",
         "plugin_state_off": "Выкл.",
         "plugin_state_waiting": "Ожидание ответа",
         "plugin_state_running": "Работает",
