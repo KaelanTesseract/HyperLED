@@ -80,7 +80,7 @@ Die Firmware nutzt die Bibliothek [NeoPixelBus](https://github.com/Makuna/NeoPix
 - **LPD6803** (16-Bit-Wort-SPI-Protokoll)
 - **P9813 / PP9813** (Eigenes Prüfsummen-Framing pro Pixel)
 - **TM1814**, **TM1914** (Benötigen einen chip-spezifischen Einstellungs-Header vor den Pixeldaten)
-- **TM1829, UCS8903, APA106, WS2811 (White), WS281X WWA** (Werden als WS2812-protokollkompatible Klone behandelt)
+- **400 kHz (ältere Streifen), TM1829, UCS8903, APA106, WS2811 (White), WS281X WWA** (Werden als WS2812-protokollkompatible Klone behandelt)
 - **FW1906, UCS8904** (RGBW-Klone)
 - **WS2805, SM16825** (RGBCW-Klone mit Warm- und Kaltweiß-Kanal)
 - **On/Off, PWM (1-5-Kanal analog/CCT)**

@@ -80,7 +80,7 @@ The firmware uses the [NeoPixelBus](https://github.com/Makuna/NeoPixelBus) libra
 - **LPD6803** (16-bit-word SPI protocol)
 - **P9813 / PP9813** (Own per-pixel checksum framing)
 - **TM1814**, **TM1914** (Require a chip-specific settings header before pixel data)
-- **TM1829, UCS8903, APA106, WS2811 (White), WS281X WWA** (Treated as WS2812-protocol-compatible clones)
+- **400 kHz (older strips), TM1829, UCS8903, APA106, WS2811 (White), WS281X WWA** (Treated as WS2812-protocol-compatible clones)
 - **FW1906, UCS8904** (RGBW clones)
 - **WS2805, SM16825** (RGBCW clones with cold+warm white channels)
 - **On/Off, PWM (1-5 channel analog/CCT)**
