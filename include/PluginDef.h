@@ -30,7 +30,7 @@ namespace PluginDef {
 
 constexpr size_t MAX_FILE = 16384;
 constexpr size_t MAX_SCRIPT = 8192;
-constexpr size_t MAX_SETTINGS = 16;
+constexpr size_t MAX_SETTINGS = 24;
 constexpr size_t MAX_VALUES = 16;
 constexpr size_t MAX_RULES = 12;
 constexpr uint16_t MIN_EVERY_SECONDS = 2;

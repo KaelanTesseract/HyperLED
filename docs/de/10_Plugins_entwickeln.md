@@ -125,7 +125,7 @@ Unbekannte Felder sind ein **Fehler** (damit Tippfehler auffallen). Texte sind U
 | `author` | nein | Höchstens 60 Bytes. |
 | `description` | nein | Ein, zwei Sätze, höchstens 200 Bytes. |
 | `needs` | nein | Was das Plugin voraussetzt, siehe unten. |
-| `settings` | nein | Liste der Einstellungen, höchstens 16. |
+| `settings` | nein | Liste der Einstellungen, höchstens 24. |
 | `source` | ja | Woher die Werte kommen. |
 | `values` | nein | Benannte Ausdrücke über die Antwort, höchstens 16. |
 | `rules` | nein | Liste der Regeln, höchstens 12. |
@@ -349,7 +349,7 @@ Die Namen sind die deutschen, wie in der Weboberfläche gespeichert. **Gesperrt*
 |---|---|
 | Plugin-Datei | 16 KB |
 | Skript | 8 KB |
-| Einstellungen / Werte / Regeln | 16 / 16 / 12 |
+| Einstellungen / Werte / Regeln | 24 / 16 / 12 |
 | Plugins auf dem Gerät | 8 |
 | `every` | 2 bis 3600 s |
 | `timeout` | 1 bis 10 s |

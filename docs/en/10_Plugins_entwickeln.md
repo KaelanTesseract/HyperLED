@@ -125,7 +125,7 @@ Unknown fields are an **error** (so that typos stand out). Texts are UTF-8. The 
 | `author` | no | At most 60 bytes. |
 | `description` | no | One or two sentences, at most 200 bytes. |
 | `needs` | no | What the plugin requires, see below. |
-| `settings` | no | List of settings, at most 16. |
+| `settings` | no | List of settings, at most 24. |
 | `source` | yes | Where the values come from. |
 | `values` | no | Named expressions over the answer, at most 16. |
 | `rules` | no | List of rules, at most 12. |
@@ -349,7 +349,7 @@ The names are the German ones, as stored by the web interface. **Blocked** for p
 |---|---|
 | Plugin file | 16 KB |
 | Script | 8 KB |
-| Settings / values / rules | 16 / 16 / 12 |
+| Settings / values / rules | 24 / 16 / 12 |
 | Plugins on the device | 8 |
 | `every` | 2 to 3600 s |
 | `timeout` | 1 to 10 s |

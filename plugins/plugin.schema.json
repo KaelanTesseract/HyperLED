@@ -21,7 +21,7 @@
     "needs": { "$ref": "#/$defs/needs" },
     "settings": {
       "type": "array",
-      "maxItems": 16,
+      "maxItems": 24,
       "items": { "$ref": "#/$defs/setting" },
       "description": "What the person sets up. Keys must be unique; there may be one setting of type segment."
     },

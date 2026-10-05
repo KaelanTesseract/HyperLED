@@ -308,7 +308,7 @@ bool parseShow(JsonObjectConst obj, const Definition& def, const std::vector<Str
 
 bool parseSettings(JsonArrayConst arr, Definition& def, String& error) {
     if (arr.size() > MAX_SETTINGS) {
-        error = "Mehr als 16 Einstellungen";
+        error = String("Mehr als ") + String((unsigned)MAX_SETTINGS) + " Einstellungen";
         return false;
     }
     static const char* const KEYS[] = {"key", "type", "label", "default", "optional", "min", "max", "options", "hint"};
