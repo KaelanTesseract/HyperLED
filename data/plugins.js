@@ -279,7 +279,7 @@
         function showSources(dlg, message) {
             dlg.setTitle(tr('plugin_install_title'));
             const file = h('input', { type: 'file', accept: '.json,application/json', id: 'pluginFile', class: 'plugin-file' });
-            const url = h('input', { type: 'url', id: 'pluginUrl', placeholder: tr('plugin_install_url_placeholder'), autocomplete: 'off', inputmode: 'url' });
+            const url = h('input', { type: 'url', id: 'pluginUrl', class: 'field', placeholder: tr('plugin_install_url_placeholder'), autocomplete: 'off', inputmode: 'url' });
             const loadBtn = button(tr('plugin_install_url_btn'), 'btn-secondary', () => fetchFromUrl(dlg, url, loadBtn));
             const error = h('div', { class: 'plugin-error-slot' });
             if (message) error.appendChild(errorBox(message));
@@ -779,6 +779,64 @@
         });
         document.querySelectorAll('.nav-btn').forEach((b) => b.addEventListener('click', () => setTimeout(refreshBadges, 200)));
         if (tabEl && tabEl.offsetParent !== null) load(true);
+
+        // --- Plugin values for the placeholders of text elements --------------------------------------
+        // {<plugin-id>.<value>} in a Text or Lauftext element shows a value of a plugin; the controller fills
+        // it in. These two let the element editor offer the values and work out what the controller will show.
+        let placeholderValues = {};  // "id.value" -> text, only of plugins that are running
+
+        // The value as text the way the controller makes it (Value::toText, then control characters
+        // become spaces and the text is cut to 64 bytes - a source is not trusted).
+        function valueText(v) {
+            let text;
+            if (typeof v === 'number') text = (v === Math.floor(v) && Math.abs(v) < 1e9) ? String(v) : v.toFixed(2);
+            else if (typeof v === 'boolean') text = v ? 'true' : 'false';
+            else text = String(v);
+            return text.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 64);
+        }
+
+        async function pluginValues() {
+            let list = [];
+            try {
+                const data = await api('GET', '/api/plugins');
+                list = (data && data.plugins) || [];
+            } catch (e) {
+                return [];
+            }
+            const fresh = {};
+            const out = [];
+            list.forEach((p) => {
+                if (!p || !p.enabled || p.state !== 'running' || !p.data) return;
+                Object.keys(p.data).forEach((name) => {
+                    const v = p.data[name];
+                    if (v === null || v === undefined) return;
+                    const key = p.id + '.' + name;
+                    fresh[key] = valueText(v);
+                    out.push({ key, plugin: p.name || p.id, name, current: fresh[key] });
+                });
+            });
+            placeholderValues = fresh;
+            out.sort((a, b) => (a.plugin + a.name).localeCompare(b.plugin + b.name));
+            return out;
+        }
+
+        // The text as the controller shows it: every {id.value} filled in, "--" where the value is not
+        // known. What was filled in is not searched again; the result is cut to 64 only if something was.
+        function expandPlaceholders(text) {
+            const source = String(text || '');
+            let filled = false;
+            const result = source.replace(/\{([a-z0-9_-]{1,32})\.([a-z0-9_]{1,24})\}/g, (match, id, name) => {
+                filled = true;
+                const key = id + '.' + name;
+                return Object.prototype.hasOwnProperty.call(placeholderValues, key) ? placeholderValues[key] : '--';
+            });
+            return filled ? result.slice(0, 64) : source;
+        }
+
+        if (window.HyperUI) {
+            window.HyperUI.pluginValues = pluginValues;
+            window.HyperUI.expandPlaceholders = expandPlaceholders;
+        }
 
         window.HyperPlugins = { load, openSettings, openValues, openInstall };
 

@@ -3762,11 +3762,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return width;
             }
-            case 6: return (w.text || '').length ? (w.w || 32) : 0;  // Lauftext: its window
+            case 6: return shownTextOf(w).length ? (w.w || 32) : 0;  // Lauftext: its window
             case 0: return textWidth(CLOCK_FORMAT_LEN[w.format] || CLOCK_FORMAT_LEN[0]);
             case 1: return textWidth(DATE_FORMAT_LEN[w.format] || DATE_FORMAT_LEN[0]);
-            default: return textWidth((w.text || '').length);
+            default: return textWidth(shownTextOf(w).length);
         }
+    }
+    // What a Text or Lauftext element shows: its text with {plugin.value} placeholders filled in, the
+    // way the controller does it (plugins.js provides expandPlaceholders; without it the text as is).
+    // The element itself always keeps the template in w.text - that is what is saved.
+    function shownTextOf(w) {
+        const text = w.text || '';
+        return (window.HyperUI && window.HyperUI.expandPlaceholders) ? window.HyperUI.expandPlaceholders(text) : text;
     }
     function widgetPixelHeight(w) {
         const scale = widgetScale(w);
@@ -4099,6 +4106,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${widgetFormatOptionsHtml(w)}
                 ${(w.type === 2 || w.type === 6) ? widgetRowHtml(w, 'widgetText', 'widget_text',
                     `<input type="text" id="widgetText_${w.id}" data-field="text" maxlength="64" value="${safeText}" placeholder="HELLO" class="field field-flex">`) : ''}
+                ${(w.type === 2 || w.type === 6) ? `<div class="widget-hint" data-i18n="widget_placeholder_hint">${t('widget_placeholder_hint')}</div>
+                    <div class="widget-row" data-role="placeholderRow" hidden>
+                        <select data-role="placeholderPick" class="field field-flex" aria-label="${t('widget_placeholder_pick')}"></select>
+                    </div>` : ''}
                 ${w.type === 6 ? widgetRowHtml(w, 'widgetLength', 'widget_marquee_width',
                     `<input type="number" id="widgetLength_${w.id}" data-field="marqueeWidth" min="4" max="255" value="${w.w || 32}" class="field field-narrow">`,
                     `<span class="widget-bri-label">px</span>`) : ''}
@@ -4220,6 +4231,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 textInput.addEventListener('change', () => {
                     w.text = textInput.value;
                     saveWidgets(widgets);
+                });
+            }
+            // "Insert a plugin value": offers the values of the running plugins and puts {plugin.value} at the cursor.
+            const placeholderPick = card.querySelector('[data-role="placeholderPick"]');
+            const placeholderRow = card.querySelector('[data-role="placeholderRow"]');
+            if (placeholderPick && placeholderRow && textInput && window.HyperUI && window.HyperUI.pluginValues) {
+                window.HyperUI.pluginValues().then((list) => {
+                    if (!list.length) return;
+                    const first = document.createElement('option');
+                    first.value = '';
+                    first.textContent = t('widget_placeholder_pick');
+                    placeholderPick.appendChild(first);
+                    list.forEach((item) => {
+                        const option = document.createElement('option');
+                        option.value = '{' + item.key + '}';
+                        option.textContent = item.plugin + ' \u00b7 ' + item.name + ' = ' + item.current;  // text only
+                        placeholderPick.appendChild(option);
+                    });
+                    placeholderRow.hidden = false;
+                });
+                placeholderPick.addEventListener('change', () => {
+                    const token = placeholderPick.value;
+                    placeholderPick.value = '';
+                    if (!token) return;
+                    const from = typeof textInput.selectionStart === 'number' ? textInput.selectionStart : textInput.value.length;
+                    const to = typeof textInput.selectionEnd === 'number' ? textInput.selectionEnd : from;
+                    const next = textInput.value.slice(0, from) + token + textInput.value.slice(to);
+                    if (next.length > 64) {
+                        showToast(t('widget_placeholder_too_long'), 'error');
+                        return;
+                    }
+                    textInput.value = next;
+                    textInput.setSelectionRange(from + token.length, from + token.length);
+                    textInput.dispatchEvent(new Event('change', { bubbles: true }));
                 });
             }
             const legibleSelect = card.querySelector('[data-field="legible"]');

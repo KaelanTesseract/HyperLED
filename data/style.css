@@ -1875,9 +1875,14 @@ label[data-slider-value]::after {
 
 .plugin-meta,
 .plugin-hint,
+.widget-hint,
 .plugin-count {
     font-size: var(--text-caption);
     color: var(--text-muted);
+}
+
+.widget-hint {
+    margin: 4px 0 8px;
 }
 
 .plugin-desc {
@@ -2028,6 +2033,7 @@ label[data-slider-value]::after {
 
 .plugin-url-row .btn {
     flex: 0 0 auto;
+    width: auto;  /* .btn-secondary is 100% wide, which squeezed the field to nothing */
     min-height: 44px;
 }
 
