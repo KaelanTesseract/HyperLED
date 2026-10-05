@@ -488,7 +488,8 @@ void WebServerManagerClass::setupRoutes() {
                 request->send(409, "application/json", "{\"error\":\"no_release\"}");
                 return;
             }
-            url = "https://github.com/KaelanTesseract/HyperLED-Slave/releases/download/" + ver + "/firmware.bin";
+            // Every Slave is an ESP32-S3 so far; with other chips the Slave names its own file (updatefeature.md).
+            url = "https://github.com/KaelanTesseract/HyperLED-Slave/releases/download/" + ver + "/firmware-esp32s3.bin";
         }
         
         // We need the current WiFi credentials

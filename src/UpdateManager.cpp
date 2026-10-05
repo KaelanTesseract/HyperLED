@@ -18,6 +18,7 @@
  */
 #include "UpdateManager.h"
 #include "BackupManager.h"
+#include "Config.h"
 #include "esp_task_wdt.h"
 #include <LittleFS.h>
 #include <WiFi.h>
@@ -169,7 +170,18 @@ void UpdateManagerClass::performUpdate() {
     // interface on an old firmware. A controller flashed with an older partition table has smaller
     // slots; for it a larger firmware needs one reinstall over USB.
     const esp_partition_t* slot = esp_ota_get_next_update_partition(nullptr);
-    int firmwareSize = remoteFileSize(baseUrl + "firmware.bin");
+
+    // The firmware file of this chip, firmware-<chip>.bin. Looked for before anything is touched,
+    // for the same reason as the size below: a release without a firmware for this chip must not
+    // leave a new web interface on an old firmware. (Releases up to 0.3.001 call the ESP32-S3 build
+    // firmware.bin; a controller that old is updated by hand once.)
+    String firmwareUrl = baseUrl + "firmware-" HYPERLED_CHIP ".bin";
+    int firmwareSize = remoteFileSize(firmwareUrl);
+    if (firmwareSize <= 0) {
+        Serial.printf("Update: this release has no firmware for the %s\n", HYPERLED_CHIP);
+        _status = "error_nofw";
+        return;
+    }
     if (slot && firmwareSize > 0 && (uint32_t)firmwareSize > slot->size) {
         Serial.printf("Update: firmware is %d bytes, the update slot holds %u - needs a USB reinstall\n",
                       firmwareSize, (unsigned)slot->size);
@@ -203,7 +215,7 @@ void UpdateManagerClass::performUpdate() {
     freeKeptFiles();
 
     _status = "updating FW";
-    if (!downloadAndFlash(baseUrl + "firmware.bin", U_FLASH, 45, 95)) {
+    if (!downloadAndFlash(firmwareUrl, U_FLASH, 45, 95)) {
         _status = "error_fw";
         Serial.println("Firmware update failed.");
         return;

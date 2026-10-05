@@ -20,7 +20,19 @@
 
 #include <Arduino.h>
 
-#define HYPERLED_VERSION "0.3.001"
+#define HYPERLED_VERSION "0.3.002"
+
+// The chip this firmware is built for. It names the firmware file of a release: firmware-<chip>.bin
+// (see UpdateManager). Releases up to 0.3.001 call the ESP32-S3 build firmware.bin.
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#define HYPERLED_CHIP "esp32s3"
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+#define HYPERLED_CHIP "esp32c6"
+#elif defined(CONFIG_IDF_TARGET_ESP32)
+#define HYPERLED_CHIP "esp32"
+#else
+#error "HYPERLED_CHIP: unknown chip, name it in Config.h"
+#endif
 
 // Set to 1 to re-enable the periodic "Free heap" serial print (main.cpp loop()) for
 // quick heap-health monitoring during development. Off by default to keep the serial
