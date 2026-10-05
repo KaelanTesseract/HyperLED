@@ -51,7 +51,7 @@ die Absicherung (Phase 2), dann die Slaves (Phase 3) und zuletzt der Chip selbst
 - [x] `UpdateManager` nimmt `littlefs-<chip>.bin`; fehlt eine der beiden Dateien, bricht das Update vor dem ersten Schreiben ab
 - [x] Texte des Lokalen Updates und Wiki nennen `littlefs-esp32s3.bin`; Master auf 0.3.003 (Slaves bleiben auf 0.3.002, ihr Code ist unverändert)
 - [x] Commit und Push, Release **0.3.003** (nur Master: `firmware-esp32s3.bin`, `littlefs-esp32s3.bin`)
-- [ ] Master auf 0.3.003 (von Hand, weil 0.3.002 noch `littlefs.bin` sucht; Sicherung vor- und zurückspielen)
+- [x] Master auf 0.3.003 (von Hand, weil 0.3.002 noch `littlefs.bin` sucht; Sicherung vor- und zurückspielen)
 - [ ] Echter Test: Release 0.3.004 (ohne alten Namen) aktualisiert den Master über `firmware-esp32s3.bin` und `littlefs-esp32s3.bin` selbst
 
 ## Release-Ablauf
