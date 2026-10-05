@@ -302,7 +302,7 @@ bool Program::compile(const String& source, String& error) {
         return false;
     }
     if (source.length() > MAX_SOURCE) {
-        error = "Der Ausdruck ist länger als 200 Zeichen";
+        error = "Der Ausdruck ist länger als 200 Bytes";
         return false;
     }
     Parser p(source, *this);

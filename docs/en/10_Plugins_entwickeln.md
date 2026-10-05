@@ -111,17 +111,19 @@ Instead of writing `52.52` and `13.41` into the address, let the person enter th
 
 Unknown fields are an **error** (so that typos stand out). Texts are UTF-8. The file is at most **16 KB**.
 
+> **Length limits for free text count bytes, not characters.** An ASCII character is one byte, `ä ö ü ß °` and Cyrillic letters are two, most Asian characters three. A Russian `label` can therefore have at most 30 letters, and a German one with umlauts fewer than 60 characters. The JSON Schema can only count characters, so for non-ASCII text it is more generous than the controller; the controller is what counts (the preview reports it).
+
 ### Top level
 
 | Field | Required | Description |
 |---|---|---|
 | `format` | yes | Always `1`. |
 | `id` | yes | Unique name: `a-z`, `0-9`, `-`, `_`, at most 32 characters. A file with the same `id` replaces the installed plugin and keeps its settings. |
-| `name` | yes | Display name, at most 40 characters. |
-| `version` | yes | For example `1.0.0`, at most 16 characters. |
-| `license` | yes | Licence identifier (SPDX), for example `EUPL-1.2`, at most 40 characters. |
-| `author` | no | At most 60 characters. |
-| `description` | no | One or two sentences, at most 200 characters. |
+| `name` | yes | Display name, at most 40 bytes. |
+| `version` | yes | For example `1.0.0`, at most 16 bytes. |
+| `license` | yes | Licence identifier (SPDX), for example `EUPL-1.2`, at most 40 bytes. |
+| `author` | no | At most 60 bytes. |
+| `description` | no | One or two sentences, at most 200 bytes. |
 | `needs` | no | What the plugin requires, see below. |
 | `settings` | no | List of settings, at most 16. |
 | `source` | yes | Where the values come from. |
@@ -153,8 +155,8 @@ This firmware offers interface level **1** (oldest still understood: 1) and scri
 |---|---|---|
 | `key` | yes | Name of the setting: `a-z`, `0-9`, `_`, at most 24 characters, unique. Under this name it can be used in addresses (`{key}`) and expressions. |
 | `type` | yes | See the table below. |
-| `label` | yes | Label, at most 60 characters: text or per language `{ "de": …, "en": …, "ru": … }`. A missing language falls back to German. |
-| `hint` | no | One line of help under the field, at most 200 characters, same form as `label`. |
+| `label` | yes | Label, at most 60 bytes: text or per language `{ "de": …, "en": …, "ru": … }`. A missing language falls back to German. |
+| `hint` | no | One line of help under the field, at most 200 bytes, same form as `label`. |
 | `default` | no | Starting value; must fit the type. |
 | `optional` | no | `true`: may stay empty. All others must be filled in before the plugin can be switched on (switches excepted). |
 | `min`, `max` | no | Limits for numbers. |
@@ -164,8 +166,8 @@ This firmware offers interface level **1** (oldest still understood: 1) and scri
 
 | `type` | The person sees | Value in expressions | Check |
 |---|---|---|---|
-| `text` | text field | text | at most 120 characters |
-| `password` | password field (value never shown) | text | at most 120 characters |
+| `text` | text field | text | at most 120 bytes |
+| `password` | password field (value never shown) | text | at most 120 bytes |
 | `number` | number field | number (empty: unknown) | a number, within `min`/`max` |
 | `switch` | switch | true/false | - |
 | `list` | choice | text (the `value`) | one of the `options` |
@@ -188,7 +190,7 @@ Use `password` for credentials: the value is never shown or sent to the interfac
 
 | Field | Description |
 |---|---|
-| `url` | Required. `http://` or `https://`, at most 300 characters. `{key}` is replaced by the value of the setting (as entered: special characters are **not** encoded). Always sent as **GET**. |
+| `url` | Required. `http://` or `https://`, at most 300 bytes. `{key}` is replaced by the value of the setting (as entered: special characters are **not** encoded). Always sent as **GET**. |
 | `every` | Seconds between two requests: 2 to 3600, default 5. Choose as rarely as sensible: shared sources (for example weather services) will thank you. After an error HyperLED waits at least 5 seconds. |
 | `timeout` | Seconds to wait for an answer: 1 to 10, default 5. |
 | `header` | At most 4 extra headers; the values may contain `{key}`. If a value is empty after replacing (for example an optional key), the header is left out. |
@@ -261,7 +263,7 @@ Expressions appear in `values`, in `when`, in `speed`, `intensity`/`value` and w
 
 **Behaviour of types:** numbers and true/false can be compared (`true` is `1`). A number and a text are never equal, and `<`, `>` between a number and a text give false. Text can be compared (alphabetically) and joined with `+` (`'T=' + 215` gives `T=215`; numbers are written without decimals when they are whole, otherwise with two).
 
-**Limits:** at most 200 characters, at most 16 pending intermediate results (nesting). An error (for example "Der Ausdruck endet zu früh", "')' fehlt", "Text nicht beendet", "Unerwartetes Zeichen '$'") is reported on installation with the place.
+**Limits:** at most 200 bytes, at most 16 pending intermediate results (nesting). An error (for example "Der Ausdruck endet zu früh", "')' fehlt", "Text nicht beendet", "Unerwartetes Zeichen '$'") is reported on installation with the place.
 
 **Examples:**
 
@@ -278,7 +280,7 @@ not (state == 'standby' or state == 'complete')
 
 ```json
 "rules": [
-  { "when": "state == 'printing'", "show": { "effect": "Farbwisch", "color": "{c_print}", "value": "progress" } },
+  { "when": "state == 'printing'", "show": { "effect": "Einfarbig", "color": "{c_print}" } },
   { "when": "state == 'error'",    "show": { "effect": "Stroboskop", "color": "#ff0000" } }
 ]
 ```
@@ -292,12 +294,14 @@ A rule has `when` (condition) and `show` (effect). Names in `when`, `speed` and 
 | `effect` | The name of an effect (see the list below, case does not matter) **or** `"{key}"` of a setting of type `effect`: then the person chooses the effect. |
 | `color` | `#rrggbb` **or** `"{key}"` of a setting of type `color`. |
 | `speed` | An expression that gives a **percentage** from 0 to 100 (converted to the speed 0-255; values outside are limited). |
-| `intensity` or `value` | Like `speed`, for the intensity of the effect (`value` is just another name, not both at once). Depending on the effect, intensity means for example density, length or fill level. |
+| `intensity` or `value` | Like `speed`, for the intensity of the effect (`value` is just another name, not both at once). Depending on the effect, intensity means for example density (`Funkeln`), the length of the tail (`Meteor`) or the cooling (`Feuer`); some effects, such as `Einfarbig` and `Farbwisch`, ignore it. |
 | `power` | `"on"` or `"off"`. Works **only** if the person has allowed it for the plugin. |
 
 Omitted fields leave the person's value untouched. If the value of an expression is unknown, the field stays untouched.
 
 **What deliberately does not exist:** **brightness**. The person's sliders act literally; a plugin cannot change them.
+
+**There is no progress-bar effect.** No built-in effect fills up with a value: `intensity` and `value` only control what the chosen effect does with them (see above). A bar that grows with a value needs a **script** (see the "Progress bar" example in [Plugin scripts](11_Plugin_Skripte.md)); the rules then serve as the fallback, for example one colour per state.
 
 **Everything is only laid over and never stored** - removing, switching off and restarting undo everything.
 
@@ -338,10 +342,10 @@ The names are the German ones, as stored by the web interface. **Blocked** for p
 | `every` | 2 to 3600 s |
 | `timeout` | 1 to 10 s |
 | Headers | 4 |
-| Address | 300 characters |
+| Address | 300 bytes |
 | Answer | 8 KB |
-| Expression | 200 characters, depth 16 |
-| Text of a setting | 120 characters |
-| `label` / `hint` | 60 / 200 characters |
+| Expression | 200 bytes, depth 16 |
+| Text of a setting | 120 bytes |
+| `label` / `hint` | 60 / 200 bytes |
 
 Other error messages are in German and name the place, for example: `Regel 2 when: 'tmp' ist weder ein Wert noch eine Einstellung` (rule 2 when: 'tmp' is neither a value nor a setting), `Einstellung 'port': Unbekannter Typ 'datum'` (setting 'port': unknown type), `source url: '{host}' ist keine Einstellung` ('{host}' is not a setting).

@@ -92,7 +92,7 @@ bool readText(JsonObjectConst obj, const char* key, bool required, size_t maxLen
         return false;
     }
     if (out.length() > maxLen) {
-        error = String("Das Feld '") + key + "' ist länger als " + String((unsigned)maxLen) + " Zeichen (" + where + ")";
+        error = String("Das Feld '") + key + "' ist länger als " + String((unsigned)maxLen) + " Bytes (ä, ö, ü und kyrillische Buchstaben zählen 2) (" + where + ")";
         return false;
     }
     return true;
@@ -104,7 +104,7 @@ bool readLocalText(JsonVariantConst v, size_t maxLen, Text& out, const String& w
     if (v.is<const char*>()) {
         out.de = v.as<const char*>();
         if (out.de.length() > maxLen) {
-            error = where + ": '" + field + "' ist länger als " + String((unsigned)maxLen) + " Zeichen";
+            error = where + ": '" + field + "' ist länger als " + String((unsigned)maxLen) + " Bytes (ä, ö, ü und kyrillische Buchstaben zählen 2)";
             return false;
         }
         return true;
@@ -125,7 +125,7 @@ bool readLocalText(JsonVariantConst v, size_t maxLen, Text& out, const String& w
         }
         String text = kv.value().as<const char*>();
         if (text.length() > maxLen) {
-            error = where + ": '" + field + "' (" + lang + ") ist länger als " + String((unsigned)maxLen) + " Zeichen";
+            error = where + ": '" + field + "' (" + lang + ") ist länger als " + String((unsigned)maxLen) + " Bytes (ä, ö, ü und kyrillische Buchstaben zählen 2)";
             return false;
         }
         if (strcmp(lang, "de") == 0) out.de = text;
@@ -389,7 +389,7 @@ bool parseSettings(JsonArrayConst arr, Definition& def, String& error) {
                     else if (!readLocalText(obj["label"], MAX_LABEL, label, where + ", Option '" + value + "'", "label", error)) return false;
                 }
                 if (value.length() > 60) {
-                    error = where + ": Eine Option ist länger als 60 Zeichen";
+                    error = where + ": Eine Option ist länger als 60 Bytes (ä, ö, ü und kyrillische Buchstaben zählen 2)";
                     return false;
                 }
                 set.options.push_back(value);

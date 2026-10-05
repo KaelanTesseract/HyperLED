@@ -111,17 +111,19 @@ Statt `52.52` und `13.41` fest in die Adresse zu schreiben, lässt du die Person
 
 Unbekannte Felder sind ein **Fehler** (damit Tippfehler auffallen). Texte sind UTF-8. Die Datei ist höchstens **16 KB** groß.
 
+> **Längengrenzen für freien Text zählen Bytes, nicht Zeichen.** Ein ASCII-Zeichen ist ein Byte, `ä ö ü ß °` und kyrillische Buchstaben sind zwei, die meisten asiatischen Zeichen drei. Ein russisches `label` darf deshalb höchstens 30 Buchstaben haben, ein deutsches mit Umlauten entsprechend weniger als 60 Zeichen. Das JSON-Schema kann nur Zeichen zählen und ist darum bei Nicht-ASCII-Text großzügiger als der Controller; maßgeblich ist der Controller (die Vorschau meldet es).
+
 ### Oberste Ebene
 
 | Feld | Pflicht | Beschreibung |
 |---|---|---|
 | `format` | ja | Immer `1`. |
 | `id` | ja | Eindeutiger Name: `a-z`, `0-9`, `-`, `_`, höchstens 32 Zeichen. Eine Datei mit derselben `id` ersetzt das installierte Plugin und behält dessen Einstellungen. |
-| `name` | ja | Anzeigename, höchstens 40 Zeichen. |
-| `version` | ja | Zum Beispiel `1.0.0`, höchstens 16 Zeichen. |
-| `license` | ja | Lizenzkennung (SPDX), zum Beispiel `EUPL-1.2`, höchstens 40 Zeichen. |
-| `author` | nein | Höchstens 60 Zeichen. |
-| `description` | nein | Ein, zwei Sätze, höchstens 200 Zeichen. |
+| `name` | ja | Anzeigename, höchstens 40 Bytes. |
+| `version` | ja | Zum Beispiel `1.0.0`, höchstens 16 Bytes. |
+| `license` | ja | Lizenzkennung (SPDX), zum Beispiel `EUPL-1.2`, höchstens 40 Bytes. |
+| `author` | nein | Höchstens 60 Bytes. |
+| `description` | nein | Ein, zwei Sätze, höchstens 200 Bytes. |
 | `needs` | nein | Was das Plugin voraussetzt, siehe unten. |
 | `settings` | nein | Liste der Einstellungen, höchstens 16. |
 | `source` | ja | Woher die Werte kommen. |
@@ -153,8 +155,8 @@ Diese Firmware bietet Schnittstellenstufe **1** (älteste noch verstandene: 1) u
 |---|---|---|
 | `key` | ja | Name der Einstellung: `a-z`, `0-9`, `_`, höchstens 24 Zeichen, eindeutig. Unter diesem Namen ist sie in Adressen (`{key}`) und Ausdrücken benutzbar. |
 | `type` | ja | Siehe Tabelle unten. |
-| `label` | ja | Beschriftung, höchstens 60 Zeichen: Text oder pro Sprache `{ "de": …, "en": …, "ru": … }`. Fehlt eine Sprache, gilt Deutsch. |
-| `hint` | nein | Eine Zeile Hilfe unter dem Feld, höchstens 200 Zeichen, gleiche Form wie `label`. |
+| `label` | ja | Beschriftung, höchstens 60 Bytes: Text oder pro Sprache `{ "de": …, "en": …, "ru": … }`. Fehlt eine Sprache, gilt Deutsch. |
+| `hint` | nein | Eine Zeile Hilfe unter dem Feld, höchstens 200 Bytes, gleiche Form wie `label`. |
 | `default` | nein | Startwert; muss zum Typ passen. |
 | `optional` | nein | `true`: darf leer bleiben. Alle anderen müssen ausgefüllt sein, bevor sich das Plugin einschalten lässt (Schalter ausgenommen). |
 | `min`, `max` | nein | Grenzen für Zahlen. |
@@ -164,8 +166,8 @@ Diese Firmware bietet Schnittstellenstufe **1** (älteste noch verstandene: 1) u
 
 | `type` | Die Person sieht | Wert in Ausdrücken | Prüfung |
 |---|---|---|---|
-| `text` | Textfeld | Text | höchstens 120 Zeichen |
-| `password` | Passwortfeld (Wert nie angezeigt) | Text | höchstens 120 Zeichen |
+| `text` | Textfeld | Text | höchstens 120 Bytes |
+| `password` | Passwortfeld (Wert nie angezeigt) | Text | höchstens 120 Bytes |
 | `number` | Zahlfeld | Zahl (leer: unbekannt) | Zahl, innerhalb `min`/`max` |
 | `switch` | Schalter | wahr/falsch | – |
 | `list` | Auswahl | Text (der `value`) | einer der `options` |
@@ -188,7 +190,7 @@ Diese Firmware bietet Schnittstellenstufe **1** (älteste noch verstandene: 1) u
 
 | Feld | Beschreibung |
 |---|---|
-| `url` | Pflicht. `http://` oder `https://`, höchstens 300 Zeichen. `{key}` wird durch den Wert der Einstellung ersetzt (so, wie er eingetragen ist: Sonderzeichen werden **nicht** kodiert). Es wird immer **GET** gesendet. |
+| `url` | Pflicht. `http://` oder `https://`, höchstens 300 Bytes. `{key}` wird durch den Wert der Einstellung ersetzt (so, wie er eingetragen ist: Sonderzeichen werden **nicht** kodiert). Es wird immer **GET** gesendet. |
 | `every` | Sekunden zwischen zwei Abfragen: 2 bis 3600, Standard 5. Wähle so selten wie sinnvoll: Gemeinsame Quellen (zum Beispiel Wetterdienste) danken es dir. Nach einem Fehler wartet HyperLED mindestens 5 Sekunden. |
 | `timeout` | Sekunden, die auf eine Antwort gewartet wird: 1 bis 10, Standard 5. |
 | `header` | Höchstens 4 zusätzliche Kopfzeilen; die Werte dürfen `{key}` enthalten. Ist ein Wert nach dem Ersetzen leer (zum Beispiel ein optionaler Schlüssel), wird die Kopfzeile weggelassen. |
@@ -261,7 +263,7 @@ Ausdrücke stehen in `values`, in `when`, in `speed`, `intensity`/`value` und ü
 
 **Verhalten bei Typen:** Zahlen und wahr/falsch lassen sich vergleichen (`true` ist `1`). Zahl und Text sind nie gleich, und `<`, `>` zwischen Zahl und Text ergeben falsch. Text lässt sich vergleichen (alphabetisch) und mit `+` verbinden (`'T=' + 215` ergibt `T=215`; Zahlen werden ohne Nachkommastellen geschrieben, wenn sie ganz sind, sonst mit zwei).
 
-**Grenzen:** höchstens 200 Zeichen, höchstens 16 offene Zwischenergebnisse (Verschachtelung). Ein Fehler (zum Beispiel „Der Ausdruck endet zu früh“, „')' fehlt“, „Text nicht beendet“, „Unerwartetes Zeichen '$'“) wird bei der Installation mit der Stelle gemeldet.
+**Grenzen:** höchstens 200 Bytes, höchstens 16 offene Zwischenergebnisse (Verschachtelung). Ein Fehler (zum Beispiel „Der Ausdruck endet zu früh“, „')' fehlt“, „Text nicht beendet“, „Unerwartetes Zeichen '$'“) wird bei der Installation mit der Stelle gemeldet.
 
 **Beispiele:**
 
@@ -278,7 +280,7 @@ not (state == 'standby' or state == 'complete')
 
 ```json
 "rules": [
-  { "when": "state == 'printing'", "show": { "effect": "Farbwisch", "color": "{c_print}", "value": "progress" } },
+  { "when": "state == 'printing'", "show": { "effect": "Einfarbig", "color": "{c_print}" } },
   { "when": "state == 'error'",    "show": { "effect": "Stroboskop", "color": "#ff0000" } }
 ]
 ```
@@ -292,12 +294,14 @@ Eine Regel hat `when` (Bedingung) und `show` (Wirkung). Namen in `when`, `speed`
 | `effect` | Der Name eines Effekts (siehe Liste unten, Schreibweise egal) **oder** `"{key}"` einer Einstellung vom Typ `effect`: Dann wählt die Person den Effekt. |
 | `color` | `#rrggbb` **oder** `"{key}"` einer Einstellung vom Typ `color`. |
 | `speed` | Ein Ausdruck, der eine **Prozentzahl** von 0 bis 100 ergibt (wird auf die Geschwindigkeit 0–255 umgerechnet; Werte außerhalb werden begrenzt). |
-| `intensity` oder `value` | Wie `speed`, für die Intensität des Effekts (`value` ist nur ein anderer Name, nicht beide zugleich). Je nach Effekt bedeutet Intensität zum Beispiel die Dichte, Länge oder Füllstand. |
+| `intensity` oder `value` | Wie `speed`, für die Intensität des Effekts (`value` ist nur ein anderer Name, nicht beide zugleich). Je nach Effekt bedeutet Intensität zum Beispiel die Dichte (Funkeln), die Länge des Schweifs (Meteor) oder die Abkühlung (Feuer); manche Effekte, etwa `Einfarbig` und `Farbwisch`, ignorieren sie. |
 | `power` | `"on"` oder `"off"`. Wirkt **nur**, wenn die Person es dem Plugin erlaubt hat. |
 
 Weggelassene Felder lassen den Wert der Person unberührt. Ist der Wert eines Ausdrucks unbekannt, bleibt das Feld unberührt.
 
 **Was es absichtlich nicht gibt:** die **Helligkeit**. Die Schieberegler der Person wirken wörtlich; ein Plugin kann sie nicht ändern.
+
+**Einen Fortschrittsbalken gibt es als Effekt nicht.** Kein eingebauter Effekt füllt sich mit einem Wert: `intensity` und `value` steuern nur, was der gewählte Effekt damit macht (siehe oben). Ein Balken, der mit einem Wert wächst, braucht ein **Skript** (Beispiel „Fortschrittsbalken“ in [Plugin-Skripte](11_Plugin_Skripte.md)); die Regeln dienen dann als Rückfall, etwa mit einer Farbe je Zustand.
 
 **Alles wird nur überlagert und nie gespeichert** – Entfernen, Ausschalten und Neustarten machen alles rückgängig.
 
@@ -338,10 +342,10 @@ Die Namen sind die deutschen, wie in der Weboberfläche gespeichert. **Gesperrt*
 | `every` | 2 bis 3600 s |
 | `timeout` | 1 bis 10 s |
 | Kopfzeilen | 4 |
-| Adresse | 300 Zeichen |
+| Adresse | 300 Bytes |
 | Antwort | 8 KB |
-| Ausdruck | 200 Zeichen, Tiefe 16 |
-| Text einer Einstellung | 120 Zeichen |
-| `label` / `hint` | 60 / 200 Zeichen |
+| Ausdruck | 200 Bytes, Tiefe 16 |
+| Text einer Einstellung | 120 Bytes |
+| `label` / `hint` | 60 / 200 Bytes |
 
 Weitere Fehlermeldungen sind Deutsch und nennen die Stelle, zum Beispiel: `Regel 2 when: 'tmp' ist weder ein Wert noch eine Einstellung`, `Einstellung 'port': Unbekannter Typ 'datum'`, `source url: '{host}' ist keine Einstellung`.

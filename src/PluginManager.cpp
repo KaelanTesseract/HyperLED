@@ -592,7 +592,7 @@ bool PluginManagerClass::validFetchUrl(const String& url, String& error) {
         return false;
     }
     if (url.length() > 300) {
-        error = "Die Adresse ist länger als 300 Zeichen";
+        error = "Die Adresse ist länger als 300 Bytes";
         return false;
     }
     String rest;
