@@ -41,8 +41,7 @@ die Absicherung (Phase 2), dann die Slaves (Phase 3) und zuletzt der Chip selbst
 - [x] Commit und Push (Master, Slave, Wiki)
 - [x] Releases **0.3.002**: Master (`firmware-esp32s3.bin`, `littlefs.bin`) und Slave (`firmware-esp32s3.bin`)
 - [x] Alle drei Geräte auf 0.3.002: Slave HUB75, Slave 1 UART, Master (Firmware und Weboberfläche, vorher Sicherung)
-- [ ] Prüfung auf dem Gerät: Ein Gerät mit 0.3.002 aktualisiert sich aus dem **nächsten** Release über
-      `firmware-esp32s3.bin`; Slaves über „Geräte jetzt aktualisieren“
+- [x] Prüfung auf dem Gerät: Das Online-Update über `firmware-esp32s3.bin` läuft (Master, Test-Release); Slaves über „Geräte jetzt aktualisieren“ sind noch offen (Phase 3)
 - [ ] Prüfung: Release ohne passende Datei lässt das Gerät unverändert (`error_nofw`)
 - [x] Doku und Wiki: Namen der Release-Dateien („Updates, Sicherung, Reset“)
 
@@ -52,7 +51,7 @@ die Absicherung (Phase 2), dann die Slaves (Phase 3) und zuletzt der Chip selbst
 - [x] Texte des Lokalen Updates und Wiki nennen `littlefs-esp32s3.bin`; Master auf 0.3.003 (Slaves bleiben auf 0.3.002, ihr Code ist unverändert)
 - [x] Commit und Push, Release **0.3.003** (nur Master: `firmware-esp32s3.bin`, `littlefs-esp32s3.bin`)
 - [x] Master auf 0.3.003 (von Hand, weil 0.3.002 noch `littlefs.bin` sucht; Sicherung vor- und zurückspielen)
-- [ ] Echter Test: Release 0.3.004 (ohne alten Namen) aktualisiert den Master über `firmware-esp32s3.bin` und `littlefs-esp32s3.bin` selbst
+- [x] Echter Test des Online-Updates mit `firmware-esp32s3.bin` und `littlefs-esp32s3.bin` (siehe Phase 2, Test-Release mit den Dateien von 0.3.004)
 
 ## Release-Ablauf
 
@@ -74,8 +73,10 @@ Ein Image für den falschen Chip kann ein Gerät lahmlegen. Der Kopf der Datei n
 - [x] Meldung für „falscher Chip“ in de, en, ru; Weboberfläche behandelt beide Wege (`app.js`/`i18n.js` hochgezählt)
 - [x] Am Gerät geprüft (0.3.004): Image mit C6-Kennung, Image mit falschem Byte 0 und eine Zufallsdatei wurden abgewiesen (HTTP 400),
       der Master lief unverändert weiter und startete danach wieder mit 0.3.004; ein echtes S3-Image wird angenommen
-- [ ] Online-Pfad am Gerät prüfen: braucht ein kurzlebiges Test-Release mit absichtlich falscher Kennung (danach löschen) oder
-      das Release 0.3.005 mit dem echten Update-Test. Bis dahin ist dieser Weg nur gebaut, nicht erprobt
+- [x] Online-Pfad am Gerät geprüft (2026-10-06, Master 0.3.004) mit kurzlebigen Test-Releases (Vor-Release, danach gelöscht):
+      ein Release mit absichtlich falscher Kennung ließ das Update bei `error_chip` enden, **bevor** das Dateisystem ersetzt wurde
+      (der Master lief unverändert weiter); ein Release mit den echten Dateien lief durch (Dateisystem, Firmware, Neustart),
+      alle Nutzerdaten waren danach unverändert
 
 ## Phase 3: Slaves
 
