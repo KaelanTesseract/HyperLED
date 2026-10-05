@@ -25,6 +25,15 @@
 #include <Update.h>
 #include <ArduinoJson.h>
 #include <vector>
+#include "Config.h"
+
+// The first 16 bytes of a firmware image (esp_image_header_t) name the chip it was built for: the
+// chip id sits at byte 12 and 13, little endian. A controller must never take an image for another
+// chip: it would not boot, and a Slave that is only reachable over the air would be lost with it.
+// This checks the magic byte and the chip; nothing else about the image.
+inline bool firmwareImageIsForThisChip(const uint8_t* head, size_t len) {
+    return len >= 16 && head[0] == 0xE9 && (uint16_t)(head[12] | (head[13] << 8)) == HYPERLED_CHIP_ID;
+}
 
 class UpdateManagerClass {
 public:
@@ -71,6 +80,7 @@ private:
     
     void performUpdate();
     bool downloadAndFlash(String url, int command, int startProgress, int endProgress);
+    bool _wrongChip = false;  // the firmware that was being downloaded is built for another chip
 
     // littlefs.bin replaces the whole file system - web interface and the user's presets,
     // playlist, schedules and element images alike. The user files are held in PSRAM across it

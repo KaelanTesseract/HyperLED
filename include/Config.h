@@ -20,17 +20,21 @@
 
 #include <Arduino.h>
 
-#define HYPERLED_VERSION "0.3.003"
+#define HYPERLED_VERSION "0.3.004"
 
 // The chip this firmware is built for. It names the files of a release: firmware-<chip>.bin and
 // littlefs-<chip>.bin (see UpdateManager). Releases up to 0.3.001 call them firmware.bin and
 // littlefs.bin, 0.3.002 has firmware-<chip>.bin and littlefs.bin.
+// HYPERLED_CHIP_ID is the number the header of a firmware image carries for the same chip (esp_chip_id_t).
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
 #define HYPERLED_CHIP "esp32s3"
+#define HYPERLED_CHIP_ID 0x0009
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
 #define HYPERLED_CHIP "esp32c6"
+#define HYPERLED_CHIP_ID 0x000D
 #elif defined(CONFIG_IDF_TARGET_ESP32)
 #define HYPERLED_CHIP "esp32"
+#define HYPERLED_CHIP_ID 0x0000
 #else
 #error "HYPERLED_CHIP: unknown chip, name it in Config.h"
 #endif

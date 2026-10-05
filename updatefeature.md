@@ -64,12 +64,18 @@ die Absicherung (Phase 2), dann die Slaves (Phase 3) und zuletzt der Chip selbst
 
 ## Phase 2: Chip-Prüfung im Firmware-Image
 
-Ein Image für den falschen Chip kann ein Gerät lahmlegen. Der Kopf der Datei nennt den Chip.
+Ein Image für den falschen Chip kann ein Gerät lahmlegen. Der Kopf der Datei nennt den Chip
+(Byte 12 und 13, Little Endian; S3 `0x0009`, C6 `0x000D`, ESP32 `0x0000`), Byte 0 ist `0xE9`.
 
-- [ ] Beim Online-Update vor dem Schreiben die Chip-Kennung im Image-Kopf lesen und mit dem
-      laufenden Chip vergleichen (S3 `0x0009`, C6 `0x000D`); bei Abweichung abbrechen
-- [ ] Dasselbe beim manuellen Upload (`POST /update`, Lokales Update)
-- [ ] Eigene Meldung für „falscher Chip“ in de, en, ru
+- [x] `firmwareImageIsForThisChip` (`include/UpdateManager.h`) und `HYPERLED_CHIP_ID` (`include/Config.h`)
+- [x] Online-Update: Vorab-Prüfung der ersten 16 Bytes per Range-Anfrage, **bevor** das Dateisystem ersetzt wird
+      (Status `error_chip`), und noch einmal beim Download selbst (bricht ab, bevor `Update.end()` etwas aktiviert)
+- [x] Manueller Upload (`POST /update`): falscher Chip, falsche Kennung oder keine Firmware wird mit `400 wrong_chip` abgewiesen, bevor etwas geschrieben wird
+- [x] Meldung für „falscher Chip“ in de, en, ru; Weboberfläche behandelt beide Wege (`app.js`/`i18n.js` hochgezählt)
+- [x] Am Gerät geprüft (0.3.004): Image mit C6-Kennung, Image mit falschem Byte 0 und eine Zufallsdatei wurden abgewiesen (HTTP 400),
+      der Master lief unverändert weiter und startete danach wieder mit 0.3.004; ein echtes S3-Image wird angenommen
+- [ ] Online-Pfad am Gerät prüfen: braucht ein kurzlebiges Test-Release mit absichtlich falscher Kennung (danach löschen) oder
+      das Release 0.3.005 mit dem echten Update-Test. Bis dahin ist dieser Weg nur gebaut, nicht erprobt
 
 ## Phase 3: Slaves
 

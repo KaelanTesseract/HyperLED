@@ -1071,7 +1071,17 @@ void WebServerManagerClass::setupCaptivePortal() {
 }
 
 void WebServerManagerClass::setupOTA() {
+    // A firmware file built for another chip is refused with the first bytes of the upload, before
+    // anything is written (see firmwareImageIsForThisChip).
+    static bool uploadWrongChip = false;
     server.on("/update", HTTP_POST, [](AsyncWebServerRequest *request){
+        if (uploadWrongChip) {
+            uploadWrongChip = false;
+            AsyncWebServerResponse *refused = request->beginResponse(400, "text/plain", "wrong_chip");
+            refused->addHeader("Connection", "close");
+            request->send(refused);
+            return;
+        }
         bool shouldReboot = !Update.hasError();
         AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", shouldReboot ? "OK" : "FAIL");
         response->addHeader("Connection", "close");
@@ -1083,16 +1093,20 @@ void WebServerManagerClass::setupOTA() {
         if(!index){
             Serial.printf("Update Start: %s\n", filename.c_str());
             int cmd = (filename.indexOf("littlefs") > -1 || filename.indexOf("spiffs") > -1) ? U_SPIFFS : U_FLASH;
-            if(!Update.begin(UPDATE_SIZE_UNKNOWN, cmd)){
+            uploadWrongChip = false;
+            if (cmd == U_FLASH && !firmwareImageIsForThisChip(data, len)) {
+                Serial.println("Update refused: this firmware is not built for this chip");
+                uploadWrongChip = true;
+            } else if(!Update.begin(UPDATE_SIZE_UNKNOWN, cmd)){
                 Update.printError(Serial);
             }
         }
-        if(!Update.hasError()){
+        if(!uploadWrongChip && !Update.hasError()){
             if(Update.write(data, len) != len){
                 Update.printError(Serial);
             }
         }
-        if(final){
+        if(final && !uploadWrongChip){
             if(Update.end(true)){
                 Serial.printf("Update Success: %uB\n", index+len);
             } else {

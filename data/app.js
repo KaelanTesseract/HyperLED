@@ -3076,7 +3076,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.progress < 100 && !(data.status || '').startsWith('error')) {
                     setTimeout(pollUpdateProgress, 1000);
                 } else if ((data.status || '').startsWith('error')) {
-                    showToast(data.status === 'error_slot' ? t('dyn_update_slot_small') : data.status === 'error_nofw' ? t('dyn_update_no_firmware') : t('dyn_update_failed'), 'error');
+                    showToast(data.status === 'error_slot' ? t('dyn_update_slot_small') : data.status === 'error_nofw' ? t('dyn_update_no_firmware') : data.status === 'error_chip' ? t('dyn_update_wrong_chip') : t('dyn_update_failed'), 'error');
                     btnCheckUpdate.disabled = false;
                     btnCheckUpdate.innerText = t('btn_start_update');
                 } else {
@@ -3119,7 +3119,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     location.reload();
                 }, 3000);
             } else {
-                showToast(t('dyn_update_failed'), 'error');
+                showToast(request.responseText === 'wrong_chip' ? t('dyn_update_wrong_chip') : t('dyn_update_failed'), 'error');
                 otaProgressContainer.style.display = 'none';
                 otaProgressBar.style.width = '0%';
                 btnUpdateLocal.disabled = false;

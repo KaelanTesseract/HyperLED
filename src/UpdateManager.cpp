@@ -159,9 +159,39 @@ static int remoteFileSize(const String& url) {
 }
 
 
+// What the first 16 bytes of a firmware file on the release server say about its chip: 1 for this
+// chip, 0 for another, -1 when they could not be read. Asked for with a Range header; a server that
+// ignores it sends the whole file, of which only the start is read.
+static int remoteImageChip(const String& url) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.setTimeout(10000);
+    int result = -1;
+    if (http.begin(client, url)) {
+        http.addHeader("Range", "bytes=0-15");
+        int code = http.GET();
+        if (code == HTTP_CODE_OK || code == HTTP_CODE_PARTIAL_CONTENT) {
+            WiFiClient* stream = http.getStreamPtr();
+            uint8_t head[16];
+            size_t got = 0;
+            unsigned long started = millis();
+            while (got < sizeof(head) && millis() - started < 8000 && (http.connected() || stream->available())) {
+                if (stream->available()) head[got++] = (uint8_t)stream->read();
+                else delay(5);
+            }
+            if (got == sizeof(head)) result = firmwareImageIsForThisChip(head, got) ? 1 : 0;
+        }
+    }
+    http.end();
+    return result;
+}
+
 void UpdateManagerClass::performUpdate() {
     _status = "updating FS";
     _progress = 5;
+    _wrongChip = false;
 
     String baseUrl = "https://github.com/KaelanTesseract/HyperLED/releases/download/" + _targetVersion + "/";
 
@@ -181,6 +211,14 @@ void UpdateManagerClass::performUpdate() {
     if (firmwareSize <= 0 || remoteFileSize(fileSystemUrl) <= 0) {
         Serial.printf("Update: this release has no firmware or file system for the %s\n", HYPERLED_CHIP);
         _status = "error_nofw";
+        return;
+    }
+    // And that the firmware is built for this chip, whatever its file is called: the file system is
+    // replaced first, so this is found out before. The download checks the start of the image once more.
+    int imageChip = remoteImageChip(firmwareUrl);
+    if (imageChip != 1) {
+        Serial.printf("Update: the firmware %s\n", imageChip == 0 ? "is built for another chip" : "could not be checked");
+        _status = imageChip == 0 ? "error_chip" : "error_nofw";
         return;
     }
     if (slot && firmwareSize > 0 && (uint32_t)firmwareSize > slot->size) {
@@ -217,7 +255,7 @@ void UpdateManagerClass::performUpdate() {
 
     _status = "updating FW";
     if (!downloadAndFlash(firmwareUrl, U_FLASH, 45, 95)) {
-        _status = "error_fw";
+        _status = _wrongChip ? "error_chip" : "error_fw";
         Serial.println("Firmware update failed.");
         return;
     }
@@ -249,11 +287,25 @@ bool UpdateManagerClass::downloadAndFlash(String url, int command, int startProg
                     WiFiClient* stream = http.getStreamPtr();
                     uint8_t buff[1024];
                     int written = 0;
+                    uint8_t head[16];  // the start of a firmware image, which names its chip
+                    size_t headLen = 0;
                     
                     while (http.connected() && (written < totalLength)) {
                         size_t size = stream->available();
                         if (size) {
                             int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
+                            if (command == U_FLASH && headLen < sizeof(head)) {
+                                size_t take = min((size_t)c, sizeof(head) - headLen);
+                                memcpy(head + headLen, buff, take);
+                                headLen += take;
+                                if (headLen == sizeof(head) && !firmwareImageIsForThisChip(head, headLen)) {
+                                    // Nothing is activated before Update.end(): the half-written slot is just ignored.
+                                    Serial.println("Update: this firmware is built for another chip, stopped");
+                                    _wrongChip = true;
+                                    Update.abort();
+                                    break;
+                                }
+                            }
                             Update.write(buff, c);
                             written += c;
                             _progress = startProgress + (written * (endProgress - startProgress) / totalLength);
