@@ -1,6 +1,6 @@
 # Using Plugins
 
-A **plugin** is a small file that reads a value from the network and shows it on a segment - for example the progress of a 3D printer, the outdoor temperature or the state of a service in your home network. HyperLED itself knows nothing about these things: what is shown is defined by the plugin alone.
+A **plugin** is a small file that extends HyperLED with a function of its own. It can read data from the network, derive rules from it, control a segment accordingly or draw it itself with a script of its own - for example show the progress of a 3D printer, colour a segment by the outdoor temperature or make the state of a service in your home network visible. HyperLED itself knows nothing about these things: what happens is defined by the plugin alone.
 
 Plugins are not part of the firmware. You can add, set up and remove them without updating the firmware, and they survive firmware updates and backups.
 
@@ -92,6 +92,27 @@ When a plugin controls a segment, the **Light** page shows at the top:
 - the **beginning of the answer** of the source.
 
 This helps when a plugin does not do what you expect: do you see the value you expect? Does the condition fit?
+
+---
+
+## Showing plugin values in a text
+
+The values of a plugin can also be shown in a **Text** or **Lauftext** (scrolling text) element on a panel, for example "Outside {beispiel-wetter.temp} °C".
+
+1. The plugin must be switched on and in the state *running*.
+2. Open the **Panel** area, choose a segment with the effect "Uhr / Text" (clock / text) and add an element of type *Text* or *Lauftext*.
+3. Type `{plugin-id.value}` into the text field, or pick a value under the field at **Insert a plugin value …**. The list shows the values of the running plugins with their current state and writes the placeholder at the cursor for you.
+
+The controller fills in the current value and sends the finished text to Slaves as well. When the value changes, the text changes by itself.
+
+- **`--`** is shown while a value is unknown: the plugin is off, paused, still waiting for its first answer, has no connection, is removed, or the value is missing from the answer. A stale value is never shown.
+- **What is saved is the text with the placeholder**, never the filled-in value; no plugin changes it. If you remove the plugin the placeholder stays and shows `--`.
+- Anything in braces that does not look like `{id.value}` is left as it is. A literal `{id.value}` cannot be written.
+- Whole numbers appear without decimals, other numbers with two; true/false as `true` and `false`. Rounding and units belong in the plugin's value (see [Developing Plugins](10_Plugins_entwickeln.md)).
+- The text shown is at most **64 bytes** long, umlauts count twice; anything longer is cut off. This applies to the finished text with the values filled in.
+- A value that is there but empty gives no text (a Lauftext then disappears); only an *unknown* value gives `--`.
+- A **Lauftext** does not restart when its text changes. It does jump when the *length* of the text changes.
+- If the list of elements with the filled-in values no longer fits into one radio packet to the Slave, the Master draws the affected element itself and streams it.
 
 ---
 

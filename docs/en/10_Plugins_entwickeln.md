@@ -132,7 +132,7 @@ Unknown fields are an **error** (so that typos stand out). Texts are UTF-8. The 
 | `on_error` | no | What to show when there is no connection. |
 | `script` | no | A Lua script, at most 8 KB. Needs `needs.script`. |
 
-A plugin that controls a segment (that is, has `rules`, `on_error` or `script`) needs exactly **one** setting of type `segment`.
+A plugin that controls a segment (that is, has `rules`, `on_error` or `script`) needs exactly **one** setting of type `segment`. A plugin with none of these three only supplies **values** and needs none (see "Values as placeholders in text elements" below).
 
 ### `needs`: compatibility
 
@@ -216,6 +216,18 @@ The name on the left is yours to choose (`a-z`, `0-9`, `_`, at most 24 character
 Memory-saving: HyperLED reads only the parts of the answer that occur in `values`. Everything below a place with `[n]` is kept whole, though (the filter cannot pick single list entries) - use it sparingly with big lists.
 
 If the source delivers **none** of the values five times in a row, the plugin goes to the "No connection" state with the hint that the source probably does not fit the plugin.
+
+### Values as placeholders in text elements
+
+Any value from `values` can be shown by users in a Text or Lauftext element as `{<id>.<value>}`, for example `{my-plugin.temp}` ([Using Plugins](09_Plugins_nutzen.md) describes the users' side). You do not have to do anything special, but:
+
+- **A plain value plugin needs no segment.** If the file has neither `rules` nor `on_error` nor `script`, the setting of type `segment` may be missing: the plugin queries its source and provides the values, nothing more.
+- The placeholder consists of the **plugin's id** (`a-z`, `0-9`, `-`, `_`) and the **name of the value** (`a-z`, `0-9`, `_`, at most 24 characters), separated by a dot.
+- The value appears only **while the plugin is running** and the value is known; otherwise `--` is shown.
+- Numbers appear without decimals if they are whole, otherwise with two; true/false as `true` and `false`. **Rounding and units belong in the value**, not in the placeholder: `"temp_text": "round(current.temperature_2m) + ' °C'"` gives `21 °C`. Keep the plain number (`temp`) next to it, because a value that is text can no longer be compared as a number in rules.
+- What the source delivers is not trusted: control characters become spaces, the text is cut to 64 bytes, and the filled-in text is **not searched again** for placeholders.
+- A literal `{id.value}` in the text is not possible. The schema does not check placeholders; they are not in plugin files.
+- Values are available for a plugin with a script as well.
 
 ---
 

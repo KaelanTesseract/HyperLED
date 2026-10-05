@@ -132,7 +132,7 @@ Unbekannte Felder sind ein **Fehler** (damit Tippfehler auffallen). Texte sind U
 | `on_error` | nein | Was bei fehlender Verbindung angezeigt wird. |
 | `script` | nein | Ein Lua-Skript, höchstens 8 KB. Braucht `needs.script`. |
 
-Ein Plugin, das ein Segment steuert (also `rules`, `on_error` oder `script` hat), braucht genau **eine** Einstellung vom Typ `segment`.
+Ein Plugin, das ein Segment steuert (also `rules`, `on_error` oder `script` hat), braucht genau **eine** Einstellung vom Typ `segment`. Ein Plugin ohne diese drei liefert nur **Werte** und braucht keine (siehe „Werte als Platzhalter in Text-Elementen“ unten).
 
 ### `needs`: Verträglichkeit
 
@@ -216,6 +216,18 @@ Der Name links ist von dir frei gewählt (`a-z`, `0-9`, `_`, höchstens 24 Zeich
 Speichersparend: HyperLED liest nur die Teile der Antwort, die in `values` vorkommen. Alles unterhalb einer Stelle mit `[n]` wird allerdings komplett gehalten (der Filter kann keine einzelnen Listeneinträge herauspicken) – bei großen Listen deshalb sparsam damit umgehen.
 
 Liefert die Quelle fünfmal hintereinander **keinen einzigen** der Werte, geht das Plugin in den Zustand „Keine Verbindung“ mit dem Hinweis, dass die Quelle wohl nicht zum Plugin passt.
+
+### Werte als Platzhalter in Text-Elementen
+
+Jeder Wert aus `values` kann von Anwendern in einem Text- oder Lauftext-Element als `{<id>.<wert>}` gezeigt werden, zum Beispiel `{mein-plugin.temp}` ([Plugins nutzen](09_Plugins_nutzen.md) beschreibt die Seite der Anwender). Dafür musst du nichts Besonderes tun, aber:
+
+- **Ein reines Wert-Plugin braucht kein Segment.** Hat die Datei weder `rules` noch `on_error` noch `script`, darf die Einstellung vom Typ `segment` fehlen: Das Plugin fragt seine Quelle ab und stellt die Werte bereit, mehr nicht.
+- Der Platzhalter besteht aus der **Kennung des Plugins** (`a-z`, `0-9`, `-`, `_`) und dem **Namen des Wertes** (`a-z`, `0-9`, `_`, höchstens 24 Zeichen), getrennt durch einen Punkt.
+- Der Wert erscheint nur, **solange das Plugin läuft** und der Wert bekannt ist; sonst steht `--`.
+- Zahlen erscheinen ohne Nachkommastellen, wenn sie ganz sind, sonst mit zwei; Wahr/Falsch als `true` und `false`. **Rundung und Einheit gehören in den Wert**, nicht in den Platzhalter: `"temp_text": "round(current.temperature_2m) + ' °C'"` ergibt `21 °C`. Lass daneben den reinen Zahlenwert (`temp`) stehen, denn ein Wert, der Text ist, lässt sich in Regeln nicht mehr als Zahl vergleichen.
+- Was die Quelle liefert, wird nicht vertraut: Steuerzeichen werden zu Leerzeichen, der Text wird auf 64 Bytes gekürzt, und der eingesetzte Text wird **nicht noch einmal** nach Platzhaltern durchsucht.
+- Ein wörtliches `{id.wert}` im Text ist nicht möglich. Das Schema prüft Platzhalter nicht, sie stehen nicht in Plugin-Dateien.
+- Werte stehen auch bei einem Plugin mit Skript zur Verfügung.
 
 ---
 

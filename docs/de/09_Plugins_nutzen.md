@@ -1,6 +1,6 @@
 # Plugins nutzen
 
-Ein **Plugin** ist eine kleine Datei, die einen Wert aus dem Netzwerk holt und auf einem Segment anzeigt – zum Beispiel den Druckfortschritt eines 3D-Druckers, die Außentemperatur oder den Zustand eines Dienstes im Heimnetz. HyperLED selbst weiß nichts über diese Dinge: Was angezeigt wird, steht allein im Plugin.
+Ein **Plugin** ist eine kleine Datei, die HyperLED um eine eigene Funktion erweitert. Es kann Daten aus dem Netzwerk lesen, daraus Regeln ableiten, ein Segment danach steuern oder es mit einem eigenen Skript selbst zeichnen – zum Beispiel den Druckfortschritt eines 3D-Druckers anzeigen, ein Segment nach der Außentemperatur färben oder den Zustand eines Dienstes im Heimnetz sichtbar machen. HyperLED selbst weiß nichts über diese Dinge: Was geschieht, steht allein im Plugin.
 
 Plugins gehören nicht zur Firmware. Sie lassen sich hinzufügen, einstellen und wieder entfernen, ohne die Firmware zu aktualisieren, und sie überleben Firmware-Updates und die Sicherung.
 
@@ -92,6 +92,27 @@ Die **Helligkeit** bestimmst immer du, und sie wirkt sofort; ein Plugin kann sie
 - den **Anfang der Antwort** der Quelle.
 
 Das hilft, wenn ein Plugin nicht tut, was du erwartest: Siehst du den Wert, den du erwartest? Passt die Bedingung?
+
+---
+
+## Werte von Plugins im Text anzeigen
+
+Die Werte eines Plugins lassen sich auch in einem **Text** oder **Lauftext** auf einem Panel zeigen, zum Beispiel „Außen {beispiel-wetter.temp} °C“.
+
+1. Das Plugin muss eingeschaltet sein und den Zustand *läuft* haben.
+2. Öffne den Bereich **Panel**, wähle ein Segment mit dem Effekt „Uhr / Text“ und lege ein Element vom Typ *Text* oder *Lauftext* an.
+3. Tippe `{plugin-kennung.wert}` in das Textfeld, oder wähle unter dem Feld **Plugin-Wert einfügen …** einen Wert aus. Die Liste zeigt die Werte der laufenden Plugins mit ihrem aktuellen Stand und schreibt den Platzhalter für dich an die Stelle des Cursors.
+
+Das Gerät setzt den aktuellen Wert ein und schickt den fertigen Text auch an Slaves. Ändert sich der Wert, ändert sich der Text von selbst.
+
+- **`--`** steht, solange ein Wert unbekannt ist: das Plugin ist aus, pausiert, wartet noch auf die erste Antwort, hat keine Verbindung, ist entfernt, oder der Wert fehlt in der Antwort. Ein veralteter Wert wird nie gezeigt.
+- **Gespeichert wird der Text mit dem Platzhalter**, nie der eingesetzte Wert; kein Plugin ändert ihn. Entfernst du das Plugin, bleibt der Platzhalter stehen und zeigt `--`.
+- Alles in geschweiften Klammern, was nicht wie `{kennung.wert}` aussieht, bleibt, wie es ist. Ein wörtliches `{kennung.wert}` lässt sich nicht schreiben.
+- Ganze Zahlen erscheinen ohne Nachkommastellen, andere mit zwei; Wahr/Falsch als `true` und `false`. Rundung und Einheit gehören in den Wert des Plugins (siehe [Plugins entwickeln](10_Plugins_entwickeln.md)).
+- Der angezeigte Text ist höchstens **64 Bytes** lang, Umlaute zählen doppelt; Längeres wird abgeschnitten. Das gilt für den fertigen Text mit den eingesetzten Werten.
+- Ein Wert, der da, aber leer ist, ergibt keinen Text (ein Lauftext verschwindet dann); nur ein *unbekannter* Wert ergibt `--`.
+- Ein **Lauftext** startet nicht neu, wenn sich sein Text ändert. Er springt aber, wenn sich die *Länge* des Textes ändert.
+- Passt die Liste der Elemente mit den eingesetzten Werten nicht mehr in ein Funkpaket zum Slave, zeichnet der Master das betroffene Element selbst und streamt es.
 
 ---
 

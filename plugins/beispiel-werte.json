@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "id": "beispiel-werte",
+  "name": "Beispiel: Wetterwerte für Text",
+  "version": "1.0.0",
+  "author": "HyperLED",
+  "license": "EUPL-1.2",
+  "description": "Liefert Temperatur und Wind eines Ortes (Open-Meteo) als Werte für Text-Elemente, ohne ein Segment zu steuern.",
+  "needs": {
+    "api": 1
+  },
+  "settings": [
+    {
+      "key": "lat",
+      "type": "number",
+      "default": 52.52,
+      "min": -90,
+      "max": 90,
+      "label": {
+        "de": "Breitengrad",
+        "en": "Latitude",
+        "ru": "Широта"
+      },
+      "hint": {
+        "de": "Zum Beispiel 52.52 für Berlin",
+        "en": "For example 52.52 for Berlin",
+        "ru": "Например, 52.52 для Берлина"
+      }
+    },
+    {
+      "key": "lon",
+      "type": "number",
+      "default": 13.41,
+      "min": -180,
+      "max": 180,
+      "label": {
+        "de": "Längengrad",
+        "en": "Longitude",
+        "ru": "Долгота"
+      },
+      "hint": {
+        "de": "Zum Beispiel 13.41 für Berlin",
+        "en": "For example 13.41 for Berlin",
+        "ru": "Например, 13.41 для Берлина"
+      }
+    }
+  ],
+  "source": {
+    "url": "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,wind_speed_10m",
+    "every": 600
+  },
+  "values": {
+    "temp": "current.temperature_2m",
+    "temp_text": "round(current.temperature_2m) + ' °C'",
+    "wind": "current.wind_speed_10m"
+  }
+}
