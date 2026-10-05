@@ -95,6 +95,7 @@ Spätere Versionen lassen sich direkt in der Weboberfläche unter *Einstellungen
 
 ## Dokumentation
 
+- 📖 **[Wiki für Einsteiger](https://github.com/KaelanTesseract/HyperLED/wiki)** (Deutsch und Englisch, mit Bildern): von der Einkaufsliste über Verkabelung und Installation bis zu Home Assistant und Plugins
 - 🇩🇪 [Deutsches Wiki](docs/de/01_Home.md)
 - 🇬🇧 [English Wiki](docs/en/01_Home.md)
 
@@ -103,6 +104,8 @@ Darin: [Funktionen](docs/de/02_Features.md) · [Hardware und Pinbelegung](docs/d
 ## Mitmachen
 
 Fehlerberichte und Vorschläge gern über die [Issues](https://github.com/KaelanTesseract/HyperLED/issues). Die Firmware der Slave-Boards liegt in einem eigenen Repository: [HyperLED-Slave](https://github.com/KaelanTesseract/HyperLED-Slave).
+
+**Plugins:** Ein fertiges Beispiel ist die [Klipper-Statusanzeige](https://github.com/KaelanTesseract/HyperLED-Plugin-Klipper-Status), die den Zustand eines 3D-Druckers als Licht zeigt. Eigene Plugins schreibst du nach [Plugins entwickeln](docs/de/10_Plugins_entwickeln.md).
 
 ## Lizenz
 

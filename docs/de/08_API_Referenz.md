@@ -38,7 +38,7 @@ Gibt den aktuellen Zustand zurück: `on` (mindestens ein Segment leuchtet), `syn
 *Beispiel-Payloads:*
 - Alles ausschalten: `{"on": false}`
 - **Umschalten:** `{"on": "t"}` (aus, wenn irgendein Segment leuchtet, sonst alles an – praktisch für Taster)
-- Gleichlauf einschalten: `{"sync": true}`
+- Gleichlauf ein- oder ausschalten: `{"sync": true}` / `{"sync": false}`
 - Segment anpassen: `{"seg": [{"id": 0, "on": true, "bri": 200, "effect": 5, "color": "#ff0000"}]}`
 
 Pro Segment werden `on`, `bri`, `effect`, `speed`, `intensity`, `palette`, `color`, `color2`, `color2Enabled`, `white`, `whiteOnly` und `cct` verstanden.

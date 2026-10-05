@@ -2,27 +2,19 @@
 
 The core of operating HyperLED is the modern glassmorphism web interface. It runs directly from the ESP32 and needs no internet connection.
 
-## Main Screen
+## The five areas
 
-The main screen is organized into three areas:
+The menu has five areas (at the bottom on a phone, on the left on a larger screen). The round power button at the top right switches all segments on or off.
 
-1. **Segments:** List of all segments (Master and any Slaves). Select which segment you're currently editing here.
-2. **Color & Brightness:** Color picker, brightness, speed, intensity, and palette for the currently selected segment. The **"Edit Elements"** button jumps straight to the matrix widgets (time, text, weather, etc.).
-3. **Effects:** Click-to-select from over 25 built-in animation effects.
-
-The gear icon in the top right opens Settings, with further tabs:
-
-| Tab | Content |
+| Area | Content |
 |---|---|
-| **LED** | LED type, count, data pin, physical buttons, Automatic Brightness Limiting (ABL). |
-| **Matrix** | 2D matrix setup, live preview, pixel art editor/upload, HUB75 pinout reference. |
-| **Segments** | Create, edit, and delete segments. |
-| **Presets** | Save and apply lighting moods, and play several back automatically as a playlist. |
-| **Schedules** | Trigger effects or presets on a schedule (timezone-aware via NTP). |
-| **Slaves** | Name and configure automatically discovered Slave boards (LED type, pins, or HUB75 matrix size). |
-| **WLAN / MQTT** | Network and smart home settings. |
-| **Plugins** | Add, set up, switch on and off plugins, look at live values (see [Using Plugins](09_Plugins_nutzen.md)). |
-| **System** | IP address, firmware version, OTA updates, backup and restore, factory reset. |
+| **Light** | The segments (Master and any Slaves) with the **Sync** option, brightness, speed, intensity and palette of the selected segment, the colour wheel and the over 25 built-in effects. If a plugin controls a segment, a notice at the top offers its **Settings** and **Pause**. |
+| **Scenes** | **Presets** (save and apply lighting moods), the **playlist** (play several presets in turn) and **schedules** (switch on, off or apply a preset at set times, timezone-aware via NTP). |
+| **Panel** | The live preview of the selected panel and its **elements** (time, date, text, scrolling text, image, analog clock, weather), the background effect and the pixel art editor/upload. |
+| **Devices** | Three tabs: **Segments** (create, edit and delete segments), **Connected devices** (automatically found Slave boards: name and configure them: LED type, pins, or HUB75 matrix size) and **LED hardware** (LED type, count, data pin, physical buttons, Automatic Brightness Limiting, 2D matrix setup and canvas, HUB75 pinout as a reference). |
+| **Settings** | Three tabs: **Wi-Fi & MQTT** (network and smart home), **Plugins** (add, set up, switch on and off, look at live values; see [Using Plugins](09_Plugins_nutzen.md)) and **System** (language, firmware version, online and local updates, backup and restore, factory reset). |
+
+> A beginner-friendly tour with screenshots is in the [project wiki](https://github.com/KaelanTesseract/HyperLED/wiki).
 
 ---
 

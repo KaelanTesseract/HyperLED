@@ -8,6 +8,9 @@ HyperLED combines a fast, visually striking web interface with a robust Master/S
 
 ### Wiki Table of Contents
 
+> New here? The [project wiki](https://github.com/KaelanTesseract/HyperLED/wiki) is a beginner-friendly guide with screenshots (English and German).
+
+
 1. [Features](02_Features.md)
 2. [Hardware Setup & Pinout](03_Hardware_Setup.md)
 3. [Installation & Flashing](04_Installation_Flash.md)

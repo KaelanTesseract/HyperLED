@@ -4,7 +4,7 @@ Ein **Plugin** ist eine kleine Datei, die HyperLED um eine eigene Funktion erwei
 
 Plugins gehören nicht zur Firmware. Sie lassen sich hinzufügen, einstellen und wieder entfernen, ohne die Firmware zu aktualisieren, und sie überleben Firmware-Updates und die Sicherung.
 
-> Wer ein eigenes Plugin schreiben möchte, findet alles in [Plugins entwickeln](10_Plugins_entwickeln.md) und [Plugin-Skripte](11_Plugin_Skripte.md). Fertige Beispiele liegen im Ordner [`plugins/`](../../plugins/).
+> Wer ein eigenes Plugin schreiben möchte, findet alles in [Plugins entwickeln](10_Plugins_entwickeln.md) und [Plugin-Skripte](11_Plugin_Skripte.md). Fertige Beispiele liegen im Ordner [`plugins/`](../../plugins/), und die [Klipper-Statusanzeige](https://github.com/KaelanTesseract/HyperLED-Plugin-Klipper-Status) ist ein vollständiges Plugin für sich.
 
 ---
 
@@ -74,9 +74,9 @@ Bei Plugins mit Skript steht eine zusätzliche Zeile darunter:
 
 Steuert ein Plugin ein Segment, steht oben im Bereich **Licht**:
 
-> **Gesteuert von Plugin-Name · Segment** [Pausieren]
+> **Gesteuert von Plugin-Name · Segment** [Einstellungen] [Pausieren]
 
-**Pausieren** schaltet das Plugin aus; das Segment ist sofort wieder so, wie du es eingestellt hast. Das liegt an der Arbeitsweise: Ein Plugin **überlagert** ein Segment nur beim Zeichnen und **speichert nichts**. Deine Einstellungen (Effekt, Farbe, Helligkeit …) bleiben unverändert erhalten – nach einem Neustart, nach dem Ausschalten oder Entfernen des Plugins ist alles wieder da. Änderst du Effekt, Farbe, Geschwindigkeit oder Intensität eines gesteuerten Segments, merkt sich HyperLED das – sichtbar wird es aber erst, sobald das Plugin pausiert ist.
+**Einstellungen** öffnet gleich dort die Einstellungen des Plugins, so änderst du zum Beispiel eine Farbe oder die Helligkeit einer Statusanzeige, ohne nach *Einstellungen → Plugins* zu gehen. **Pausieren** schaltet das Plugin aus; das Segment ist sofort wieder so, wie du es eingestellt hast. Das liegt an der Arbeitsweise: Ein Plugin **überlagert** ein Segment nur beim Zeichnen und **speichert nichts**. Deine Einstellungen (Effekt, Farbe, Helligkeit …) bleiben unverändert erhalten – nach einem Neustart, nach dem Ausschalten oder Entfernen des Plugins ist alles wieder da. Änderst du Effekt, Farbe, Geschwindigkeit oder Intensität eines gesteuerten Segments, merkt sich HyperLED das – sichtbar wird es aber erst, sobald das Plugin pausiert ist.
 
 Die **Helligkeit** bestimmst immer du, und sie wirkt sofort; ein Plugin kann sie nicht ändern.
 

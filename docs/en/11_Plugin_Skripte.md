@@ -277,7 +277,7 @@ Tips for fast scripts:
 - A **syntax error** is reported by the installation with the line: `Skript: script:7: 'end' expected near '<eof>'`.
 - A **runtime error** (`error(...)`, calculating with `nil`, wrong type) aborts the call; the message appears in the plugin under **Script** (with `script:LINE:`) and in **Live values**. The previous frame stays.
 - **Three failed calls in a row** (or ten in a minute) end the script. It is **not** started again until the person switches the plugin off and on or changes its settings. Until then the plugin's **rules** apply as a fallback.
-- **`log(text)`** writes a message for you: at most **one per second** and **80 characters**. It appears as the "last message" of the script state in **Live values**. It is meant for reading, not as output: `log(v.temp)` shows you what arrives.
+- **`log(text)`** writes a message for you: at most **one per second** and **80 characters**. It is meant for reading, not as output: `log(v.temp)` shows you what arrives. **Known limitation:** the "last message" in **Live values** currently shows a message of the script only together with an error; while the script runs without errors, a `log()` message is not shown there.
 - The line **"Script running · 20.5 ms per frame"** in the plugin list shows the average time of a frame. If it is close to the time budget, things get tight.
 
 ---

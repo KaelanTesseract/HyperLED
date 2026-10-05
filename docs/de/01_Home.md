@@ -8,6 +8,9 @@ HyperLED verbindet eine schnelle, visuell ansprechende Web-Oberfläche mit einer
 
 ### Inhaltsverzeichnis des Wikis
 
+> Neu hier? Das [Projekt-Wiki](https://github.com/KaelanTesseract/HyperLED/wiki) ist eine einsteigerfreundliche Anleitung mit Bildern (Deutsch und Englisch).
+
+
 1. [Funktionen & Features](02_Features.md)
 2. [Hardware Setup & Pinbelegung](03_Hardware_Setup.md)
 3. [Installation & Flashen](04_Installation_Flash.md)

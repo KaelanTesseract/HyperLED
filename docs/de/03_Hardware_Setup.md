@@ -10,7 +10,7 @@ HyperLED läuft auf dem leistungsstarken **ESP32-S3**. Um optimale Ergebnisse zu
 HyperLED ist für den **ESP32-S3** entwickelt und nur darauf getestet (Master und Slave: Waveshare ESP32-S3-Zero). In der Theorie laufen auch andere ESP32-Chips – vorausgesetzt, sie bringen mit, was HyperLED braucht:
 
 - **WLAN (2,4 GHz) und ESP-NOW** – für Weboberfläche, MQTT, Online-Update und Funk-Slaves
-- **mindestens 4 MB Flash** – zwei Update-Plätze à 1,44 MB plus 1,06 MB Dateisystem; die Master-Firmware füllt ihren Platz schon zu gut 90 %
+- **mindestens 4 MB Flash** – zwei Update-Plätze à 1,625 MB plus 704 KB Dateisystem; die Master-Firmware füllt ihren Platz schon zu gut 90 % (ein Controller, der vor langer Zeit mit den kleineren Plätzen von 1,44 MB geflasht wurde, braucht einmal eine Neuinstallation per USB, bevor er eine größere Firmware über die Luft annehmen kann)
 - **genug Arbeitsspeicher** für Webserver, TLS und ESP-NOW gleichzeitig (als Master)
 - **für HUB75-Panels:** einen Chip, den die Panel-Bibliothek `esp-hub75` unterstützt (ESP32, S2, S3, C6, P4)
 

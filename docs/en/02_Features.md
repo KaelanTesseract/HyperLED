@@ -13,7 +13,7 @@ HyperLED offers a huge range of features that make it suitable for anything from
 ## Matrix & Widgets
 * **2D matrix support:** Serpentine and progressive layout, including HUB75 scan-matrix panels.
 * **Pixel Art Editor & Converter:** Draw directly in the browser or upload pixel art images – both end up as a background-image widget on the matrix.
-* **Widget system:** Time, date, text, images, and an analog clock (multiple designs) can be freely placed on the matrix and scaled individually, with a live preview and no extra step.
+* **Widget system:** Time, date, text, images, and an analog clock (multiple designs) can be freely placed on the matrix and scaled individually, with a live preview and no extra step. Text and marquee elements can show live values of [plugins](09_Plugins_nutzen.md) with a placeholder such as `{plugin-id.value}`.
 * **Marquee (Lauftext) widget:** Text scrolls continuously through a freely positioned window with an adjustable length (width in pixels), direction (left/right), and its own speed - independent of any other element (clock, weather, image) sharing the same segment.
 * **Weather widget:** Shows the current temperature and weather icon (sun, clouds, rain, snow, thunderstorm) – powered by Open-Meteo, no API key required.
 

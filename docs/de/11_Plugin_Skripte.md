@@ -277,7 +277,7 @@ Tipps für schnelle Skripte:
 - **Syntaxfehler** meldet die Installation mit der Zeile: `Skript: script:7: 'end' expected near '<eof>'`.
 - **Laufzeitfehler** (`error(...)`, Rechnen mit `nil`, falscher Typ) brechen den Aufruf ab; die Meldung steht im Plugin unter **Skript** (mit `script:ZEILE:`) und bei **Live-Werte**. Das vorige Bild bleibt.
 - **Drei fehlgeschlagene Aufrufe hintereinander** (oder zehn in einer Minute) beenden das Skript. Es wird danach **nicht** erneut gestartet, bis die Person das Plugin aus- und wieder einschaltet oder die Einstellungen ändert. Bis dahin gelten die **Regeln** des Plugins als Rückfall.
-- **`log(text)`** schreibt eine Meldung für dich: höchstens **eine pro Sekunde** und **80 Zeichen**. Sie erscheint als „letzte Meldung“ im Skriptzustand bei **Live-Werte**. Sie ist zum Lesen gedacht, nicht als Ausgabe: `log(v.temp)` zeigt dir, was ankommt.
+- **`log(text)`** schreibt eine Meldung für dich: höchstens **eine pro Sekunde** und **80 Zeichen**. Sie ist zum Lesen gedacht, nicht als Ausgabe: `log(v.temp)` zeigt dir, was ankommt. **Bekannte Einschränkung:** Die „letzte Meldung“ bei **Live-Werte** zeigt eine Meldung des Skripts derzeit nur zusammen mit einem Fehler; läuft das Skript ohne Fehler, erscheint eine `log()`-Meldung dort nicht.
 - Die Zeile **„Skript läuft · 20,5 ms je Bild“** in der Plugin-Liste zeigt die durchschnittliche Zeit eines Bildes. Liegt sie nahe am Zeitbudget, wird es knapp.
 
 ---

@@ -2,27 +2,19 @@
 
 Das Herzstück zur Bedienung von HyperLED ist das moderne Glassmorphism-Webinterface. Es läuft direkt vom ESP32 und benötigt keine Internetverbindung.
 
-## Hauptbildschirm
+## Die fünf Bereiche
 
-Der Hauptbildschirm ist in drei Bereiche gegliedert:
+Das Menü hat fünf Bereiche (auf dem Handy unten, auf größeren Bildschirmen links). Der runde Power-Knopf oben rechts schaltet alle Segmente ein oder aus.
 
-1. **Segmente:** Liste aller Segmente (Master und ggf. Slaves). Wähle hier aus, welches Segment du gerade bearbeitest.
-2. **Farbe & Helligkeit:** Farbwähler, Helligkeit, Geschwindigkeit, Intensität und Palette für das aktuell ausgewählte Segment. Der Button **„Elemente bearbeiten“** führt direkt zu den Matrix-Widgets (Uhrzeit, Text, Wetter usw.).
-3. **Effekte:** Klick-Auswahl aus über 25 eingebauten Animationseffekten.
-
-Über das Zahnrad-Symbol oben rechts öffnest du die Einstellungen mit weiteren Tabs:
-
-| Tab | Inhalt |
+| Bereich | Inhalt |
 |---|---|
-| **LED** | LED-Typ, Anzahl, Datenpin, physische Taster, automatische Strombegrenzung (ABL). |
-| **Matrix** | 2D-Matrix-Setup, Live-Vorschau, Pixel-Art-Editor/-Upload, HUB75-Pinbelegung als Referenz. |
-| **Segmente** | Segmente anlegen, bearbeiten und löschen. |
-| **Presets** | Lichtstimmungen speichern, anwenden und als Playlist automatisch abspielen lassen. |
-| **Zeitpläne** | Effekte oder Presets zeitgesteuert auslösen (zeitzonenbewusst über NTP). |
-| **Slaves** | Automatisch gefundene Slave-Boards benennen und konfigurieren (LED-Typ, Pins bzw. HUB75-Matrixgröße). |
-| **WLAN / MQTT** | Netzwerk- und Smart-Home-Einstellungen. |
-| **Plugins** | Plugins hinzufügen, einstellen, ein- und ausschalten, Live-Werte ansehen (siehe [Plugins nutzen](09_Plugins_nutzen.md)). |
-| **System** | IP-Adresse, Firmware-Version, OTA-Updates, Sicherung und Wiederherstellung, Werkseinstellungen. |
+| **Licht** | Die Segmente (Master und ggf. Slaves) mit der Option **Gleichlauf**, Helligkeit, Geschwindigkeit, Intensität und Palette des gewählten Segments, das Farbrad und die über 25 eingebauten Effekte. Steuert ein Plugin ein Segment, bietet ein Hinweis oben dessen **Einstellungen** und **Pausieren** an. |
+| **Szenen** | **Presets** (Lichtstimmungen speichern und anwenden), die **Playlist** (mehrere Presets nacheinander abspielen) und **Zeitpläne** (zu festen Zeiten ein-, ausschalten oder ein Preset anwenden, zeitzonenbewusst über NTP). |
+| **Panel** | Die Live-Vorschau des gewählten Panels und seine **Elemente** (Uhrzeit, Datum, Text, Lauftext, Bild, Analoguhr, Wetter), der Hintergrund-Effekt und der Pixel-Art-Editor/-Upload. |
+| **Geräte** | Drei Reiter: **Segmente** (anlegen, bearbeiten und löschen), **Verbundene Geräte** (automatisch gefundene Slave-Boards benennen und konfigurieren: LED-Typ, Pins bzw. HUB75-Matrixgröße) und **LED-Hardware** (LED-Typ, Anzahl, Datenpin, physische Taster, automatische Strombegrenzung, 2D-Matrix-Setup und Leinwand, HUB75-Pinbelegung als Referenz). |
+| **Einstellungen** | Drei Reiter: **WLAN / MQTT** (Netzwerk und Smart Home), **Plugins** (hinzufügen, einstellen, ein- und ausschalten, Live-Werte ansehen; siehe [Plugins nutzen](09_Plugins_nutzen.md)) und **System** (Sprache, Firmware-Version, Online- und lokale Updates, Sicherung und Wiederherstellung, Werkseinstellungen). |
+
+> Einen einsteigerfreundlichen Rundgang mit Bildern gibt es im [Projekt-Wiki](https://github.com/KaelanTesseract/HyperLED/wiki).
 
 ---
 

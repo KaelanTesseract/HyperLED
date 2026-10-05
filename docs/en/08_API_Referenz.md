@@ -38,7 +38,7 @@ Changes the state. Every field is optional.
 *Example payloads:*
 - Turn everything off: `{"on": false}`
 - **Toggle:** `{"on": "t"}` (off if any segment is lit, otherwise everything on - handy for buttons)
-- Turn on synchronised segments: `{"sync": true}`
+- Turn synchronised segments on or off: `{"sync": true}` / `{"sync": false}`
 - Adjust a segment: `{"seg": [{"id": 0, "on": true, "bri": 200, "effect": 5, "color": "#ff0000"}]}`
 
 Per segment, `on`, `bri`, `effect`, `speed`, `intensity`, `palette`, `color`, `color2`, `color2Enabled`, `white`, `whiteOnly` and `cct` are understood.

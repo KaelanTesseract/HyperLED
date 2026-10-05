@@ -4,7 +4,7 @@ A **plugin** is a small file that extends HyperLED with a function of its own. I
 
 Plugins are not part of the firmware. You can add, set up and remove them without updating the firmware, and they survive firmware updates and backups.
 
-> If you want to write a plugin yourself, see [Developing Plugins](10_Plugins_entwickeln.md) and [Plugin Scripts](11_Plugin_Skripte.md). Ready-made examples are in the [`plugins/`](../../plugins/) folder.
+> If you want to write a plugin yourself, see [Developing Plugins](10_Plugins_entwickeln.md) and [Plugin Scripts](11_Plugin_Skripte.md). Ready-made examples are in the [`plugins/`](../../plugins/) folder, and the [Klipper Status Display](https://github.com/KaelanTesseract/HyperLED-Plugin-Klipper-Status) is a complete plugin of its own.
 
 ---
 
@@ -74,9 +74,9 @@ For plugins with a script an extra line appears below:
 
 When a plugin controls a segment, the **Light** page shows at the top:
 
-> **Controlled by plugin name · segment** [Pause]
+> **Controlled by plugin name · segment** [Settings] [Pause]
 
-**Pause** switches the plugin off; the segment is immediately the way you set it. This is how plugins work: a plugin only **lays itself over** a segment while drawing and **stores nothing**. Your settings (effect, colour, brightness …) stay as they are - after a restart, after switching the plugin off or removing it, everything is back. If you change effect, colour, speed or intensity of a controlled segment, HyperLED remembers it - but you only see it once the plugin is paused.
+**Settings** opens the plugin's settings right there, so you can change a colour or the brightness of a status display without going to *Settings → Plugins*. **Pause** switches the plugin off; the segment is immediately the way you set it. This is how plugins work: a plugin only **lays itself over** a segment while drawing and **stores nothing**. Your settings (effect, colour, brightness …) stay as they are - after a restart, after switching the plugin off or removing it, everything is back. If you change effect, colour, speed or intensity of a controlled segment, HyperLED remembers it - but you only see it once the plugin is paused.
 
 **Brightness** is always yours and takes effect immediately; a plugin cannot change it.
 
