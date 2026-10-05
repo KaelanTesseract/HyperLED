@@ -331,6 +331,13 @@ public:
     // count x 1, in matrix mode the Master's own matrix), the segment's brightness with the current
     // limiting applied, and whether the segment lives on a Slave (and which one).
     void scriptGeometry(uint8_t segId, uint16_t& width, uint16_t& height) const;
+    // How the segment lies on the canvas its script draws on, so a script can tell a strip from a panel
+    // by itself. leds: how many LEDs the segment has; first: where the segment's LEDs start in the chain
+    // (a script that follows the chain draws LED first + k for the k-th). layout: 0 = the canvas is the
+    // segment (a panel, a plain strip, a Slave), 1 = a strip on a larger matrix canvas whose rows run
+    // in a zigzag, 2 = the same with every row from the left. Reaches scripts as settings._leds,
+    // settings._first and settings._layout ("grid", "snake", "rows").
+    void scriptLayout(uint8_t segId, uint16_t& leds, uint16_t& first, uint8_t& layout) const;
     uint8_t effectiveBrightness(uint8_t segId);
     bool segmentIsSlave(uint8_t segId, uint8_t& slaveId) const;
     void triggerSave() {

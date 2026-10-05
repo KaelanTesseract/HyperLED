@@ -52,6 +52,7 @@ function frame(t, dt)    -- (PFLICHT) bei jedem Bild
 end
 ```
 
+- **`settings` und `v` stehen erst ab `update()` bereit.** Auf der obersten Ebene und in `init()` sind sie noch leer: Das Skript wird zuerst geladen, danach bekommt es die Werte. Lies Einstellungen deshalb in `update()` (oder in `frame`), nicht beim Laden.
 - `frame(t, dt)`: `t` sind die **Millisekunden seit dem ersten Bild**, `dt` die Millisekunden seit dem Bild davor. Zeichne ein ganzes Bild; HyperLED kopiert es danach auf das Segment.
 - `update()`: wird aufgerufen, wenn die Quelle **neue Werte** geliefert hat (und gleich nach dem Laden, wenn schon Werte da sind). Hier lässt sich Rechenarbeit unterbringen, die nicht jedes Bild nötig ist.
 - `fps`: die Bildrate, 1 bis 60, Standard 30. Du kannst sie am Anfang setzen oder später ändern. Wähle sie so klein wie möglich: Ein Balken, der sich alle paar Minuten ändert, braucht keine 30 Bilder pro Sekunde.
@@ -88,6 +89,14 @@ Die Einstellungen des Plugins, unter ihrem `key`:
 | `color` | **Zahl `0xRRGGBB`**, zum Beispiel `#00ff80` ist `0x00FF80` (`65408`). Zerlegen: `r = (c // 65536) % 256`, `g = (c // 256) % 256`, `b = c % 256` |
 | `text`, `list`, `effect` | Text |
 | `password` | **nicht vorhanden** |
+
+Dazu kommen drei Angaben zum **Segment**, die HyperLED selbst einträgt (Namen mit Unterstrich, damit sie sich nicht mit eigenen Einstellungen beißen):
+
+| Name | Bedeutung |
+|---|---|
+| `settings._leds` | Wie viele LEDs das Segment hat. |
+| `settings._first` | Wo die LEDs des Segments in der Kette beginnen (die k-te LED des Segments ist LED `_first + k`). |
+| `settings._layout` | `"grid"`: das Zeichenfeld **ist** das Segment (Panel, einfacher Streifen, alles auf einem Slave). `"snake"` oder `"rows"`: Der Master hat eine Matrix eingerichtet, das Segment ist aber ein **Streifen**, der darauf hängt; seine LEDs sind die ersten Pixel des Feldes, Reihe für Reihe (`"snake"`: jede zweite Reihe rückwärts, `"rows"`: jede Reihe von links). Wer einen Balken der Reihe nach über einen solchen Streifen laufen lassen will, rechnet die LED-Nummer `i` auf `x = i % W` (bei `"snake"` und ungerader Reihe `W - 1 - x`) und `y = i // W` um. |
 
 Leere Einstellungen fehlen (`nil`). **Passwörter erhält ein Skript nie:** Es kann auf einem Slave laufen, und alles, was es bekommt, geht über Funk dorthin – unverschlüsselt.
 

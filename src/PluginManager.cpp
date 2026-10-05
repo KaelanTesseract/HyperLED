@@ -1129,6 +1129,16 @@ bool PluginManagerClass::driveScript(PluginInstance& p, int segment) {
     }
 
     std::vector<Script::Item> settings = PluginRun::scriptSettings(p.def, p.values);
+    {
+        // What the script cannot find out for itself: how the segment lies on its canvas (see
+        // LEDManager::scriptLayout). They come with the settings, as _leds, _first and _layout.
+        uint16_t leds = 0, first = 0;
+        uint8_t layout = 0;
+        LEDManager.scriptLayout((uint8_t)segment, leds, first, layout);
+        settings.push_back(Script::Item::num("_leds", leds));
+        settings.push_back(Script::Item::num("_first", first));
+        settings.push_back(Script::Item::txt("_layout", layout == 1 ? "snake" : layout == 2 ? "rows" : "grid"));
+    }
     std::vector<Script::Item> values = PluginRun::scriptValues(p.def, p.results);
     bool settingsChanged = !PluginRun::sameItems(settings, p.scriptSettingsSent);
     bool valuesChanged = !PluginRun::sameItems(values, p.scriptValuesSent);

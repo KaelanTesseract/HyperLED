@@ -2005,6 +2005,23 @@ void LEDManagerClass::scriptGeometry(uint8_t segId, uint16_t& width, uint16_t& h
     }
 }
 
+void LEDManagerClass::scriptLayout(uint8_t segId, uint16_t& leds, uint16_t& first, uint8_t& layout) const {
+    leds = 0;
+    first = 0;
+    layout = 0;
+    if (segId >= _segments.size()) return;
+    const Segment& seg = _segments[segId];
+    leds = seg.stop > seg.start ? (uint16_t)(seg.stop - seg.start) : 0;
+    first = seg.start;
+    bool onMaster = !(seg.isSlave && seg.slaveId != 254);
+    // The Master draws every script on the whole matrix canvas, however few LEDs the segment has. A
+    // segment that does not fill it is a strip that hangs on the canvas: its LEDs are the first
+    // pixels of the canvas in the order of the matrix layout.
+    if (_isMatrix && onMaster && leds > 0 && (uint32_t)leds < (uint32_t)_matrixWidth * _matrixHeight) {
+        layout = _matrixLayout == 0 ? 1 : 2;
+    }
+}
+
 uint8_t LEDManagerClass::effectiveBrightness(uint8_t segId) {
     if (segId >= _segments.size()) return 0;
     const Segment& seg = _segments[segId];

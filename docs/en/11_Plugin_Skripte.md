@@ -52,6 +52,7 @@ function frame(t, dt)    -- (REQUIRED) on every frame
 end
 ```
 
+- **`settings` and `v` are only there from `update()` on.** At the top level and in `init()` they are still empty: the script is loaded first and gets the values afterwards. So read settings in `update()` (or in `frame`), not while loading.
 - `frame(t, dt)`: `t` is the **milliseconds since the first frame**, `dt` the milliseconds since the frame before. Draw a whole frame; HyperLED copies it to the segment afterwards.
 - `update()`: called when the source has delivered **new values** (and right after loading if values are already there). A good place for work that is not needed on every frame.
 - `fps`: the frame rate, 1 to 60, default 30. You can set it at the start or change it later. Choose it as small as possible: a bar that changes every few minutes does not need 30 frames per second.
@@ -88,6 +89,14 @@ The plugin's settings, under their `key`:
 | `color` | **number `0xRRGGBB`**, for example `#00ff80` is `0x00FF80` (`65408`). Splitting: `r = (c // 65536) % 256`, `g = (c // 256) % 256`, `b = c % 256` |
 | `text`, `list`, `effect` | text |
 | `password` | **not present** |
+
+Three details about the **segment** come with them, entered by HyperLED itself (names with an underscore, so that they do not clash with settings of your own):
+
+| Name | Meaning |
+|---|---|
+| `settings._leds` | How many LEDs the segment has. |
+| `settings._first` | Where the segment's LEDs start in the chain (the k-th LED of the segment is LED `_first + k`). |
+| `settings._layout` | `"grid"`: the canvas **is** the segment (a panel, a plain strip, anything on a Slave). `"snake"` or `"rows"`: the Master has a matrix set up, but the segment is a **strip** that hangs on it; its LEDs are the first pixels of the canvas, row by row (`"snake"`: every second row backwards, `"rows"`: every row from the left). To run a bar along such a strip in order, convert the LED number `i` to `x = i % W` (with `"snake"` and an odd row `W - 1 - x`) and `y = i // W`. |
 
 Empty settings are missing (`nil`). **A script never receives passwords:** it may run on a Slave, and everything it receives travels over the air to it - unencrypted.
 
