@@ -1420,6 +1420,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 updateUI();
+            } else {
+                // Switching sync off has to reach the controller as well. Only the ticked case used to be
+                // sent, so the controller kept syncing and the next status poll ticked the box again.
+                fetch('/api/state', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sync: false })
+                });
             }
             renderSegmentsSelector(); // the per-segment boxes appear and disappear with the switch
         });
