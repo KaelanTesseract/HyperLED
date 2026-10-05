@@ -20,10 +20,11 @@
 
 #include <Arduino.h>
 
-#define HYPERLED_VERSION "0.3.002"
+#define HYPERLED_VERSION "0.3.003"
 
-// The chip this firmware is built for. It names the firmware file of a release: firmware-<chip>.bin
-// (see UpdateManager). Releases up to 0.3.001 call the ESP32-S3 build firmware.bin.
+// The chip this firmware is built for. It names the files of a release: firmware-<chip>.bin and
+// littlefs-<chip>.bin (see UpdateManager). Releases up to 0.3.001 call them firmware.bin and
+// littlefs.bin, 0.3.002 has firmware-<chip>.bin and littlefs.bin.
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
 #define HYPERLED_CHIP "esp32s3"
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)

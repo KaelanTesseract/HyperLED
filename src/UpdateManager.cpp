@@ -171,14 +171,15 @@ void UpdateManagerClass::performUpdate() {
     // slots; for it a larger firmware needs one reinstall over USB.
     const esp_partition_t* slot = esp_ota_get_next_update_partition(nullptr);
 
-    // The firmware file of this chip, firmware-<chip>.bin. Looked for before anything is touched,
-    // for the same reason as the size below: a release without a firmware for this chip must not
-    // leave a new web interface on an old firmware. (Releases up to 0.3.001 call the ESP32-S3 build
-    // firmware.bin; a controller that old is updated by hand once.)
+    // The files of this chip, firmware-<chip>.bin and littlefs-<chip>.bin. Both are looked for
+    // before anything is touched, for the same reason as the size below: a release that lacks one of
+    // them must not leave a new web interface on an old firmware, or the other way round. (Releases
+    // up to 0.3.002 name them differently; a controller that old is updated by hand once.)
     String firmwareUrl = baseUrl + "firmware-" HYPERLED_CHIP ".bin";
+    String fileSystemUrl = baseUrl + "littlefs-" HYPERLED_CHIP ".bin";
     int firmwareSize = remoteFileSize(firmwareUrl);
-    if (firmwareSize <= 0) {
-        Serial.printf("Update: this release has no firmware for the %s\n", HYPERLED_CHIP);
+    if (firmwareSize <= 0 || remoteFileSize(fileSystemUrl) <= 0) {
+        Serial.printf("Update: this release has no firmware or file system for the %s\n", HYPERLED_CHIP);
         _status = "error_nofw";
         return;
     }
@@ -200,7 +201,7 @@ void UpdateManagerClass::performUpdate() {
     // Unmounted while the partition is rewritten, so nothing reads or writes a half-written file
     // system, and mounted fresh afterwards to see the new one.
     LittleFS.end();
-    bool fsOk = downloadAndFlash(baseUrl + "littlefs.bin", U_SPIFFS, 5, 45);
+    bool fsOk = downloadAndFlash(fileSystemUrl, U_SPIFFS, 5, 45);
     LittleFS.begin();
     if (!fsOk) {
         _status = "error_fs";

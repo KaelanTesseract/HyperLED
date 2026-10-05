@@ -11,20 +11,18 @@ die Absicherung (Phase 2), dann die Slaves (Phase 3) und zuletzt der Chip selbst
 - Dateiname der Firmware im Release: `firmware-<chip>.bin`, also `firmware-esp32s3.bin` und später
   `firmware-esp32c6.bin`. Der Chip steht beim Bauen fest (`HYPERLED_CHIP` in `include/Config.h`).
 - **Der alte Name `firmware.bin` entfällt** (Entscheidung vom 2026-10-06): Alle laufenden Geräte werden
-  einmal von Hand auf 0.3.002 gebracht. Ab 0.3.002 liefert ein Release nur `firmware-esp32s3.bin`
-  und `littlefs.bin`. Folge: Ein Gerät bis 0.3.001, das sich aus einem Release ab 0.3.002 selbst
+  einmal von Hand gebracht. Ab 0.3.003 liefert ein Release nur `firmware-esp32s3.bin`
+  und `littlefs-esp32s3.bin`. Folge: Ein Gerät bis 0.3.001, das sich aus einem Release ab 0.3.002 selbst
   aktualisieren will, scheitert (es sucht `firmware.bin`), und weil seine alte Fassung das Dateisystem
   vor der Firmware ersetzt, bliebe es mit neuer Weboberfläche auf alter Firmware zurück. Solche Geräte
   müssen von Hand aktualisiert werden (USB oder Lokales Update).
-- Das Dateisystem heißt weiter `littlefs.bin` (Entscheidung vom 2026-10-06, Frage „umbenennen?“). Es ist
-  chipunabhängig, solange die Partitionstabelle gleich bleibt (4 MB, Dateisystem 704 KB) und die
-  Weboberfläche für beide Chips gleich ist. Das Image trägt keine Chip-Kennung, eine Prüfung wie bei
-  der Firmware (Phase 2) ist dort nicht möglich. Die Weboberfläche nennt aber feste S3-Pins (zum
-  Beispiel „Eingang 1 (Pin 39)“, HUB75-Pinbelegung). Sobald sich beim C6 die Partitionstabelle oder
-  die Weboberfläche unterscheidet, bekommt es dort einen eigenen Namen `littlefs-<chip>.bin`, und die
-  Firmware sucht erst diesen, dann `littlefs.bin` (Rückfall), damit die S3-Geräte nichts merken.
-  Eine Umbenennung jetzt hieße: Release 0.3.003 und alle drei Geräte noch einmal flashen, weil die
-  Geräte mit 0.3.002 `littlefs.bin` suchen.
+- **Auch das Dateisystem heißt nach dem Chip: `littlefs-<chip>.bin`** (Entscheidung vom 2026-10-06, ab
+  Release 0.3.003; es gibt keinen Rückfall auf `littlefs.bin`). Solange Partitionstabelle (4 MB,
+  Dateisystem 704 KB) und Weboberfläche gleich sind, ist `littlefs-esp32c6.bin` dieselbe Datei wie
+  `littlefs-esp32s3.bin`, nur unter zweitem Namen. Das Image trägt keine Chip-Kennung, eine Prüfung wie bei
+  der Firmware (Phase 2) ist dort nicht möglich. Die Weboberfläche nennt feste S3-Pins (zum Beispiel
+  „Eingang 1 (Pin 39)“, HUB75-Pinbelegung); beim C6 muss sie dafür angepasst werden, die Datei kann dann
+  wirklich abweichen.
 - Fehlt im Release die Datei für den Chip, bricht das Update ab, **bevor** etwas überschrieben wird
   (Status `error_nofw`), damit nie eine neue Weboberfläche auf einer alten Firmware landet.
 - Slaves: Der Master baut die Download-Adresse der Slave-Firmware auf `firmware-esp32s3.bin`
@@ -47,6 +45,22 @@ die Absicherung (Phase 2), dann die Slaves (Phase 3) und zuletzt der Chip selbst
       `firmware-esp32s3.bin`; Slaves über „Geräte jetzt aktualisieren“
 - [ ] Prüfung: Release ohne passende Datei lässt das Gerät unverändert (`error_nofw`)
 - [x] Doku und Wiki: Namen der Release-Dateien („Updates, Sicherung, Reset“)
+
+## Phase 1b: Dateisystem nach Chip benannt (Release 0.3.003)
+
+- [x] `UpdateManager` nimmt `littlefs-<chip>.bin`; fehlt eine der beiden Dateien, bricht das Update vor dem ersten Schreiben ab
+- [x] Texte des Lokalen Updates und Wiki nennen `littlefs-esp32s3.bin`; Master auf 0.3.003 (Slaves bleiben auf 0.3.002, ihr Code ist unverändert)
+- [x] Commit und Push, Release **0.3.003** (nur Master: `firmware-esp32s3.bin`, `littlefs-esp32s3.bin`)
+- [ ] Master auf 0.3.003 (von Hand, weil 0.3.002 noch `littlefs.bin` sucht; Sicherung vor- und zurückspielen)
+- [ ] Echter Test: Release 0.3.004 (ohne alten Namen) aktualisiert den Master über `firmware-esp32s3.bin` und `littlefs-esp32s3.bin` selbst
+
+## Release-Ablauf
+
+1. `pio run -e esp32-s3` und `pio run -e esp32-s3 -t buildfs` im Master, `pio run -e esp32-s3` im Slave-Ordner.
+2. Aus `.pio/build/esp32-s3/` kopieren und umbenennen: `firmware.bin` → `firmware-esp32s3.bin`,
+   `littlefs.bin` → `littlefs-esp32s3.bin` (Slave: `firmware.bin` → `firmware-esp32s3.bin`).
+3. Tag gleich der Version in `include/Config.h`; Master-Release mit beiden Dateien, Slave-Release mit seiner.
+4. Zuerst das Slave-Release, dann das des Masters (der Master holt die Slave-Firmware aus dem Slave-Release).
 
 ## Phase 2: Chip-Prüfung im Firmware-Image
 
