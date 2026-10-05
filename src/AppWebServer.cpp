@@ -20,6 +20,7 @@
 #include "esp_system.h"
 #include <esp_heap_caps.h>
 #include "LoopWatch.h"
+#include "LogRing.h"
 #include <LittleFS.h>
 #include <time.h>
 #include "Config.h"
@@ -208,6 +209,20 @@ void WebServerManagerClass::setupRoutes() {
         } else {
             request->send(404, "application/json", "{\"error\":\"not connected\"}");
         }
+    });
+
+    // The last minute of everything the controller printed (see LogRing.h), as plain text: the
+    // running controller's, and the one before the last restart that was not routine.
+    server.on("/api/log", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(200, "text/plain; charset=utf-8", LogRing.current());
+    });
+    server.on("/api/lastlog", HTTP_GET, [](AsyncWebServerRequest *request){
+        String text = LogRing.lastKept();
+        if (text.length() == 0) {
+            request->send(404, "application/json", "{\"error\":\"Kein Log gespeichert\"}");
+            return;
+        }
+        request->send(200, "text/plain; charset=utf-8", text);
     });
 
     server.on("/api/info", HTTP_GET, [](AsyncWebServerRequest *request){

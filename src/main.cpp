@@ -31,9 +31,12 @@
 #include "PluginManager.h"
 #include "StatusLedManager.h"
 #include "LoopWatch.h"
+#include "LogRing.h"
 #include "esp_task_wdt.h"
 
 void setup() {
+    // Before anything prints: rescue the log the previous run left behind and start a fresh one.
+    LogRing.begin();
     Serial.begin(115200);
     // Native USB-CDC: without this, a write blocks while no host is draining the port, and on
     // this board that is enough to stop whichever task was printing - the Wi-Fi task included,
@@ -50,6 +53,7 @@ void setup() {
     ScheduleManager.begin(); // must load the timezone before WiFiManager connects and syncs NTP
     WiFiManager.begin();
     WebServerManager.begin();
+    LogRing.persistPrevious();  // the filesystem is mounted now
     MqttManager.begin();
     UpdateManager.begin();
     SlaveManager.begin();

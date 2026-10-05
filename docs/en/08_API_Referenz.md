@@ -130,6 +130,8 @@ While a plugin controls a segment, `GET /api/state` shows `plugin: {id, name}` o
 | `/api/status` | GET | Compact system status. |
 | `/api/version` | GET | Firmware version. |
 | `/api/info` | GET | Device information and diagnostics (firmware, memory, uptime, Wi-Fi, last outage). |
+| `/api/log` | GET | The last minute of everything the controller prints on its serial port, as text (each line with "how many seconds ago"). The controller keeps this itself in memory; no connected computer is needed. |
+| `/api/lastlog` | GET | The minute before the last restart that was **not routine** (a crash, a watchdog, a restart because Wi-Fi or the radio had died), with the reason and the uptime. It lives in one file that the next such restart overwrites; `404` if there has been none yet. An update or a restart after changing settings leaves it alone. |
 | `/api/update_online` | POST | Starts the online update to the given version (`{"version": "0.2.002"}`). Scenes, playlist, schedules and images are kept. |
 | `/api/update_status` | GET | What the Master's own release check found: `installed`, `latest`, `slaveLatest` (empty while unknown), `checking`, `checkedAgo` (seconds, `-1` = never), `updating`. Checked a minute after start and then twice a day. |
 | `/api/update_check` | POST | Starts that check right away (at most once a minute). |

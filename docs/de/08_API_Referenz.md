@@ -130,6 +130,8 @@ Solange ein Plugin ein Segment steuert, zeigt `GET /api/state` an diesem Segment
 | `/api/status` | GET | Kompakter System-Status. |
 | `/api/version` | GET | Firmware-Version. |
 | `/api/info` | GET | Geräteinformationen und Diagnose (Firmware, Speicher, Laufzeit, WLAN, letzter Ausfall). |
+| `/api/log` | GET | Die letzte Minute von allem, was der Controller auf der seriellen Schnittstelle ausgibt, als Text (jede Zeile mit „vor wie vielen Sekunden“). Der Controller führt das selbst im Speicher mit, ein angeschlossener Computer ist dafür nicht nötig. |
+| `/api/lastlog` | GET | Die letzte Minute vor dem letzten Neustart, der **kein Routineschritt** war (Absturz, Watchdog, Neustart, weil WLAN oder Funk ausgefallen waren), mit Grund und Laufzeit. Liegt in einer Datei, die der nächste solche Neustart überschreibt; `404`, wenn es noch keinen gab. Ein Update oder ein Neustart nach Einstellungen lässt sie unberührt. |
 | `/api/update_online` | POST | Startet das Online-Update auf die angegebene Version (`{"version": "0.2.002"}`). Szenen, Playlist, Zeitpläne und Bilder bleiben erhalten. |
 | `/api/update_status` | GET | Was die eigene Release-Prüfung des Masters gefunden hat: `installed`, `latest`, `slaveLatest` (leer, solange unbekannt), `checking`, `checkedAgo` (Sekunden, `-1` = noch nie), `updating`. Geprüft wird eine Minute nach dem Start und dann zweimal am Tag. |
 | `/api/update_check` | POST | Stößt diese Prüfung sofort an (höchstens einmal pro Minute). |

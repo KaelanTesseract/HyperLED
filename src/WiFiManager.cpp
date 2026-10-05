@@ -17,6 +17,7 @@
  * limitations under the Licence.
  */
 #include "WiFiManager.h"
+#include "LogRing.h"
 #include <ESPmDNS.h>
 #include <NetBIOS.h>
 #include "ScheduleManager.h"
@@ -454,6 +455,7 @@ void WiFiManagerClass::superviseLink() {
                 Serial.printf("WiFi: associated but unreachable for %lus, restarting (%lu)\n",
                               (now - _linkBadSince) / 1000, (unsigned long)(streak + 1));
                 recordLinkFailure(true, radioDead ? 2 : 1);
+                LogRing.noteRestart(radioDead ? "radio dead (no send or receive)" : "gateway unreachable");
                 Serial.flush();
                 ESP.restart();
             }
@@ -487,6 +489,7 @@ void WiFiManagerClass::superviseLink() {
             Serial.printf("WiFi: cannot associate after %lus (last reason %u), restarting (%lu)\n",
                           downMs / 1000, (unsigned)_lastDisconnectReason,
                           (unsigned long)(streak + 1));
+            LogRing.noteRestart("cannot associate with the access point");
             Serial.flush();
             ESP.restart();
         }
