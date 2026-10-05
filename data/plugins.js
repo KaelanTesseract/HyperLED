@@ -751,8 +751,10 @@
                     refreshBadges();
                     load();
                 });
+                const settingsBtn = button(tr('plugin_btn_settings'), 'btn-secondary btn-chip', () => openSettings(c.id));
                 badgesEl.appendChild(h('div', { class: 'plugin-badge' }, [
                     h('span', { class: 'plugin-badge-text', text: tr('plugin_controlled_by', { name: c.name, segment: segName }) }),
+                    settingsBtn,
                     pause,
                 ]));
             });
