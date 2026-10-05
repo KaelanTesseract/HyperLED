@@ -35,8 +35,8 @@ die Absicherung (Phase 2), dann die Slaves (Phase 3) und zuletzt der Chip selbst
 - [x] Texte des Lokalen Updates nennen `firmware-esp32s3.bin`
 - [x] Versionen Master und Slave auf 0.3.002; beide bauen für `esp32-s3`
 - [x] Commit und Push (Master, Slave, Wiki)
-- [ ] Releases **0.3.002**: Master (`firmware-esp32s3.bin`, `littlefs.bin`) und Slave (`firmware-esp32s3.bin`)
-- [ ] Alle drei Geräte auf 0.3.002: Slave HUB75, Slave 1 UART, Master (Firmware und Weboberfläche, vorher Sicherung)
+- [x] Releases **0.3.002**: Master (`firmware-esp32s3.bin`, `littlefs.bin`) und Slave (`firmware-esp32s3.bin`)
+- [x] Alle drei Geräte auf 0.3.002: Slave HUB75, Slave 1 UART, Master (Firmware und Weboberfläche, vorher Sicherung)
 - [ ] Prüfung auf dem Gerät: Ein Gerät mit 0.3.002 aktualisiert sich aus dem **nächsten** Release über
       `firmware-esp32s3.bin`; Slaves über „Geräte jetzt aktualisieren“
 - [ ] Prüfung: Release ohne passende Datei lässt das Gerät unverändert (`error_nofw`)
