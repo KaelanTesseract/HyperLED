@@ -48,6 +48,8 @@ struct DiscoveredSlave {
     bool rendersAllWidgets = false;
     // Firmware 0.3.000 and later run Lua scripts - see slaveRunsScripts().
     bool runsScripts = false;
+    // Firmware 0.3.001 and later take the settings and values of a script in several packets.
+    bool takesScriptData = false;
     // What the Slave reports about its own output. Only a Slave knows this - the Master stores
     // nothing about it - so without it the UI cannot show an existing configuration and would
     // overwrite it with its defaults on the next save. 255 means the Slave did not report.
@@ -212,6 +214,7 @@ private:
         bool rendersWidgets = false;
         bool rendersAllWidgets = false;
         bool runsScripts = false;
+        bool takesScriptData = false;
         bool isWireless = true;
     };
 
@@ -259,9 +262,13 @@ private:
         std::vector<Script::Item> settings;
         std::vector<Script::Item> values;
         uint8_t valuesSequence = 0;
+        uint8_t settingsSequence = 0;
         bool valuesDirty = true;
+        bool settingsDirty = true;
         unsigned long lastConfigAt = 0;
         unsigned long lastValuesAt = 0;
+        unsigned long lastSettingsAt = 0;
+        std::vector<std::vector<uint8_t>> dataQueue;  // CMD_SET_SCRIPT_DATA packets waiting to go out
         Script::Wire::Status status;
         unsigned long statusAt = 0;
         bool haveStatus = false;
@@ -275,6 +282,10 @@ private:
     std::vector<ScriptTransfer> _scriptTransfers;
     unsigned long _lastScriptChunk = 0;
     static const unsigned long SCRIPT_REFRESH_MS = 2000;
+    static const unsigned long SCRIPT_SETTINGS_REFRESH_MS = 5000;
+    static const unsigned long SCRIPT_DATA_GAP_MS = 10;  // between two packets to the same Slave
+    unsigned long _lastScriptData = 0;
+    void queueScriptData(ScriptJob& job, uint8_t kind, bool changed);
     static const unsigned long SCRIPT_CHUNK_INTERVAL_MS = 20;
     void serviceScripts();
     void handleScriptRequest(uint8_t slaveId, const uint8_t* payload, uint16_t length);

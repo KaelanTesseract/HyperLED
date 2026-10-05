@@ -285,7 +285,7 @@ Tipps für schnelle Skripte:
 ## Wo läuft das Skript?
 
 - Gehört das Segment dem **Master**, läuft das Skript auf dem Master (in einer eigenen Aufgabe, die den Rest nie aufhält).
-- Gehört es einem **Slave**, schickt der Master Skript und Werte hin, und der Slave führt es **selbst** aus. Nur die Werte gehen über die Funkstrecke, nie Pixel. Das setzt **Slave-Firmware 0.3.000 oder neuer** voraus; ein älterer Slave wird erkannt, und das Plugin zeigt, was seine Regeln vorsehen.
+- Gehört es einem **Slave**, schickt der Master Skript und Werte hin, und der Slave führt es **selbst** aus. Nur die Werte gehen über die Funkstrecke, nie Pixel. Das setzt **Slave-Firmware 0.3.000 oder neuer** voraus, bei einem Plugin mit vielen Einstellungen **0.3.001** (auf 0.3.000 müssen Einstellungen und Werte zusammen in 240 Bytes passen, sonst fehlt dem Skript etwas); ein älterer Slave wird erkannt, und das Plugin zeigt, was seine Regeln vorsehen.
 
 Pro Segment läuft **ein** Skript. Nach einem Neustart des Masters sendet das Plugin das Skript von selbst neu.
 

@@ -285,7 +285,7 @@ Tips for fast scripts:
 ## Where does the script run?
 
 - If the segment belongs to the **Master**, the script runs on the Master (in a task of its own that never holds up the rest).
-- If it belongs to a **Slave**, the Master sends script and values over, and the Slave runs it **itself**. Only values go over the radio link, never pixels. This requires **Slave firmware 0.3.000 or later**; an older Slave is recognised, and the plugin shows what its rules provide.
+- If it belongs to a **Slave**, the Master sends script and values over, and the Slave runs it **itself**. Only values go over the radio link, never pixels. This requires **Slave firmware 0.3.000 or later**, and **0.3.001** for a plugin with many settings (on 0.3.000 the settings and values together must fit into 240 bytes, or the script misses some); an older Slave is recognised, and the plugin shows what its rules provide.
 
 **One** script runs per segment. After a restart of the Master the plugin sends the script again by itself.
 

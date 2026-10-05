@@ -136,6 +136,7 @@ static bool versionReportsConfig(const String& version);
 static bool versionRendersWidgets(const String& version);
 static bool versionRendersAllWidgets(const String& version);
 static bool versionRunsScripts(const String& version);
+static bool versionTakesScriptData(const String& version);
 
 // A corrupted/garbled PONG (e.g. from a protocol-version mismatch or a noisy wire) can contain raw
 // control bytes. ArduinoJson does not escape those, which produces invalid JSON on /api/slaves and
@@ -201,6 +202,7 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                     s.rendersWidgets = versionRendersWidgets(sVersion);
                     s.rendersAllWidgets = versionRendersAllWidgets(sVersion);
                     s.runsScripts = versionRunsScripts(sVersion);
+                    s.takesScriptData = versionTakesScriptData(sVersion);
                     if (sType != 255) {
                         s.ledType = sType;
                         s.matrixWidth = sMatW;
@@ -218,6 +220,7 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
             caps.rendersLocally = versionRendersLocally(sVersion);
             caps.rendersWidgets = versionRendersWidgets(sVersion);
             caps.runsScripts = versionRunsScripts(sVersion);
+            caps.takesScriptData = versionTakesScriptData(sVersion);
             bool drawsAll = versionRendersAllWidgets(sVersion);
             // A Slave that draws the clock should not wait up to ten seconds to learn the time.
             if (drawsAll && (!found || !caps.rendersAllWidgets)) _clockBroadcastDue = true;
@@ -234,6 +237,7 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                 ds.rendersWidgets = versionRendersWidgets(sVersion);
                 ds.rendersAllWidgets = drawsAll;
                 ds.runsScripts = versionRunsScripts(sVersion);
+                ds.takesScriptData = versionTakesScriptData(sVersion);
                 ds.ledType = sType;
                 ds.matrixWidth = sMatW;
                 ds.matrixHeight = sMatH;
@@ -1071,6 +1075,7 @@ SlaveManagerClass::ScriptStart SlaveManagerClass::runScript(uint8_t slaveId, con
         job->crc = crc;
         job->haveStatus = false;
         job->valuesDirty = true;
+        job->settingsDirty = true;
         // A transfer of the old text is pointless now.
         for (auto it = _scriptTransfers.begin(); it != _scriptTransfers.end();) {
             if (it->slaveId == slaveId) it = _scriptTransfers.erase(it);
@@ -1112,9 +1117,11 @@ void SlaveManagerClass::setScriptValues(uint8_t slaveId, const std::vector<Scrip
     Guard guard(_lock);
     ScriptJob* job = findScriptJob(slaveId);
     if (!job) return;
+    // Only what changed goes out again: settings rarely do, values every few seconds.
+    if (!Script::Wire::sameItems(job->settings, settings)) job->settingsDirty = true;
+    if (!Script::Wire::sameItems(job->values, values)) job->valuesDirty = true;
     job->settings = settings;
     job->values = values;
-    job->valuesDirty = true;
 }
 
 void SlaveManagerClass::releaseScript(uint8_t slaveId) {
@@ -1197,6 +1204,27 @@ void SlaveManagerClass::handleScriptStatus(uint8_t slaveId, const uint8_t* paylo
     }
 }
 
+// Packs the settings or the values of a job into packets and queues them; a change replaces what is
+// still waiting of the same kind.
+void SlaveManagerClass::queueScriptData(ScriptJob& job, uint8_t kind, bool changed) {
+    uint8_t& sequence = (kind == Script::Wire::DATA_SETTINGS) ? job.settingsSequence : job.valuesSequence;
+    if (changed) {
+        sequence++;
+        for (auto it = job.dataQueue.begin(); it != job.dataQueue.end();) {
+            if ((*it)[0] == kind) it = job.dataQueue.erase(it);
+            else ++it;
+        }
+    }
+    std::vector<std::vector<uint8_t>> packets;
+    size_t dropped = 0;
+    Script::Wire::encodeDataParts(kind, sequence, kind == Script::Wire::DATA_SETTINGS ? job.settings : job.values, packets, dropped);
+    if (dropped > 0 && changed) {
+        Serial.printf("Slave %u script: %u %s did not fit in %u packets\n", (unsigned)job.slaveId, (unsigned)dropped,
+                      kind == Script::Wire::DATA_SETTINGS ? "settings" : "values", (unsigned)Script::Wire::DATA_PARTS);
+    }
+    for (auto& packet : packets) job.dataQueue.push_back(std::move(packet));
+}
+
 // From loop(): the refresh of what should run, the values, and one piece of a requested script.
 void SlaveManagerClass::serviceScripts() {
     Guard guard(_lock);
@@ -1206,19 +1234,43 @@ void SlaveManagerClass::serviceScripts() {
             job.lastConfigAt = now;
             sendScriptConfig(job, false);
         }
-        if (job.valuesDirty || now - job.lastValuesAt >= SCRIPT_REFRESH_MS) {
+        auto known = _slaveCaps.find(job.slaveId);
+        if (known != _slaveCaps.end() && known->second.takesScriptData) {
+            // Settings and values in as many packets as each needs, one packet at a time.
+            if (job.settingsDirty || (job.dataQueue.empty() && now - job.lastSettingsAt >= SCRIPT_SETTINGS_REFRESH_MS)) {
+                queueScriptData(job, Script::Wire::DATA_SETTINGS, job.settingsDirty);
+                job.settingsDirty = false;
+                job.lastSettingsAt = now;
+            }
+            if (job.valuesDirty || (job.dataQueue.empty() && now - job.lastValuesAt >= SCRIPT_REFRESH_MS)) {
+                queueScriptData(job, Script::Wire::DATA_VALUES, job.valuesDirty);
+                job.valuesDirty = false;
+                job.lastValuesAt = now;
+            }
+            if (!job.dataQueue.empty() && now - _lastScriptData >= SCRIPT_DATA_GAP_MS) {
+                BusInterface* bus = slaveIsOnline(job.slaveId) ? busFor(job.slaveId, false) : nullptr;
+                if (bus) {
+                    const std::vector<uint8_t>& packet = job.dataQueue.front();
+                    bus->sendPacket(job.slaveId, HYPERBUS_MASTER_ID, CMD_SET_SCRIPT_DATA, packet.data(), (uint16_t)packet.size());
+                    _lastScriptData = now;
+                }
+                job.dataQueue.erase(job.dataQueue.begin());
+            }
+        } else if (job.valuesDirty || job.settingsDirty || now - job.lastValuesAt >= SCRIPT_REFRESH_MS) {
+            // A Slave before 0.3.001: both lists in one packet of at most 240 bytes.
             BusInterface* bus = slaveIsOnline(job.slaveId) ? busFor(job.slaveId, false) : nullptr;
             if (bus) {
                 uint8_t payload[Script::Wire::VALUES_MAX];
                 size_t dropped = 0;
-                if (job.valuesDirty) job.valuesSequence++;
+                if (job.valuesDirty || job.settingsDirty) job.valuesSequence++;
                 size_t length = Script::Wire::encodeItems(job.valuesSequence, job.settings, job.values, payload, sizeof(payload), dropped);
-                if (dropped > 0 && job.valuesDirty) {
+                if (dropped > 0 && (job.valuesDirty || job.settingsDirty)) {
                     Serial.printf("Slave %u script: %u values did not fit in one packet\n", (unsigned)job.slaveId, (unsigned)dropped);
                 }
                 bus->sendPacket(job.slaveId, HYPERBUS_MASTER_ID, CMD_SET_SCRIPT_VALUES, payload, (uint16_t)length);
             }
             job.valuesDirty = false;
+            job.settingsDirty = false;
             job.lastValuesAt = now;
         }
     }
@@ -1240,6 +1292,19 @@ void SlaveManagerClass::serviceScripts() {
     bus->sendPacket(t.slaveId, HYPERBUS_MASTER_ID, CMD_SCRIPT_CHUNK, packet, (uint16_t)length);
     t.offset += (uint16_t)piece;
     if (t.offset >= total) _scriptTransfers.erase(_scriptTransfers.begin());
+}
+
+// A Slave takes the settings and values of a script in several packets from 0.3.001 on.
+static bool versionTakesScriptData(const String& version) {
+    int firstDot = version.indexOf('.');
+    if (firstDot < 0) return false;
+    int secondDot = version.indexOf('.', firstDot + 1);
+    if (secondDot < 0) return false;
+    long major = version.substring(0, firstDot).toInt();
+    long minor = version.substring(firstDot + 1, secondDot).toInt();
+    long patch = version.substring(secondDot + 1).toInt();
+    if (major != 0) return major > 0;
+    return minor > 3 || (minor == 3 && patch >= 1);
 }
 
 // Scripts run on Slaves from 0.3.000 on.
