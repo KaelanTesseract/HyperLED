@@ -2,7 +2,8 @@
 
 Ziel: Das Online-Update erkennt selbst, welche Firmware zum Chip gehört, und HyperLED läuft später
 auch auf dem ESP32-C6. Zuerst wird der Dateiname der S3-Firmware umgestellt (Phase 1), danach kommt
-die Absicherung (Phase 2), dann die Slaves (Phase 3) und zuletzt der Chip selbst (Phase 4).
+die Absicherung (Phase 2), dann die Slaves (Phase 3), die Frage, welche Chips überhaupt in Frage kommen
+(Phase 3.5), und zuletzt der Chip selbst (Phase 4).
 
 **Regel:** Erledigtes wird abgehakt (`[x]`), nicht gelöscht.
 
@@ -97,6 +98,78 @@ S3). Gemeinsame Datei in beiden Repositories: `include/ChipId.h` (Chip-Name, Ken
 - [x] Commit, Push und Releases 0.3.005 (Slave zuerst, dann Master)
 - [x] Prüfung über „Geräte jetzt aktualisieren“ aus dem veröffentlichten Slave-Release (der Master holt `firmware-{chip}.bin`): beide Slaves verschwanden nach dem Aufruf für etwa zehn Sekunden vom Funk und kamen mit 0.3.005 zurück (Download selbst nicht einsehbar, die Slaves haben keine Konsole am Rechner)
 - [ ] Für einen Slave mit anderem Chip (C6): in Phase 4 mit dem ersten C6-Slave durchspielen
+
+## Phase 3.5: Welche ESP32-Chips kommen in Frage
+
+Stand 2026-10-06. Die Chip-Daten stammen aus den Vergleichen von
+[esp32.co.uk](https://esp32.co.uk/esp32-c-versions-compared-2026-guide/),
+[espboards.dev](https://www.espboards.dev/blog/esp32-soc-options/) und dem Stand des
+[Arduino-Kerns](https://github.com/espressif/arduino-esp32); die Spalten „HUB75-Bibliothek“ und „Rolle“ sind
+aus unserem Quelltext und `docs/*/03_Hardware_Setup.md` abgeleitet. Zahlen mit „ca.“ vor einer Entscheidung am
+Datenblatt gegenprüfen.
+
+### Was HyperLED von einem Chip braucht
+
+- **Wi-Fi 2.4 GHz und ESP-NOW** (Master: Weboberfläche, MQTT, Update; Slave: Funk, Update). Ohne Wi-Fi geht nur
+  ein Slave am Kabel (HyperBus über UART) und er ist nicht über die Luft zu aktualisieren.
+- **Mindestens 4 MB Flash** für zwei Update-Plätze (je 1,625 MB) und das Dateisystem (704 KB).
+- **Speicher:** Der Master braucht Platz für Webserver, TLS (MQTTS, GitHub), Plugins und Lua. Ein HUB75-Panel
+  64 × 64 braucht ca. 82 KB DMA-Speicher im internen RAM.
+- **Ein LED-Ausgang** (Datenpin über RMT oder SPI, ein Kanal genügt) und für Panels die Bibliothek `esp-hub75`.
+- Aus dem Quelltext (Phase 4): Aufgaben sind an **Kern 1** gebunden (nur Zwei-Kern-Chips laufen so), Bildpuffer der
+  Skripte liegen im **PSRAM** (Chips ohne PSRAM brauchen einen Rückfall), der Funkkanal des Masters ist der Kanal
+  seines WLANs (ein Master im 5-GHz-Band könnte 2,4-GHz-Slaves nicht mitnehmen).
+
+### Die Chips
+
+| Chip | Kerne und Takt | SRAM | PSRAM | Funk | Arduino / PlatformIO | HUB75-Bibliothek |
+|---|---|---|---|---|---|---|
+| **ESP32** (WROOM, WROVER) | Xtensa, 1–2 × 240 MHz | 520 KB | nur WROVER, 4–8 MB | Wi-Fi 4, BT + BLE | ja | ja |
+| **ESP32-S2** | Xtensa, 1 × 240 MHz | 320 KB | optional, ca. 2 MB | Wi-Fi 4 (kein BT) | ja | ja |
+| **ESP32-S3** (Referenz) | Xtensa, 2 × 240 MHz | 512 KB | optional, 2–8 MB | Wi-Fi 4, BLE 5 | ja | ja |
+| **ESP32-C2** (ESP8684) | RISC-V, 1 × 120 MHz | ca. 272 KB | nein | Wi-Fi 4, BLE 5 | nur als IDF-Komponente | nein |
+| **ESP32-C3** | RISC-V, 1 × 160 MHz | 400 KB | nein | Wi-Fi 4, BLE 5 | ja | nein |
+| **ESP32-C5** | RISC-V, 1 × 240 MHz | ca. 384 KB | optional | Wi-Fi 6 **2,4 und 5 GHz**, BLE 5, 802.15.4 | ja (neu) | nein |
+| **ESP32-C6** | RISC-V, 1 × 160 MHz | 512 KB | nein | Wi-Fi 6 (2,4 GHz), BLE 5, 802.15.4 | ja (pioarduino) | ja |
+| **ESP32-C61** | RISC-V, 1 × 160 MHz | 320 KB | optional | Wi-Fi 6 (2,4 GHz), BLE 5 | nur als IDF-Komponente | unklar |
+| **ESP32-H2** | RISC-V, 1 × 96 MHz | 320 KB | nein | **kein Wi-Fi**, BLE 5, 802.15.4 | ja | nein |
+| **ESP32-P4** | RISC-V, 2 × 400 MHz | 768 KB | 16–32 MB im Gehäuse | **kein Wi-Fi** (Zusatzchip nötig) | ja | ja |
+
+Nicht gemeint: ESP8266 (andere Plattform) und Module mit 2 MB Flash (zu klein für zwei Update-Plätze).
+
+### Wofür sie taugen
+
+✅ geeignet · ⚠️ mit Einschränkung oder noch nicht erprobt · ❌ nicht sinnvoll
+
+| Chip | Master | Slave mit Streifen | Slave mit HUB75-Panel | Anmerkung |
+|---|---|---|---|---|
+| **ESP32** | ✅ (WROVER) / ⚠️ (WROOM ohne PSRAM) | ✅ | ✅ | `esp32dev` steht schon in `platformio.ini`; andere Pins, kein natives USB; Einkern-Varianten ⚠️ |
+| **ESP32-S2** | ⚠️ (ein Kern, wenig RAM) | ✅ | ✅ | ein Kern: Aufgabenbindung anpassen |
+| **ESP32-S3** | ✅ | ✅ | ✅ | Referenz, alles getestet |
+| **ESP32-C2** | ❌ | ⚠️ (nur 4-MB-Variante) | ❌ | wenig RAM, Arduino nur als IDF-Komponente |
+| **ESP32-C3** | ⚠️ (RAM knapp) | ✅ (günstig) | ❌ | gut als einfacher Streifen-Slave |
+| **ESP32-C5** | ⚠️ (5-GHz-Funkkanal, neu) | ⚠️ (neu, nicht erprobt) | ❌ (Bibliothek) | Im 5-GHz-Band könnten 2,4-GHz-Slaves dem Master nicht folgen |
+| **ESP32-C6** | ⚠️ (ein Kern, kein PSRAM) | ✅ | ✅ | erster Kandidat für Phase 4 (Slave) |
+| **ESP32-C61** | ❌ | ❌ | ❌ | Arduino nur als IDF-Komponente, mit PlatformIO nicht praktikabel |
+| **ESP32-H2** | ❌ | ⚠️ (nur Kabel, kein Update über die Luft) | ❌ | kein Wi-Fi, kein ESP-NOW |
+| **ESP32-P4** | ❌ (kein Wi-Fi) | ⚠️ (nur Kabel) | ⚠️ (nur Kabel; stark, braucht Funk-Zusatzchip für Funk) | Zwei Kerne, viel PSRAM, aber Funk nur über einen Zusatzchip |
+
+### Reihenfolge, die sich daraus ergibt
+
+1. **ESP32-S3** bleibt die Referenz für Master und Slave.
+2. **ESP32-C6 als Slave** (Streifen und HUB75) ist der naheliegende erste neue Chip: gleiche Funkart, HUB75
+   unterstützt, Arduino-Unterstützung da.
+3. **ESP32-C3 als Streifen-Slave** ist der günstigste Zusatz, ohne Panels.
+4. **Klassischer ESP32** (WROVER) für Master und Slave, weil die Umgebung schon da ist; WROOM ohne PSRAM braucht den
+   PSRAM-Rückfall aus Phase 4.
+5. Alles andere (C2, C5, C61, H2, P4, S2 als Master) erst nach einem konkreten Bedarf.
+
+### Schritte
+
+- [x] Chips aufgelistet und gegenübergestellt (diese Tabellen)
+- [ ] Entscheidung: Welche Chips sollen unterstützt werden, und in welcher Reihenfolge?
+- [ ] `docs/*/03_Hardware_Setup.md` und das Wiki („Was du brauchst“) auf diese Tabellen angleichen
+- [ ] Zahlen mit „ca.“ am Datenblatt prüfen, wenn ein Chip in die engere Wahl kommt
 
 ## Phase 4: ESP32-C6
 
