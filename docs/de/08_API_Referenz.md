@@ -49,7 +49,7 @@ Pro Segment werden `on`, `bri`, `effect`, `speed`, `intensity`, `palette`, `colo
 
 | Endpunkt | Methode | Beschreibung |
 |---|---|---|
-| `/api/segments` | GET / POST | Segmente auslesen bzw. anlegen bearbeiten oder löschen. |
+| `/api/segments` | GET / POST | Segmente auslesen bzw. anlegen bearbeiten oder löschen. Ein Slave-Segment trägt `isSlave`, `slaveId`, `sharesPower` und `ablMa` (die Strombegrenzung in mA für einen Slave mit eigenem Netzteil, 0 = keine). |
 | `/api/state` | GET / POST | Zustand lesen und ändern (siehe oben). |
 | `/api/config` | GET / POST | LED-Grundkonfiguration (Typ, Anzahl, Pin, ABL). |
 | `/api/buttons` | GET / POST | Konfiguration der physischen Taster/Schalter. |
@@ -75,7 +75,7 @@ Pro Segment werden `on`, `bri`, `effect`, `speed`, `intensity`, `palette`, `colo
 
 | Endpunkt | Methode | Beschreibung |
 |---|---|---|
-| `/api/slaves` | GET | Liste aller aktuell erreichbaren Slaves (ID, Name, LED-Anzahl, Version, kabelgebunden/kabellos, `scripts`: ob der Slave Lua-Skripte ausführt – Firmware 0.3.000 und später). Läuft auf einem Slave ein Skript, zeigt `script` dessen Zustand (`state`: 0 keins, 1 lädt, 2 läuft, 3 fehlgeschlagen), `result`, `fps`, `frameMs`, `frameCrc`, `memoryKb`, `message` und `ageMs`. |
+| `/api/slaves` | GET | Liste aller aktuell erreichbaren Slaves (ID, Name, LED-Anzahl, Version, kabelgebunden/kabellos, `scripts`: ob der Slave Lua-Skripte ausführt – Firmware 0.3.000 und später, `chip`: der Chip, für den der Slave gebaut ist, `esp32s3`, `esp32c6` oder `esp32`, leer bei einem Slave vor 0.3.006). Läuft auf einem Slave ein Skript, zeigt `script` dessen Zustand (`state`: 0 keins, 1 lädt, 2 läuft, 3 fehlgeschlagen), `result`, `fps`, `frameMs`, `frameCrc`, `memoryKb`, `message` und `ageMs`. |
 | `/api/slaves/config` | POST | Slave konfigurieren (Name, LED-Typ, Pins bzw. HUB75-Matrixgröße/Treiber). |
 | `/api/slaves/update` | POST | Firmware-Update der Slaves aus der Ferne anstoßen (`{"url": "https://…"}`, höchstens 116 Zeichen; das Wort `{chip}` darin steht für den Chip des Slaves, `…/firmware-{chip}.bin` ist also für einen ESP32-S3 `firmware-esp32s3.bin`: Ein Slave ab 0.3.005 setzt es selbst ein, der Master tut es für einen älteren; optional `"id"`, um nur diesen einen Slave statt aller zu aktualisieren; ohne `url` das neueste Slave-Release, das der Master kennt – `409` mit `no_release`, solange er keines kennt). Antwort: `sealed` (verschlüsselt übergeben, ab Slave 0.2.008), `wired` (ältere Slaves per Kabel), `skipped` (ältere Slaves per Funk – bekommen das WLAN-Passwort nicht mehr über Funk und brauchen einmal ein Update per USB). |
 

@@ -404,6 +404,13 @@ void WebServerManagerClass::setupRoutes() {
             obj["lastSeenAge"] = millis() - s.lastSeen;
             obj["configPending"] = SlaveManager.isConfigPending(s.currentId);
             obj["scripts"] = SlaveManager.slaveRunsScripts(s.currentId);
+            // The chip the Slave reports (0.3.006 and later); empty for an older one or an unknown chip.
+            switch (s.chip) {
+                case 0x09: obj["chip"] = "esp32s3"; break;
+                case 0x0D: obj["chip"] = "esp32c6"; break;
+                case 0x00: obj["chip"] = "esp32"; break;
+                default: obj["chip"] = ""; break;
+            }
             Script::Wire::Status status;
             unsigned long age = 0;
             if (SlaveManager.scriptStatus(s.currentId, status, age)) {

@@ -221,6 +221,7 @@ void LEDManagerClass::loadSettings() {
                 seg.isSlave = s["isSlave"] | false;
                 seg.slaveId = s["slaveId"] | 0;
         seg.sharesPower = s["sharesPower"] | false;
+        seg.ablMa = s["ablMa"] | 0;
                 seg.syncEnabled = s["syncEnabled"] | true;
                 
                 if (!seg.isSlave) {
@@ -321,6 +322,7 @@ void LEDManagerClass::saveSettings() {
             s["isSlave"] = true;
             s["slaveId"] = seg.slaveId;
             s["sharesPower"] = seg.sharesPower;
+            s["ablMa"] = seg.ablMa;
         }
         s["syncEnabled"] = seg.syncEnabled;
     }
@@ -594,9 +596,25 @@ void LEDManagerClass::getMatrixPreviewJson(JsonArray array) const {
 
 uint8_t LEDManagerClass::segmentAblCap(const Segment& seg, uint8_t globalCap) const {
     // Mirrors the skip in getGlobalAblCap(): a Slave that does not share the Master's supply
-    // contributes nothing to the current estimate, so it must not be limited by it either.
-    if (seg.isSlave && !seg.sharesPower) return 255;
+    // contributes nothing to the Master's current estimate, so the Master's cap does not limit it.
+    // It has its own supply and so its own limit (Segment::ablMa, 0 = none).
+    if (seg.isSlave && !seg.sharesPower) return slaveAblCap(seg.slaveId);
     return globalCap;
+}
+
+uint8_t LEDManagerClass::slaveAblCap(uint8_t slaveId) const {
+    // The Slave's ESP32 draws about 100 mA, like the Master's in getGlobalAblCap().
+    uint32_t limit = 0;
+    uint32_t total_mA = 100;
+    for (const auto& seg : _segments) {
+        if (!seg.isSlave || seg.slaveId != slaveId || seg.sharesPower) continue;
+        if (seg.ablMa > 0 && (limit == 0 || seg.ablMa < limit)) limit = seg.ablMa;
+        total_mA += segmentFullMa(seg);
+    }
+    if (limit == 0) return 255;
+    if (limit <= 100) return 0;
+    if (total_mA <= limit) return 255;
+    return (uint8_t)((255UL * (limit - 100)) / (total_mA - 100));
 }
 
 bool LEDManagerClass::getSegmentPixels(uint8_t segId, uint16_t& start, uint16_t& count,
@@ -808,6 +826,7 @@ void LEDManagerClass::setSegmentsFromJson(JsonArray segmentsArray) {
         seg.isSlave = s["isSlave"] | false;
         seg.slaveId = s["slaveId"] | 0;
         seg.sharesPower = s["sharesPower"] | false;
+        seg.ablMa = s["ablMa"] | 0;
         seg.syncEnabled = s["syncEnabled"] | true;
 
         if (!seg.isSlave) {
@@ -900,6 +919,7 @@ void LEDManagerClass::getSegmentsJson(JsonArray array) const {
             s["isSlave"] = true;
             s["slaveId"] = seg.slaveId;
             s["sharesPower"] = seg.sharesPower;
+            s["ablMa"] = seg.ablMa;
         }
         s["syncEnabled"] = seg.syncEnabled;
     }
@@ -949,6 +969,7 @@ void LEDManagerClass::addSlaveSegment(uint8_t slaveId, uint16_t count, const Str
         seg.isSlave = true;
         seg.slaveId = slaveId;
         seg.sharesPower = false;
+        seg.ablMa = 0;
         
         _segments.push_back(seg);
     }
@@ -1326,6 +1347,39 @@ void LEDManagerClass::loop() {
     }
 }
 
+uint32_t LEDManagerClass::segmentFullMa(const Segment& seg) const {
+    // The current estimate reads what the segment shows, not only what the user stored: a
+    // plugin that switches a segment on must count against the budget too.
+    const SegmentView view = viewOf(seg);
+    if (!view.isOn || seg.brightness == 0) return 0;
+    uint16_t count = seg.stop - seg.start;
+    if (count == 0) return 0;
+    uint32_t seg_mA = 0;
+
+    uint32_t effectiveRgb = (seg.overlay.active && seg.overlay.color >= 0) ? (uint32_t)seg.overlay.color : seg.color;
+    if (seg.overlay.active && seg.overlay.script) {
+        // A script may light every pixel at full colour.
+        seg_mA = (uint32_t)count * 50;
+    } else if (view.effect == 0) {
+        uint32_t r = (effectiveRgb >> 16) & 0xFF;
+        uint32_t g = (effectiveRgb >> 8) & 0xFF;
+        uint32_t b = effectiveRgb & 0xFF;
+        seg_mA = ((uint32_t)count * (r + g + b) * 50) / 765;
+    } else if (view.effect == 2 || view.effect == 3) {
+        seg_mA = ((uint32_t)count * 50) / 2;
+    } else {
+        seg_mA = (uint32_t)count * 50;
+    }
+
+    // Deliberately NOT scaled by seg.brightness: the effects apply the cap multiplicatively as
+    // (seg.brightness * ablCap) / 255. Folding brightness in here too would cancel it out entirely -
+    // the cap would then hold the output at a fixed level and the brightness slider would do nothing
+    // until it drops below the point where ABL stops limiting at all. Estimating at full brightness
+    // keeps the cap a true ceiling: at 100% the output lands exactly on the current budget, and every
+    // step below scales down linearly from there (and thus stays safely under it).
+    return seg_mA;
+}
+
 uint8_t LEDManagerClass::getGlobalAblCap() {
     // HUB75 panels draw from their own dedicated external PSU (sized by the user
     // for the panel's real max draw), not through the ESP32 - the per-LED current
@@ -1347,40 +1401,9 @@ uint8_t LEDManagerClass::getGlobalAblCap() {
     uint32_t total_led_mA_full = 0;
     
     for (const auto& seg : _segments) {
-        // The current estimate reads what the segment shows, not only what the user stored: a
-        // plugin that switches a segment on must count against the budget too.
-        const SegmentView view = viewOf(seg);
-        if (!view.isOn || seg.brightness == 0) continue;
-        
         // Skip slaves that don't share power
         if (seg.isSlave && !seg.sharesPower) continue;
-        uint16_t count = seg.stop - seg.start;
-        if (count == 0) continue;
-        uint32_t seg_mA = 0;
-        
-        uint32_t effectiveRgb = (seg.overlay.active && seg.overlay.color >= 0) ? (uint32_t)seg.overlay.color : seg.color;
-        if (seg.overlay.active && seg.overlay.script) {
-            // A script may light every pixel at full colour.
-            seg_mA = (uint32_t)count * 50;
-        } else if (view.effect == 0) {
-            uint32_t r = (effectiveRgb >> 16) & 0xFF;
-            uint32_t g = (effectiveRgb >> 8) & 0xFF;
-            uint32_t b = effectiveRgb & 0xFF;
-            seg_mA = ((uint32_t)count * (r + g + b) * 50) / 765;
-        } else if (view.effect == 2 || view.effect == 3) {
-            seg_mA = ((uint32_t)count * 50) / 2;
-        } else {
-            seg_mA = (uint32_t)count * 50;
-        }
-        
-        // Deliberately NOT scaled by seg.brightness: the effects apply this cap
-        // multiplicatively as (seg.brightness * ablCap) / 255. Folding brightness in here
-        // too would cancel it out entirely - the cap would then hold the output at a fixed
-        // level and the brightness slider would do nothing until it drops below the point
-        // where ABL stops limiting at all. Estimating at full brightness keeps the cap a
-        // true ceiling: at 100% the output lands exactly on the current budget, and every
-        // step below scales down linearly from there (and thus stays safely under it).
-        total_led_mA_full += seg_mA;
+        total_led_mA_full += segmentFullMa(seg);
     }
     
     uint32_t current_mA_full = base_mA + total_led_mA_full;

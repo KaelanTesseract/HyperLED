@@ -18,7 +18,7 @@ A Slave doesn't run its own control logic – its name, LED type, pinout, or mat
 
 ### Two Transport Options
 
-- **Wired (UART):** The highest reliability and speed. Master and Slave are connected via a data line plus a shared ground (default: Master TX GPIO 17 → Slave RX GPIO 16). Wired Slaves can pass further Slaves along on their own downlink port (daisy-chaining).
+- **Wired (UART):** The highest reliability and speed. Master and Slave are connected via a data line plus a shared ground (default: Master TX GPIO 17 → Slave RX GPIO 16 on an ESP32-S3 Slave; on an **ESP32-C6** Slave the Master's TX goes to the Slave's **GPIO 17** and the Master's RX to its **GPIO 16**, see [Hardware Setup](03_Hardware_Setup.md)). Wired Slaves can pass further Slaves along on their own downlink port (daisy-chaining).
 - **Wireless (ESP-NOW):** For Slaves where wiring isn't practical. On boot, a Slave automatically detects whether a wired connection is present – if not, it switches to ESP-NOW mode on its own and locks in.
 
 A Slave doesn't need to be manually set to a transport mode before first use: it detects and remembers the right mode automatically.

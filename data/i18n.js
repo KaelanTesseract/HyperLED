@@ -153,6 +153,8 @@ const translations = {
         "seg_sync_hint": "Angehakte Segmente laufen als eine Kette - der Effekt des obersten gilt für alle. Nicht angehakte behalten ihren eigenen Effekt.",
         "seg_sync_member": "Beim Synchronisieren mitlaufen",
         "seg_shares": "Zieht Strom von diesem Gerät (Helligkeitsbegrenzer)",
+        "seg_own_abl": "Strombegrenzung des Slaves (mA, 0 = aus)",
+        "seg_own_abl_hint": "Der Slave hat ein eigenes Netzteil: die Helligkeit wird so begrenzt, dass dieser Strom nicht überschritten wird. Bei mehreren Segmenten eines Slaves zählt der kleinste Wert.",
 
         "tab_presets": "Presets",
         "preset_title": "Presets",
@@ -750,6 +752,8 @@ const translations = {
         "seg_sync_hint": "Ticked segments run as one chain - the topmost one sets the effect for all of them. Unticked segments keep their own.",
         "seg_sync_member": "Include when synchronising",
         "seg_shares": "Draws power from this device (brightness limiter)",
+        "seg_own_abl": "Slave current limit (mA, 0 = off)",
+        "seg_own_abl_hint": "The Slave has a power supply of its own: the brightness is limited so that this current is not exceeded. With several segments on one Slave, the smallest value counts.",
 
         "tab_presets": "Presets",
         "preset_title": "Presets",
@@ -1338,6 +1342,8 @@ const translations = {
         "seg_sync_hint": "Отмеченные сегменты работают как одна цепочка - эффект верхнего применяется ко всем. Неотмеченные сохраняют свой эффект.",
         "seg_sync_member": "Участвовать в синхронизации",
         "seg_shares": "Питается от этого устройства (ограничитель яркости)",
+        "seg_own_abl": "Ограничение тока слейва (мА, 0 = выкл.)",
+        "seg_own_abl_hint": "У слейва собственный блок питания: яркость ограничивается так, чтобы этот ток не превышался. Если у слейва несколько сегментов, действует наименьшее значение.",
 
         "tab_presets": "Пресеты",
         "preset_title": "Пресеты",

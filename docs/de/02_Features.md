@@ -28,4 +28,4 @@ HyperLED bietet eine riesige Bandbreite an Funktionen, die das System sowohl fü
 * **Over-The-Air (OTA) Updates:** Update Firmware und Web-Oberfläche direkt im Browser, ohne den ESP32 an den PC anschließen zu müssen.
 
 ## Stromversorgung
-* **Automatische Strombegrenzung (ABL):** Schätzt den Stromverbrauch aller LEDs live und begrenzt die Helligkeit automatisch, um das Netzteil vor Überlastung zu schützen.
+* **Automatische Strombegrenzung (ABL):** Schätzt den Stromverbrauch aller LEDs live und begrenzt die Helligkeit automatisch, um das Netzteil vor Überlastung zu schützen. Ein Slave mit eigenem Netzteil bekommt eine eigene Grenze (je Segment unter *Segmente* einstellbar).

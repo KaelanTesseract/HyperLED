@@ -49,7 +49,7 @@ Per segment, `on`, `bri`, `effect`, `speed`, `intensity`, `palette`, `color`, `c
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/segments` | GET / POST | Read segments, or create/edit/delete them. |
+| `/api/segments` | GET / POST | Read segments, or create/edit/delete them. A Slave segment carries `isSlave`, `slaveId`, `sharesPower` and `ablMa` (the current limit in mA for a Slave with a power supply of its own, 0 = none). |
 | `/api/state` | GET / POST | Read and change the state (see above). |
 | `/api/config` | GET / POST | Base LED configuration (type, count, pin, ABL). |
 | `/api/buttons` | GET / POST | Physical button/switch configuration. |
@@ -75,7 +75,7 @@ Per segment, `on`, `bri`, `effect`, `speed`, `intensity`, `palette`, `color`, `c
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/slaves` | GET | List of all currently reachable Slaves (ID, name, LED count, version, wired/wireless, `scripts`: whether the Slave runs Lua scripts - firmware 0.3.000 and later). While a script runs on a Slave, `script` shows its state (`state`: 0 none, 1 loading, 2 running, 3 failed), `result`, `fps`, `frameMs`, `frameCrc`, `memoryKb`, `message` and `ageMs`. |
+| `/api/slaves` | GET | List of all currently reachable Slaves (ID, name, LED count, version, wired/wireless, `scripts`: whether the Slave runs Lua scripts - firmware 0.3.000 and later, `chip`: the chip the Slave is built for, `esp32s3`, `esp32c6` or `esp32`, empty for a Slave older than 0.3.006). While a script runs on a Slave, `script` shows its state (`state`: 0 none, 1 loading, 2 running, 3 failed), `result`, `fps`, `frameMs`, `frameCrc`, `memoryKb`, `message` and `ageMs`. |
 | `/api/slaves/config` | POST | Configure a Slave (name, LED type, pins, or HUB75 matrix size/driver). |
 | `/api/slaves/update` | POST | Trigger a remote firmware update of the slaves (`{"url": "https://…"}`, at most 116 characters; the word `{chip}` in it stands for the chip of the Slave, so `…/firmware-{chip}.bin` is `firmware-esp32s3.bin` for an ESP32-S3: a Slave from 0.3.005 on fills it in itself, the Master does it for an older one; optionally `"id"` to update only that Slave instead of all; without `url` the newest Slave release the Master knows of – `409` with `no_release` while it knows none). Response: `sealed` (credentials handed over encrypted, slave 0.2.008 and later), `wired` (older slaves over the cable), `skipped` (older slaves over radio – they no longer get the Wi-Fi password over the air and need one update over USB). |
 

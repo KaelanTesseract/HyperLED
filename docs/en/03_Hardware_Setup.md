@@ -21,7 +21,7 @@ HyperLED is developed for the **ESP32-S3** and only tested on it (Master and Sla
 | **ESP32-S3** (N4R2, N8R2, N8R8, N16R8 …) | 2 × 240 MHz, 512 KB + PSRAM | ✅ | ✅ | ✅ | **The reference platform.** Best choice, especially with PSRAM. |
 | **ESP32** (classic: WROOM-32, WROVER) | 2 × 240 MHz, 520 KB (WROVER + PSRAM) | ✅ | ✅ | ✅ | Fast enough. Different pinout (GPIO 34–39 input only, 6–11 taken), no native USB. |
 | **ESP32-S2** (e.g. S2 Mini with PSRAM) | 1 × 240 MHz, 320 KB (+ PSRAM) | ⚠️ tight | ✅ | ✅ | Single core, little RAM – as Master only sensible with PSRAM. |
-| **ESP32-C6** | 1 × 160 MHz, 512 KB | ⚠️ | ✅ | ✅ | Slower, no PSRAM. |
+| **ESP32-C6** | 1 × 160 MHz, 512 KB | ⚠️ | ✅ (being tested) | ⚠️ | Slower, no PSRAM. **Slave firmware exists** (see below); NeoPixelBus has no driver for this chip, so HyperLED brings its own. |
 | **ESP32-C3** | 1 × 160 MHz, 400 KB | ⚠️ | ✅ | ❌ | LED strips only, no panel. Well suited as an inexpensive Slave. |
 | **ESP32-C5** | 1 × 240 MHz, PSRAM possible | ⚠️ in theory | ⚠️ in theory | ❌ | New, Wi-Fi also on 5 GHz; only recently in the Arduino core, untested. |
 
@@ -43,6 +43,16 @@ HyperLED is developed for the **ESP32-S3** and only tested on it (Master and Sla
 2. **Build environment:** an `[env]` of its own in `platformio.ini`; the USB CDC settings only apply to chips with native USB.
 3. **Single-core chips (S2, C3, C5, C6):** The background tasks for the MQTT connection, the connection test and the update check are pinned to core 1 and would have to move to the only core.
 4. **RAM:** On single-core chips without PSRAM, running as Master with TLS (MQTTS, online update) and the web server gets tight; as a Slave that is no problem.
+
+### The ESP32-C6 as a Slave (being tested)
+
+The Slave firmware builds for the **ESP32-C6** (`pio run -e esp32-c6` in the Slave project, file `firmware-esp32c6.bin` in the releases) and runs on the ESP32-C6 Super Mini (4 MB flash). What is different from the S3:
+
+- **LED output:** NeoPixelBus (2.8.x) has no RMT driver for the C6. HyperLED brings its own (`NeoC6RmtMethod.h`, RMT with the bit timings NeoPixelBus uses elsewhere). It sits below the colour formats, so all one-wire LED types use it; the SPI types use the generic SPI of NeoPixelBus. Only the WS281x family is tested on real hardware so far on the C6, as on the S3.
+- **Pins:** data pin **GPIO 2** by default (GPIO 4 is a strapping pin on the C6); on the Super Mini GPIO 8 is the RGB status LED, GPIO 9 the BOOT button, GPIO 12/13 the USB, GPIO 15 the blue LED. The web interface offers a C6 Slave only the pins it has (GPIO 0 to 7, 14, 15, 20 to 23).
+- **Cable link (HyperBus):** on the C6 the uplink uses the pins the boards label **RX = GPIO 17** and **TX = GPIO 16**, so the Master's TX (GPIO 17) goes to the C6's **GPIO 17** and the Master's RX (GPIO 16) to its **GPIO 16** (straight, not crossed as on the S3 Slave). A further Slave hangs on the downlink GPIO 18 (RX) and GPIO 19 (TX).
+- **HUB75:** a panel needs 14 pins at once; the pin set for the C6 is provisional and not tried on a panel yet.
+- **Chip report:** the Slave tells the Master its chip (from firmware 0.3.006 on); the web interface then shows the pins of that chip.
 
 **Recommendation:** Master on an **ESP32-S3 with PSRAM**, or failing that a classic ESP32 (WROVER). Slaves without a panel can run inexpensively on an **ESP32-C3**, Slaves with a panel on an S3 or C6.
 

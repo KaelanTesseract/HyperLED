@@ -20,7 +20,7 @@
 
 #include <Arduino.h>
 
-#define HYPERLED_VERSION "0.3.005"
+#define HYPERLED_VERSION "0.3.006"
 
 // The chip this firmware is built for (HYPERLED_CHIP, HYPERLED_CHIP_ID) lives in ChipId.h.
 // Releases up to 0.3.001 call the files firmware.bin and littlefs.bin, 0.3.002 has

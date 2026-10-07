@@ -18,7 +18,7 @@ Ein Slave übernimmt selbst keine eigene Steuerlogik – Name, LED-Typ, Pinbeleg
 
 ### Zwei Übertragungswege
 
-- **Kabelgebunden (UART):** Höchste Zuverlässigkeit und Geschwindigkeit. Master und Slave werden über eine Datenleitung plus gemeinsamen Ground verbunden (Standard: Master TX GPIO 17 → Slave RX GPIO 16). Kabelgebundene Slaves können weitere Slaves an ihrem eigenen Downlink-Port weiterreichen (Daisy-Chaining).
+- **Kabelgebunden (UART):** Höchste Zuverlässigkeit und Geschwindigkeit. Master und Slave werden über eine Datenleitung plus gemeinsamen Ground verbunden (Standard: Master TX GPIO 17 → Slave RX GPIO 16 bei einem ESP32-S3-Slave; bei einem **ESP32-C6**-Slave geht der Master-TX an **GPIO 17** des Slaves und der Master-RX an dessen **GPIO 16**, siehe [Hardware Setup](03_Hardware_Setup.md)). Kabelgebundene Slaves können weitere Slaves an ihrem eigenen Downlink-Port weiterreichen (Daisy-Chaining).
 - **Kabellos (ESP-NOW):** Für Slaves ohne praktikable Verkabelung. Der Slave erkennt beim Start automatisch, ob eine kabelgebundene Verbindung vorliegt – ist das nicht der Fall, wechselt er selbstständig in den ESP-NOW-Modus und rastet dort ein.
 
 Ein Slave muss vor dem ersten Betrieb nicht manuell auf einen Übertragungsweg festgelegt werden: Er erkennt und speichert die passende Betriebsart automatisch.

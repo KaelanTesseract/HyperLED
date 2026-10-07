@@ -1074,12 +1074,19 @@ document.addEventListener('DOMContentLoaded', () => {
         ['A', 8], ['B', 9], ['C', 10], ['D', 11], ['E', 12],
         ['CLK', 13], ['LAT', 14], ['OE', 15]
     ];
+    // The same for an ESP32-C6 Slave (HUB75_PIN_* of the Slave's Config.h; provisional).
+    const HUB75_PINS_C6 = [
+        ['R1', 0], ['G1', 1], ['B1', 2],
+        ['R2', 3], ['G2', 4], ['B2', 5],
+        ['A', 6], ['B', 7], ['C', 14], ['D', 15], ['E', 20],
+        ['CLK', 21], ['LAT', 22], ['OE', 23]
+    ];
 
-    function renderHub75Pinout(tableId) {
+    function renderHub75Pinout(tableId, chip) {
         const table = document.getElementById(tableId || 'hub75PinoutTable');
         if (!table) return;
         table.innerHTML = '';
-        HUB75_PINS.forEach(([signal, gpio]) => {
+        (chip === 'esp32c6' ? HUB75_PINS_C6 : HUB75_PINS).forEach(([signal, gpio]) => {
             const sig = document.createElement('div');
             sig.style.color = 'var(--text-muted)';
             sig.innerText = signal;
@@ -1764,7 +1771,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${t('seg_shares')}
                     </label>
                 </div>
-                ` : '') + `
+                ` + (seg.sharesPower ? '' : `
+                <div style="flex: 100%; margin-bottom: 5px;">
+                    <label for="segAbl_${idx}" style="font-size: var(--text-caption); margin-bottom: 2px;">${t('seg_own_abl')}</label>
+                    <input type="number" id="segAbl_${idx}" class="seg-abl-ma field" data-idx="${idx}" min="0" max="60000" step="100" value="${seg.ablMa || 0}">
+                    <div style="font-size: var(--text-caption); color: var(--text-muted); margin-top: 2px;">${t('seg_own_abl_hint')}</div>
+                </div>
+                `) : '') + `
             `;
             segmentsListContainer.appendChild(div);
         });
@@ -1815,6 +1828,12 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.seg-shares-power').forEach(i => i.addEventListener('change', e => {
             segments[e.target.dataset.idx].sharesPower = e.target.checked;
             updateAblUI();
+            renderSegmentsSettings();
+        }));
+        document.querySelectorAll('.seg-abl-ma').forEach(i => i.addEventListener('change', e => {
+            const v = parseInt(e.target.value) || 0;
+            segments[e.target.dataset.idx].ablMa = Math.max(0, Math.min(v, 60000));
+            e.target.value = segments[e.target.dataset.idx].ablMa;
         }));
         document.querySelectorAll('.btn-del-seg').forEach(btn => btn.addEventListener('click', e => {
             segments.splice(e.target.dataset.idx, 1);
@@ -2561,10 +2580,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     // onboard WS2812, debug UART0 - see include/Config.h). HUB75's own pins
                     // (1,2,4-15) are fine to offer here since they're only reserved while HUB75
                     // is the selected type.
-                    const freePins = [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 39, 40, 41, 42];
+                    // An ESP32-C6 Slave (it reports its chip from 0.3.006 on) has other pins: GPIO8 is its onboard
+                    // LED, 9 the BOOT button, 12/13 the USB, 16-19 the two HyperBus ports.
+                    const slaveChip = slave.chip || 'esp32s3';
+                    const freePins = slaveChip === 'esp32c6'
+                        ? [0, 1, 2, 3, 4, 5, 6, 7, 14, 15, 20, 21, 22, 23]
+                        : [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 39, 40, 41, 42];
+                    const defaultPin = slaveChip === 'esp32c6' ? 2 : 4;
                     let pinOptions = '';
                     freePins.forEach(p => {
-                        pinOptions += `<option value="${p}" ${p === 4 ? 'selected' : ''}>GPIO ${p}</option>`;
+                        pinOptions += `<option value="${p}" ${p === defaultPin ? 'selected' : ''}>GPIO ${p}</option>`;
                     });
 
                     const typeOptions = document.getElementById('ledType').innerHTML;
@@ -2678,7 +2703,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         pending.innerText = t('slave_config_pending');
                         card.appendChild(pending);
                     }
-                    renderHub75Pinout(`slaveHub75Pinout_${slave.id}`);
+                    renderHub75Pinout(`slaveHub75Pinout_${slave.id}`, slave.chip);
                     document.getElementById(`slaveType_${slave.id}`).dispatchEvent(new Event('change'));
                 });
             })

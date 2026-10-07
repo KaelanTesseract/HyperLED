@@ -121,7 +121,7 @@ void SlaveManagerClass::loop() {
         if (now - lastCleanup > 15000) {
             lastCleanup = now;
             for (auto it = _discoveredSlaves.begin(); it != _discoveredSlaves.end(); ) {
-                if (now - it->lastSeen > 15000) {
+                if ((long)(now - it->lastSeen) > 15000) {
                     it = _discoveredSlaves.erase(it);
                 } else {
                     ++it;
@@ -133,6 +133,7 @@ void SlaveManagerClass::loop() {
 
 static bool versionRendersLocally(const String& version);
 static bool versionReportsConfig(const String& version);
+static bool versionReportsChip(const String& version);
 static bool versionRendersWidgets(const String& version);
 static bool versionRendersAllWidgets(const String& version);
 static bool versionRunsScripts(const String& version);
@@ -173,12 +174,18 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
             uint8_t sType = 255;
             uint16_t sMatW = 0, sMatH = 0;
             uint8_t sShift = 0;
+            uint8_t sChip = 255;
             if (hasConfig && packet.length >= nameAt + 6) {
                 sType  = packet.payload[nameAt];
                 sMatW  = packet.payload[nameAt + 1] | (packet.payload[nameAt + 2] << 8);
                 sMatH  = packet.payload[nameAt + 3] | (packet.payload[nameAt + 4] << 8);
                 sShift = packet.payload[nameAt + 5];
                 nameAt += 6;
+                // From 0.3.006 on the chip follows, one byte, before the name.
+                if (versionReportsChip(sVersion) && packet.length > nameAt) {
+                    sChip = packet.payload[nameAt];
+                    nameAt += 1;
+                }
             }
 
             String sName = "Unknown";
@@ -209,6 +216,7 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                         s.matrixHeight = sMatH;
                         s.hub75ShiftDriver = sShift;
                     }
+                    s.chip = sChip;
                     s.lastSeen = millis();
                     s.isWireless = packet.isWireless;
                     found = true;
@@ -242,6 +250,7 @@ void SlaveManagerClass::handlePacket(const HyperBusPacket& packet) {
                 ds.matrixWidth = sMatW;
                 ds.matrixHeight = sMatH;
                 ds.hub75ShiftDriver = sShift;
+                ds.chip = sChip;
                 ds.lastSeen = millis();
                 ds.isWireless = packet.isWireless;
                 _discoveredSlaves.push_back(ds);
@@ -615,6 +624,20 @@ static bool versionRendersLocally(const String& version) {
     long minor = (secondDot > firstDot) ? version.substring(firstDot + 1, secondDot).toInt()
                                         : version.substring(firstDot + 1).toInt();
     return (major > 0) || (major == 0 && minor >= 2);
+}
+
+// Reporting the chip in the PONG arrived in Slave firmware 0.3.006.
+static bool versionReportsChip(const String& version) {
+    int firstDot = version.indexOf('.');
+    if (firstDot < 0) return false;
+    int secondDot = version.indexOf('.', firstDot + 1);
+    if (secondDot < 0) return false;
+    long major = version.substring(0, firstDot).toInt();
+    long minor = version.substring(firstDot + 1, secondDot).toInt();
+    long patch = version.substring(secondDot + 1).toInt();
+    if (major > 0) return true;
+    if (minor > 3) return true;
+    return (minor == 3 && patch >= 6);
 }
 
 // Reporting the output configuration in the PONG arrived in Slave firmware 0.2.1.

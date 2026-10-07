@@ -173,30 +173,59 @@ Nicht gemeint: ESP8266 (andere Plattform) und Module mit 2 MB Flash (zu klein f�
 
 ## Phase 4: ESP32-C6
 
-Nicht lauffähig, solange diese Stellen nicht angepasst sind (aus dem Quelltext gelesen, noch nicht
-für den C6 gebaut):
+Entscheidung (2026-10-07): **zuerst der Slave**, der Master später und nur, wenn er lohnt (ein Kern, kein PSRAM).
+Der Slave baut für den C6; was geprüft, geändert und noch nicht am Gerät erprobt ist:
 
-- Hintergrund-Tasks sind fest an **Kern 1** gebunden (`MqttManager`, `PluginManager`, `UpdateManager`);
-  der C6 hat nur einen Kern.
-- Das Skript-System legt Bildpuffer im **PSRAM** an (`ScriptTask.cpp`, `ScriptHost.cpp`), und der
-  `UpdateManager` sichert Dateien dort; der C6 hat keinen PSRAM.
-- `NeoPixelBus` (RMT-Treiber) und `esp-hub75` auf dem C6 prüfen; die HUB75-Speicherprüfung
-  rechnet mit etwa 250 KB freiem Speicher.
-- USB-Konfiguration (`ARDUINO_USB_*`), Pinbelegung (`include/Config.h`, HUB75, HyperBus-UART,
-  Taster, Status-LED), Partitionstabelle.
-- Ein Kern mit 160 MHz teilt sich Webserver, Funk, Effekte und Lua; der Master ist hier am
-  schwächsten. **Deshalb zuerst der Slave.**
+**Slave: Befunde und Änderungen** (Repository `HyperLED_Slave`, Umgebung `esp32-c6`, Board `esp32-c6-devkitc-1`)
 
-Schritte:
+- [x] Umgebung `esp32-c6` in `HyperLED_Slave/platformio.ini`
+- [x] **NeoPixelBus 2.8.4 kann den C6 nicht** (`NeoMethods.h` bindet RMT, I2S und DMA-SPI für C6 und H2 aus; nur Bit-Banging bleibt,
+      und das sperrt auf einem Kern die Interrupts, also auch den Funk). Dazu der offene
+      [Issue #917](https://github.com/Makuna/NeoPixelBus/issues/917). Darum:
+- [x] Erster Ansatz `BusRmt` (nur einige Typen) wurde ersetzt durch `NeoC6RmtMethod` (siehe „Alle LED-Typen“ unten), über die RMT-Funktionen
+      des Arduino-Kerns 3.3.11 (`rmtInit`, `rmtWrite`)
+- [x] Statuslicht über `rgbLedWrite()` statt NeoPixelBus (`StatusLedManager.cpp`), Pin GPIO8
+- [x] Pins für den C6 in `Config.h` und `main.cpp`: Statuslicht 8, Standard-LED-Pin 2 (GPIO4 ist beim C6 ein Strapping-Pin),
+      Uplink RX 17 / TX 16, Downlink RX 18 / TX 19, HUB75 vorläufig (0 bis 7, 14, 15, 20 bis 23; der Super Mini hat GPIO 10/11 nicht)
+- [x] Der Slave **kompiliert** für den C6 (1 380 816 Bytes, Chip-Kennung `0x000D`, RAM 16 %, Flash 67 % des 1,94-MB-Platzes)
+- [x] Der S3-Build ist unverändert (1 216 688 Bytes wie vorher)
+- [x] PSRAM-Stellen der Skripte haben schon einen Rückfall auf internen Speicher (`ScriptTask.cpp`, `ScriptHost.cpp`, `main.cpp`)
+- [x] **Am Gerät** (2026-10-07, ESP32-C6 Super Mini): Flashen per USB, Funk (ESP-NOW) findet den Master, Statuslicht grün, Streifen
+      mit 37 WS2812B auf GPIO2 läuft (Statusleiste für den Snapmaker U1), Strombegrenzung des Slaves wirkt. **Nicht geprüft:** Skripte auf dem C6,
+      Online-Update über `firmware-esp32c6.bin` (kommt mit diesem Release)
+- [x] **Alle LED-Typen** (Entscheidung 2026-10-07): Statt eines eigenen Treibers je Typ gibt es eine eigene NeoPixelBus-„Methode“
+      für den C6 (`HyperLED_Slave/include/NeoC6RmtMethod.h`, RMT mit den Zeiten der Bibliothek selbst), die Farbformate der Bibliothek
+      bleiben; TM1814, TM1914, WS2805, SM16825 und die SPI-Streifen laufen wie auf dem S3 (kompiliert, Streifen am Gerät offen)
+- [x] Der Slave meldet seinen Chip im PONG (ein Byte, ab 0.3.006), der Master gibt ihn in `/api/slaves` als `chip` weiter; die Weboberfläche
+      bietet für einen C6-Slave seine Pins an (GPIO 0 bis 7, 14, 15, 20 bis 23, Standard 2) und seine HUB75-Belegung
+- [x] Am Gerät (ESP32-C6 Super Mini, 4 MB): läuft, findet den Master über ESP-NOW, Master zeigt Chip `esp32c6`, Statuslicht grün;
+      ältere S3-Slaves (0.3.005, ohne Chip) werden weiter richtig gelesen
+- [x] **Fehler gefunden und behoben (2026-10-07): Statuslicht wurde rot, obwohl der Master den Slave sah.** Ursache: Zeitvergleiche mit
+      `millis() - Zeitstempel > N`, wobei der Funk-Task den Zeitstempel zwischen Uhrlesen und Subtraktion setzt; die vorzeichenlose
+      Differenz wird dann riesig. Auf dem Ein-Kern-C6 passierte das alle 15 bis 60 s („lost the Master, scanning“ im Log, Diagnose zeigte
+      `now == last`). Behoben mit vorzeichenbehafteten Vergleichen (`EspNowBus.cpp`, `main.cpp`: Statuslicht, UART-Wächter, Kanalwechsel;
+      Master: Aufräumen der Slave-Liste). Auf dem C6 sieben Minuten ohne ein Ereignis. Der Fehler steckt auch in den S3-Slaves (selten),
+      die Korrektur kommt mit dem nächsten Slave-Release dorthin
+- [ ] **Kabelverbindung (HyperBus über UART) am C6** (bewusst nicht getestet, 2026-10-07, wird als ungetestet dokumentiert): Uplink-Pins beim C6 sind RX = GPIO17, TX = GPIO16 (so beschriftet), der Master-TX
+      geht also an GPIO17 des C6 und nicht an GPIO16 wie beim S3; Downlink GPIO18 (RX) und GPIO19 (TX). Am Gerät prüfen
+- [ ] HUB75 am C6: Pins sind vorläufig (nur kompiliert, nie an einem Panel gesehen); Speicher und Takt am Panel messen
+- [x] Release 0.3.006: `firmware-esp32c6.bin` für den Slave im Slave-Release, `HyperLED_Slave` baut dafür mit `-e esp32-c6`
+- [x] Nebenher geliefert (2026-10-07): eigene Strombegrenzung (mA) für Slaves mit eigenem Netzteil, je Segment (`Segment::ablMa`), vom Master
+      gerechnet, keine Änderung am Funkprotokoll; am Gerät geprüft (das Dimmen wirkt)
+- [ ] Master-Seite: Er kennt den Chip eines Slaves nicht, sondern lässt ihn `{chip}` einsetzen (Phase 3). Zu prüfen, dass der Master
+      beim Anzeigen und Aktualisieren eines C6-Slaves nichts S3-spezifisches annimmt (z. B. Pin-Auswahl für Datenpin in der Oberfläche)
 
-- [ ] Klären: Steht ein ESP32-C6-Board zum Testen zur Verfügung?
-- [ ] Dateisystem: gleiche Partitionstabelle und gleiche Weboberfläche wie beim S3? Sonst `littlefs-<chip>.bin`
-- [ ] Build-Umgebung `esp32-c6` in `platformio.ini` (pioarduino-Plattform)
-- [ ] Slave für den C6 **nur kompilieren**, Fehlerliste festhalten
-- [ ] Master für den C6 **nur kompilieren**, Fehlerliste festhalten
+**Master für den C6** (später)
+
+Aus dem Quelltext des Masters, noch nicht für den C6 gebaut:
+
+- Hintergrund-Tasks sind fest an **Kern 1** gebunden (`MqttManager`, `PluginManager`, `UpdateManager`); der C6 hat nur einen Kern.
+- Das Skript-System und der `UpdateManager` nutzen PSRAM (mit Rückfall, beim Master zu prüfen).
+- `NeoPixelBus`: derselbe Befund wie beim Slave, auch der Master braucht `BusRmt`.
+- `esp-hub75`, USB-Konfiguration, Pinbelegung, Partitionstabelle prüfen.
+- Ein Kern mit 160 MHz teilt sich Webserver, Funk, Effekte und Lua.
+
+- [ ] Master für den C6 nur kompilieren, Fehlerliste festhalten
 - [ ] Entscheiden, ob und wie weit der Master lohnt (Speicher und Leistung am Gerät messen)
-- [ ] Stellen oben anpassen (Kerne, PSRAM, Treiber, Pins), jeweils auf dem S3 gegenprüfen
-- [ ] Slave auf dem C6 am Gerät testen (Strip, HUB75, Skripte, Funk, Online-Update)
-- [ ] Master auf dem C6 am Gerät testen (falls entschieden)
-- [ ] Releases liefern `firmware-esp32c6.bin` (Master und Slave); Beschreibung in README, `docs/*/03`,
-      Wiki („Was du brauchst“) und Chip-Tabelle anpassen
+- [ ] Dateisystem: gleiche Partitionstabelle und gleiche Weboberfläche wie beim S3? Sonst `littlefs-<chip>.bin`
+- [ ] Releases liefern `firmware-esp32c6.bin` (Master und Slave); README, `docs/*/03`, Wiki („Was du brauchst“) und Chip-Tabelle anpassen

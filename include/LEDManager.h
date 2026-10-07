@@ -180,6 +180,10 @@ struct Segment {
     bool isSlave = false;
     uint8_t slaveId = 0;
     bool sharesPower = false;
+    // Current limit in mA for a Slave that has a power supply of its own (sharesPower off). 0 = no
+    // limit. A Slave with several segments counts all of them together, against the smallest
+    // non-zero value of its segments.
+    uint16_t ablMa = 0;
     bool whiteOnly = false;
     uint8_t cct = 128;
     uint8_t palette = 0;
@@ -414,6 +418,11 @@ public:
     // its brightness, which on a 6-bit HUB75 panel left barely a handful of usable steps and made
     // dimming look like pixels switching off rather than fading.
     uint8_t segmentAblCap(const Segment& seg, uint8_t globalCap) const;
+    // The cap of a Slave with a supply of its own: its segments' estimated current at full
+    // brightness against the Slave's limit (Segment::ablMa), the same model as the Master's.
+    uint8_t slaveAblCap(uint8_t slaveId) const;
+    // What a segment draws at full brightness, in mA (0 when it shows nothing).
+    uint32_t segmentFullMa(const Segment& seg) const;
 
     uint16_t getCanvasWidth() const;
     uint16_t getCanvasHeight() const;

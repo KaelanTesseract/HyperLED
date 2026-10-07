@@ -57,6 +57,8 @@ struct DiscoveredSlave {
     uint16_t matrixWidth = 0;
     uint16_t matrixHeight = 0;
     uint8_t hub75ShiftDriver = 0;
+    // The chip the Slave is built for (HYPERLED_CHIP_ID), reported from 0.3.006 on; 255 until then.
+    uint8_t chip = 255;
 };
 
 class SlaveManagerClass {

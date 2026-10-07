@@ -28,4 +28,4 @@ HyperLED offers a huge range of features that make it suitable for anything from
 * **Over-the-Air (OTA) updates:** Update the firmware and web interface directly in the browser, without connecting the ESP32 to a PC.
 
 ## Power Supply
-* **Automatic Brightness Limiting (ABL):** Estimates the live power draw of all LEDs and automatically limits brightness to protect the power supply from overload.
+* **Automatic Brightness Limiting (ABL):** Estimates the live power draw of all LEDs and automatically limits brightness to protect the power supply from overload. A Slave with a power supply of its own gets a limit of its own (set per segment under *Segments*).
